@@ -1,6 +1,7 @@
-import { memo } from "react";
+import { memo, useRef } from "react";
 import { RUNWAY_END_BY_ID, type RunwayEnd } from "../domain/runways";
 import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
+import { useViewport } from "../hooks/useViewport";
 import { SVG_W, SVG_H } from "../lib/projection";
 import { Plane } from "./Plane";
 import { RunwayHeat } from "./RunwayHeat";
@@ -18,13 +19,21 @@ function AirportSvgImpl({
   aircraft: AircraftWithAssignment[];
   counts: Record<string, number>;
 }) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const { viewBox, zoom, zoomIn, zoomOut, reset, isDragging, bind } =
+    useViewport(svgRef);
+
   return (
-    <svg
-      viewBox={`0 0 ${SVG_W} ${SVG_H}`}
-      className="h-full w-full"
-      role="img"
-      aria-label="Schematic map of Zurich Airport runways with live traffic"
-    >
+    <div className="relative h-full w-full">
+      <svg
+        ref={svgRef}
+        viewBox={viewBox}
+        className="h-full w-full"
+        style={{ touchAction: "none", cursor: isDragging ? "grabbing" : "grab" }}
+        role="img"
+        aria-label="Schematic map of Zurich Airport runways with live traffic"
+        {...bind}
+      >
       <defs>
         <radialGradient id="field" cx="50%" cy="50%" r="70%">
           <stop offset="0%" stopColor="#0f172a" />
@@ -64,7 +73,45 @@ function AirportSvgImpl({
       {aircraft.map((item) => (
         <Plane key={item.ac.hex} item={item} />
       ))}
-    </svg>
+      </svg>
+
+      <div className="absolute left-2 top-2 flex flex-col gap-1">
+        <ZoomButton label="Zoom in" onClick={zoomIn} disabled={zoom >= 8}>
+          +
+        </ZoomButton>
+        <ZoomButton label="Zoom out" onClick={zoomOut} disabled={zoom <= 1}>
+          −
+        </ZoomButton>
+        <ZoomButton label="Reset view" onClick={reset} disabled={zoom === 1}>
+          ⟳
+        </ZoomButton>
+      </div>
+    </div>
+  );
+}
+
+function ZoomButton({
+  label,
+  onClick,
+  disabled,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      disabled={disabled}
+      className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-700 bg-slate-900/80 text-lg leading-none text-slate-200 hover:bg-slate-800 disabled:opacity-30"
+    >
+      {children}
+    </button>
   );
 }
 

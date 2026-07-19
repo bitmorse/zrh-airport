@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { AirportSvg } from "./components/AirportSvg";
+import { ArrivalsBoard } from "./components/ArrivalsBoard";
 import { Legend } from "./components/Legend";
 import { SettingsModal } from "./components/SettingsModal";
 import { useLiveTraffic } from "./hooks/useLiveTraffic";
@@ -55,6 +56,14 @@ export default function App() {
               activeCount={activeCount}
               total={traffic.aircraft.length}
               isFetching={traffic.isFetching}
+            />
+          </div>
+
+          <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+            <ArrivalsBoard
+              aircraft={traffic.aircraft}
+              lastUpdated={traffic.lastUpdated}
+              now={now}
             />
           </div>
 

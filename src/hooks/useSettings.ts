@@ -14,6 +14,11 @@ export interface Settings {
   provider: string | null;
   /** Optional API token, stored locally only (future use). */
   apiToken: string | null;
+  /** Map zoom factor (1 = full extent). */
+  zoom: number;
+  /** Normalized view centre in [0,1] (0.5,0.5 = airport reference point). */
+  cx: number;
+  cy: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -21,6 +26,9 @@ export const DEFAULT_SETTINGS: Settings = {
   radiusNm: 25,
   provider: null,
   apiToken: null,
+  zoom: 1,
+  cx: 0.5,
+  cy: 0.5,
 };
 
 const KEY = "zrh:settings";

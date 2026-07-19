@@ -22,6 +22,12 @@ export interface RunwayAssignment {
   end: string;
   phase: RunwayPhase;
   crossTrackM: number;
+  /**
+   * Signed distance along the runway axis from this end's threshold: 0 at the
+   * threshold, positive toward the far end (on the runway / departing), negative
+   * on approach. So the approach distance to touchdown is `-alongTrackM`.
+   */
+  alongTrackM: number;
 }
 
 // Pre-compute each runway end's centreline in local metres (once).
@@ -55,7 +61,7 @@ export function assignRunway(ac: Aircraft): RunwayAssignment | null {
       alongTrack < 0 ? "approach" : alongTrack <= len ? "runway" : "departure";
 
     if (!best || crossTrack < best.crossTrackM) {
-      best = { end: end.id, phase, crossTrackM: crossTrack };
+      best = { end: end.id, phase, crossTrackM: crossTrack, alongTrackM: alongTrack };
     }
   }
   return best;
