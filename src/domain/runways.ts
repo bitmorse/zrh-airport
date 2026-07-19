@@ -34,14 +34,15 @@ export interface RunwayEnd {
 /** Airport reference point — used as the query centre and projection anchor. */
 export const ZRH_ARP: LatLon = { lat: 47.4647, lon: 8.5492 };
 
-// Physical thresholds (OurAirports LSZH runways.csv).
+// Physical runway-end thresholds (OurAirports LSZH runways.csv, WGS84). These
+// give true headings 10=96° 28=276° 14=137° 32=317° 16=155° 34=335°.
 const T = {
-  "16": { lat: 47.48047, lon: 8.53619 },
-  "34": { lat: 47.44758, lon: 8.5493 },
-  "14": { lat: 47.48586, lon: 8.53619 },
-  "32": { lat: 47.45463, lon: 8.56494 },
-  "10": { lat: 47.45872, lon: 8.52889 },
-  "28": { lat: 47.46225, lon: 8.5719 },
+  "16": { lat: 47.475601, lon: 8.535950 },
+  "34": { lat: 47.445400, lon: 8.556730 },
+  "14": { lat: 47.483101, lon: 8.534730 },
+  "32": { lat: 47.461300, lon: 8.564460 },
+  "10": { lat: 47.458900, lon: 8.537470 },
+  "28": { lat: 47.456600, lon: 8.570450 },
 } as const;
 
 /**

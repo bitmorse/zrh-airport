@@ -2,11 +2,67 @@ import { useEffect, useRef, useState } from "react";
 import { relLoudness } from "../data/noiseStore";
 import { useNoiseEvents } from "../hooks/useNoiseEvents";
 
+import type { NoiseEvent } from "../data/noiseStore";
+
 function hhmm(ts: number): string {
   const d = new Date(ts);
   const h = String(d.getHours()).padStart(2, "0");
   const m = String(d.getMinutes()).padStart(2, "0");
   return `${h}:${m}`;
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function csvCell(v: string | number | null): string {
+  const s = v == null ? "" : String(v);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function exportCsv(events: NoiseEvent[]) {
+  const header = [
+    "time",
+    "callsign",
+    "hex",
+    "runway",
+    "lat",
+    "lon",
+    "peak_rel",
+    "peak_dbfs",
+    "avg_dbfs",
+    "duration_s",
+  ];
+  const rows = events.map((e) => [
+    new Date(e.startedAt).toISOString(),
+    e.callsign ?? "",
+    e.hex ?? "",
+    e.runwayEnd ?? "",
+    e.lat ?? "",
+    e.lon ?? "",
+    relLoudness(e.peakDbfs),
+    e.peakDbfs.toFixed(1),
+    e.avgDbfs.toFixed(1),
+    (e.durationMs / 1000).toFixed(1),
+  ]);
+  const csv = [header, ...rows]
+    .map((r) => r.map(csvCell).join(","))
+    .join("\n");
+  downloadBlob(new Blob([csv], { type: "text/csv" }), `zrh-noise-${Date.now()}.csv`);
+}
+
+function audioExt(type: string): string {
+  if (type.includes("webm")) return "webm";
+  if (type.includes("mp4")) return "m4a";
+  if (type.includes("ogg")) return "ogg";
+  return "audio";
 }
 
 /**
@@ -58,11 +114,26 @@ export function NoiseTable() {
     );
   }
 
+  async function download(e: NoiseEvent) {
+    const blob = await getAudio(e.id);
+    if (!blob) return;
+    const name = (e.callsign ?? e.hex ?? "clip").replace(/\s+/g, "");
+    downloadBlob(blob, `zrh-${name}-${hhmm(e.startedAt).replace(":", "")}.${audioExt(blob.type)}`);
+  }
+
   return (
     <div className="text-sm">
-      <h2 className="mb-2 font-semibold text-slate-200">
-        Measurements <span className="text-xs text-slate-500">({events.length})</span>
-      </h2>
+      <div className="mb-2 flex items-center justify-between">
+        <h2 className="font-semibold text-slate-200">
+          Measurements <span className="text-xs text-slate-500">({events.length})</span>
+        </h2>
+        <button
+          onClick={() => exportCsv(events)}
+          className="rounded border border-slate-700 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-800"
+        >
+          ⭳ Export CSV
+        </button>
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full text-left text-xs">
           <thead className="text-slate-500">
@@ -100,13 +171,22 @@ export function NoiseTable() {
                 <td className="py-1.5">
                   <div className="flex gap-1">
                     {e.hasAudio && (
-                      <button
-                        onClick={() => void play(e.id)}
-                        aria-label={playingId === e.id ? "Stop playback" : "Play recording"}
-                        className="rounded px-1.5 text-slate-300 hover:bg-slate-800"
-                      >
-                        {playingId === e.id ? "■" : "▶"}
-                      </button>
+                      <>
+                        <button
+                          onClick={() => void play(e.id)}
+                          aria-label={playingId === e.id ? "Stop playback" : "Play recording"}
+                          className="rounded px-1.5 text-slate-300 hover:bg-slate-800"
+                        >
+                          {playingId === e.id ? "■" : "▶"}
+                        </button>
+                        <button
+                          onClick={() => void download(e)}
+                          aria-label="Download recording"
+                          className="rounded px-1.5 text-slate-300 hover:bg-slate-800"
+                        >
+                          ⭳
+                        </button>
+                      </>
                     )}
                     <button
                       onClick={() => void remove(e.id)}
@@ -123,7 +203,9 @@ export function NoiseTable() {
         </table>
       </div>
       <p className="mt-2 text-[10px] text-slate-600">
-        * uncalibrated relative loudness (0–100 from dBFS), not certified SPL.
+        * uncalibrated relative loudness (0–100 from dBFS), not certified SPL. While
+        the mic is recording, in-app playback may be quiet or routed to the earpiece
+        (a phone-OS limit) — use ⭳ to download and play a clip at full volume.
       </p>
     </div>
   );
