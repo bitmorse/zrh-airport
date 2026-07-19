@@ -3,6 +3,7 @@ import { AirportSvg } from "./components/AirportSvg";
 import { ArrivalsBoard } from "./components/ArrivalsBoard";
 import { FlightDetails } from "./components/FlightDetails";
 import { Legend } from "./components/Legend";
+import { NextLandingBar } from "./components/NextLandingBar";
 import { NoiseRecorder } from "./components/NoiseRecorder";
 import { NoiseTable } from "./components/NoiseTable";
 import { PoiManager } from "./components/PoiManager";
@@ -88,6 +89,7 @@ export default function App() {
     traffic.lastUpdated != null
       ? Math.max(0, Math.round((now - traffic.lastUpdated) / 1000))
       : null;
+  const stale = ageSec != null && ageSec > Math.max(90, settings.pollSeconds * 2);
 
   const activeCount = useMemo(
     () => traffic.aircraft.filter((a) => a.assignment).length,
@@ -113,6 +115,17 @@ export default function App() {
           ⚙︎ Settings
         </button>
       </header>
+
+      {/* Mobile-only quick glance above the map. */}
+      <div className="px-4 pt-4 lg:hidden">
+        <NextLandingBar
+          arrivals={arrivals}
+          now={now}
+          lastUpdated={traffic.lastUpdated}
+          stale={stale}
+          onSelect={handleSelect}
+        />
+      </div>
 
       <main className="flex flex-1 flex-col gap-4 p-4 lg:flex-row">
         <section className="relative aspect-[28/25] w-full overflow-hidden rounded-xl border border-slate-800 bg-slate-900/40 lg:aspect-auto lg:min-h-[60vh] lg:flex-1">
@@ -149,7 +162,7 @@ export default function App() {
               aircraft={traffic.aircraft}
               lastUpdated={traffic.lastUpdated}
               now={now}
-              stale={ageSec != null && ageSec > Math.max(90, settings.pollSeconds * 2)}
+              stale={stale}
               selectedHex={selectedHex}
               onSelect={handleSelect}
             />

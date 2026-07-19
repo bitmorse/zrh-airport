@@ -4,20 +4,14 @@ import {
   nextArrivalByStrip,
   type Arrival,
 } from "../domain/predictions";
+import { useFlightRoute } from "../hooks/useFlightRoute";
 import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
-
-function formatEta(seconds: number): string {
-  const total = Math.max(0, Math.round(seconds));
-  if (total <= 5) return "landing";
-  const m = Math.floor(total / 60);
-  const s = total % 60;
-  return `${m}:${String(s).padStart(2, "0")}`;
-}
+import { formatEta, routeText } from "../lib/format";
 
 /**
- * Per-runway next-landing board with live countdowns, plus a "departing now"
- * section. Arrival ETAs are estimated from each aircraft's distance-to-threshold
- * and groundspeed and re-computed each poll — an estimate, not a schedule.
+ * Per-runway next-landing board with live countdowns and looked-up airline/route,
+ * plus a "departing now" section. Arrival ETAs are estimated from each aircraft's
+ * distance-to-threshold and groundspeed and re-computed each poll — an estimate.
  */
 export function ArrivalsBoard({
   aircraft,
@@ -96,40 +90,47 @@ function StripRow({
   selectedHex?: string | null;
   onSelect?: (hex: string) => void;
 }) {
+  const route = useFlightRoute(arrival?.callsign ?? null);
   const remaining = arrival ? Math.max(0, arrival.etaSeconds - ageSec) : null;
   const soon = remaining != null && remaining <= 60 && !stale;
   const isSelected = !!arrival && arrival.hex === selectedHex;
   const clickable = !!arrival && !!onSelect;
+  const routeLabel = routeText(route.data);
 
   const inner = (
     <>
-      <div className="flex min-w-0 items-baseline gap-2">
-        <span className="w-12 shrink-0 font-mono text-sm font-semibold text-slate-200">
-          {strip}
-        </span>
-        {arrival ? (
-          <span className="truncate text-xs text-slate-400">
-            <span className="text-sky-300">{arrival.end}</span> · {arrival.callsign} ·{" "}
-            {arrival.distanceNm.toFixed(1)} NM
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-baseline gap-2">
+          <span className="w-12 shrink-0 font-mono text-sm font-semibold text-slate-200">
+            {strip}
           </span>
-        ) : (
-          <span className="text-xs text-slate-600">— no inbound</span>
+          {arrival ? (
+            <span className="truncate text-xs text-slate-400">
+              <span className="text-sky-300">{arrival.end}</span> · {arrival.callsign} ·{" "}
+              {arrival.distanceNm.toFixed(1)} NM
+            </span>
+          ) : (
+            <span className="text-xs text-slate-600">— no inbound</span>
+          )}
+        </div>
+        {remaining != null && (
+          <span
+            className={`shrink-0 font-mono text-sm font-semibold tabular-nums ${
+              stale ? "text-slate-600" : soon ? "text-emerald-300" : "text-slate-300"
+            }`}
+            title={stale ? "data is stale" : undefined}
+          >
+            {stale ? "—" : formatEta(remaining)}
+          </span>
         )}
       </div>
-      {remaining != null && (
-        <span
-          className={`shrink-0 font-mono text-sm font-semibold tabular-nums ${
-            stale ? "text-slate-600" : soon ? "text-emerald-300" : "text-slate-300"
-          }`}
-          title={stale ? "data is stale" : undefined}
-        >
-          {stale ? "—" : formatEta(remaining)}
-        </span>
+      {arrival && routeLabel && (
+        <div className="truncate pl-14 text-[11px] text-slate-500">{routeLabel}</div>
       )}
     </>
   );
 
-  const base = `flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left ${
+  const base = `flex w-full flex-col gap-0.5 rounded-lg px-2.5 py-1.5 text-left ${
     isSelected ? "bg-sky-600/20 ring-1 ring-sky-500/50" : "bg-slate-800/40"
   }`;
 

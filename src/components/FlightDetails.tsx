@@ -1,6 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
-import { fetchFlightRoute, type Airport } from "../data/flightInfo";
+import { type Airport } from "../data/flightInfo";
 import { altAboveFieldFt } from "../domain/assignRunway";
+import { useFlightRoute } from "../hooks/useFlightRoute";
 import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
 
 const PHASE_LABEL: Record<string, string> = {
@@ -22,15 +22,7 @@ export function FlightDetails({
   onClear: () => void;
 }) {
   const callsign = item?.ac.flight ?? null;
-
-  const route = useQuery({
-    queryKey: ["route", callsign],
-    queryFn: ({ signal }) => fetchFlightRoute(callsign!, signal),
-    enabled: !!callsign,
-    staleTime: 6 * 60 * 60 * 1000, // routes are stable for the day
-    gcTime: 12 * 60 * 60 * 1000,
-    retry: 1,
-  });
+  const route = useFlightRoute(callsign);
 
   if (!item) {
     return (
