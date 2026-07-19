@@ -84,28 +84,54 @@ export interface DepartureMemory {
   lastSeen: number;
 }
 
+/** A departure's row persists as one continuous track until it climbs past this. */
+const DEPARTURE_DONE_AGL_FT = 1000;
+
 /**
- * Keep a departure visible across brief ADS-B ground-coverage gaps. Community
- * receivers cover the surface poorly, so a holding/rolling aircraft can drop out
- * for a poll or two and blink in and out. We remember each departure and keep
- * "coasting" its last-known row for `lingerMs` after it was last detected, so the
- * departures list stays stable instead of flickering (and, run before
- * `trackHolding`, this also stops the wait timer resetting when an aircraft briefly
- * disappears). `memory` persists across polls.
+ * Treat a departure as one continuous track through wait → roll → climb, instead
+ * of re-deriving a phase every poll. Detection has holes — in the rotation moment
+ * groundspeed shoots past the roll cap while still on the ground, then vertical
+ * rate reads ~0 just after lift-off — so neither `roll` nor `climb` matches for a
+ * poll or two and the row would blink out. Here we keep the row alive:
+ *   - once airborne but still below 1000 ft AGL, coast it as "climb" no matter what
+ *     detection says, and only drop it once it climbs above that (departure done);
+ *   - on the ground (or briefly off the feed) between phases, coast the last-known
+ *     state for `lingerMs`.
+ * Run before `trackHolding`, this also keeps the wait timer from resetting across
+ * brief dropouts. `memory` persists across polls.
  */
-export function lingerDepartures(
+export function trackDepartures(
   fresh: DepartureEvent[],
+  aircraft: Aircraft[],
   memory: Map<string, DepartureMemory>,
+  fieldElevationFt: number,
   nowMs: number,
   lingerMs = 45000,
 ): DepartureEvent[] {
+  const acByHex = new Map(aircraft.map((a) => [a.hex, a]));
   const freshHexes = new Set(fresh.map((d) => d.hex));
   for (const d of fresh) memory.set(d.hex, { ev: d, lastSeen: nowMs });
 
   const out = [...fresh];
   for (const [hex, m] of [...memory]) {
-    if (nowMs - m.lastSeen > lingerMs) memory.delete(hex);
-    else if (!freshHexes.has(hex)) out.push(m.ev); // coasting on last-known state
+    if (freshHexes.has(hex)) continue; // already emitted as a fresh detection
+    const ac = acByHex.get(hex);
+
+    if (ac && !ac.onGround && ac.altFt != null) {
+      if (ac.altFt - fieldElevationFt > DEPARTURE_DONE_AGL_FT) {
+        memory.delete(hex); // climbed away — the departure is complete
+        continue;
+      }
+      // Airborne but still low: keep the row through the climb-out even if detection
+      // lapses between roll and an established climb.
+      const ev: DepartureEvent = { ...m.ev, phase: "climb", gsKt: ac.gs };
+      memory.set(hex, { ev, lastSeen: nowMs });
+      out.push(ev);
+    } else if (nowMs - m.lastSeen <= lingerMs) {
+      out.push(m.ev); // on-ground gap or briefly off the feed — coast last state
+    } else {
+      memory.delete(hex);
+    }
   }
   return out;
 }

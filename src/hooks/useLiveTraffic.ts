@@ -6,7 +6,7 @@ import { assignRunway, type RunwayAssignment } from "../domain/assignRunway";
 import {
   detectDepartures,
   gsSnapshot,
-  lingerDepartures,
+  trackDepartures,
   trackHolding,
   type DepartureEvent,
   type DepartureMemory,
@@ -83,16 +83,18 @@ export function useLiveTraffic(settings: Settings, airport: Airport): LiveTraffi
       const { counts: fresh } = await recordSnapshot(assignments, snap.fetchedAt);
 
       const arrivals = predictArrivals(withAssignment);
-      // Coast departures across brief ground-coverage gaps so rows don't flicker,
-      // then stamp/track holding on the smoothed set (keeps wait timers stable).
-      const lingered = lingerDepartures(
+      // Track each departure as one continuous row (wait → roll → climb, until it
+      // climbs past 1000 ft AGL), then stamp/track holding on that smoothed set.
+      const tracked = trackDepartures(
         detectDepartures(airport, snap.aircraft, prevGs.current),
+        snap.aircraft,
         depMemory.current,
+        airport.config.fieldElevationFt,
         snap.fetchedAt,
       );
       const departures = trackHolding(
-        lingered,
-        new Set(lingered.map((d) => d.hex)),
+        tracked,
+        new Set(tracked.map((d) => d.hex)),
         holdingSince.current,
         snap.fetchedAt,
       );

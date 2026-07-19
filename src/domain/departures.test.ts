@@ -6,7 +6,7 @@ import { buildAirport } from "./airport";
 import {
   detectDepartures,
   gsSnapshot,
-  lingerDepartures,
+  trackDepartures,
   trackHolding,
   type DepartureEvent,
   type DepartureMemory,
@@ -122,7 +122,7 @@ describe("trackHolding", () => {
   });
 });
 
-describe("lingerDepartures", () => {
+describe("trackDepartures", () => {
   const dep = (hex: string, phase: DepartureEvent["phase"]): DepartureEvent => ({
     end: "28",
     strip: "10/28",
@@ -131,25 +131,41 @@ describe("lingerDepartures", () => {
     phase,
     gsKt: 0,
   });
+  const ac = (over: Partial<Aircraft>): Aircraft =>
+    base({ hex: "a", onGround: true, ...over });
 
-  it("coasts a departure across a brief gap, then drops it after the window", () => {
+  it("keeps the row through the roll→climb gap and until it passes 1000 ft AGL", () => {
     const mem = new Map<string, DepartureMemory>();
-    expect(lingerDepartures([dep("a", "holding")], mem, 1000, 45000).map((d) => d.hex)).toEqual([
-      "a",
-    ]);
-    // A poll later the aircraft is missing from the feed — still shown.
-    expect(lingerDepartures([], mem, 16000, 45000).map((d) => d.hex)).toEqual(["a"]);
-    // Past the linger window — gone.
-    expect(lingerDepartures([], mem, 60000, 45000)).toHaveLength(0);
+    // Rolling on the ground — detected.
+    expect(
+      trackDepartures([dep("a", "roll")], [ac({ onGround: true })], mem, 0, 1000).map((d) => d.hex),
+    ).toEqual(["a"]);
+
+    // Rotation gap: airborne, low, no phase detected — coasted as climb, not dropped.
+    const gap = trackDepartures([], [ac({ onGround: false, altFt: 400 })], mem, 0, 2000);
+    expect(gap.map((d) => d.hex)).toEqual(["a"]);
+    expect(gap[0].phase).toBe("climb");
+
+    // Climbs past 1000 ft AGL — the departure is complete, row drops.
+    expect(trackDepartures([], [ac({ onGround: false, altFt: 1200 })], mem, 0, 3000)).toHaveLength(0);
     expect(mem.has("a")).toBe(false);
   });
 
-  it("refreshes on reappearance and coasts the last-known phase", () => {
+  it("coasts an on-ground gap only for the linger window", () => {
     const mem = new Map<string, DepartureMemory>();
-    lingerDepartures([dep("a", "holding")], mem, 0, 45000);
-    lingerDepartures([dep("a", "roll")], mem, 40000, 45000); // seen again, now rolling
-    const out = lingerDepartures([], mem, 80000, 45000); // 40 s after last seen → still within
-    expect(out.map((d) => d.hex)).toEqual(["a"]);
-    expect(out[0].phase).toBe("roll");
+    trackDepartures([dep("a", "roll")], [ac({ onGround: true })], mem, 0, 1000, 45000);
+    // Still on the ground and missing from detection → coasted while within window.
+    expect(
+      trackDepartures([], [ac({ onGround: true })], mem, 0, 16000, 45000).map((d) => d.hex),
+    ).toEqual(["a"]);
+    // Beyond the window (e.g. a rejected takeoff that just sits there) → dropped.
+    expect(trackDepartures([], [ac({ onGround: true })], mem, 0, 60000, 45000)).toHaveLength(0);
+  });
+
+  it("coasts briefly when the aircraft falls off the feed entirely", () => {
+    const mem = new Map<string, DepartureMemory>();
+    trackDepartures([dep("a", "holding")], [ac({ onGround: true })], mem, 0, 1000);
+    expect(trackDepartures([], [], mem, 0, 20000).map((d) => d.hex)).toEqual(["a"]);
+    expect(trackDepartures([], [], mem, 0, 60000)).toHaveLength(0);
   });
 });
