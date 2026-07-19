@@ -60,18 +60,28 @@ export function useNoiseRecorder(): NoiseRecorder {
   const sum = useRef(0);
   const count = useRef(0);
   const startTs = useRef(0);
+  const display = useRef(-100); // smoothed level shown in the meter
+  const lastLevelUpdate = useRef(0);
 
-  const tick = useCallback(() => {
+  const RELEASE_DB = 0.7; // per-frame decay: fast attack, slow release
+  const UPDATE_MS = 66; // throttle React updates to ~15 fps
+
+  const tick = useCallback((t: number) => {
     const an = analyser.current;
     const b = buf.current;
     if (an && b) {
       an.getFloatTimeDomainData(b);
       const dbfs = rmsToDbfs(b);
-      setLevel(dbfs);
       if (recording.current) {
         if (dbfs > peak.current) peak.current = dbfs;
         sum.current += dbfs;
         count.current += 1;
+      }
+      // Smooth: jump up instantly, ease back down.
+      display.current = Math.max(dbfs, display.current - RELEASE_DB);
+      if (t - lastLevelUpdate.current >= UPDATE_MS) {
+        lastLevelUpdate.current = t;
+        setLevel(display.current);
       }
     }
     raf.current = requestAnimationFrame(tick);
@@ -122,6 +132,7 @@ export function useNoiseRecorder(): NoiseRecorder {
     void ctx.current?.close();
     ctx.current = null;
     analyser.current = null;
+    display.current = -100;
     setIsArmed(false);
     setIsRecording(false);
     setLevel(-100);

@@ -64,7 +64,7 @@ export function NoiseRecorder({
           {/* Live level meter. */}
           <div className="h-2 w-full overflow-hidden rounded bg-slate-800">
             <div
-              className="h-full rounded bg-gradient-to-r from-emerald-500 via-amber-400 to-red-500 transition-[width] duration-100"
+              className="h-full rounded bg-gradient-to-r from-emerald-500 via-amber-400 to-red-500 transition-[width] duration-75 ease-out"
               style={{ width: `${meterPct(level).toFixed(0)}%` }}
             />
           </div>
