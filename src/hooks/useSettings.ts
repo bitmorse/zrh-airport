@@ -1,4 +1,8 @@
 import { useCallback, useSyncExternalStore } from "react";
+import { DEFAULT_ZOOM } from "../lib/viewport";
+
+// Bump when the map projection/zoom semantics change so persisted zoom resets.
+const MAP_VERSION = 2;
 
 /**
  * User settings persisted in localStorage. The default data source needs no
@@ -19,6 +23,8 @@ export interface Settings {
   /** Normalized view centre in [0,1] (0.5,0.5 = airport reference point). */
   cx: number;
   cy: number;
+  /** Projection/zoom scheme version (for migrating persisted zoom). */
+  mapVersion: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -26,9 +32,10 @@ export const DEFAULT_SETTINGS: Settings = {
   radiusNm: 25,
   provider: null,
   apiToken: null,
-  zoom: 1,
+  zoom: DEFAULT_ZOOM,
   cx: 0.5,
   cy: 0.5,
+  mapVersion: MAP_VERSION,
 };
 
 const KEY = "zrh:settings";
@@ -41,6 +48,14 @@ function read(): Settings {
     const merged = { ...DEFAULT_SETTINGS, ...parsed };
     // Migrate the old 45 s default (too slow) to the faster default.
     if (parsed.pollSeconds === 45) merged.pollSeconds = DEFAULT_SETTINGS.pollSeconds;
+    // The world extent changed, so old zoom values no longer mean the same view —
+    // reset to the framed default once.
+    if (parsed.mapVersion !== MAP_VERSION) {
+      merged.zoom = DEFAULT_SETTINGS.zoom;
+      merged.cx = 0.5;
+      merged.cy = 0.5;
+      merged.mapVersion = MAP_VERSION;
+    }
     return merged;
   } catch {
     return DEFAULT_SETTINGS;

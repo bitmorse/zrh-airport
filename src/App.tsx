@@ -115,10 +115,11 @@ export default function App() {
       </header>
 
       <main className="flex flex-1 flex-col gap-4 p-4 lg:flex-row">
-        <section className="relative aspect-[980/882] w-full overflow-hidden rounded-xl border border-slate-800 bg-slate-900/40 lg:aspect-auto lg:min-h-[60vh] lg:flex-1">
+        <section className="relative aspect-[28/25] w-full overflow-hidden rounded-xl border border-slate-800 bg-slate-900/40 lg:aspect-auto lg:min-h-[60vh] lg:flex-1">
           <AirportSvg
             aircraft={traffic.aircraft}
             counts={traffic.counts}
+            lastUpdated={traffic.lastUpdated}
             selectedHex={selectedHex}
             onSelect={handleSelect}
           />

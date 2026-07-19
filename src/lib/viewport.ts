@@ -6,8 +6,10 @@ import { SVG_W, SVG_H } from "./projection";
  * [0,1]. Everything is derived into an SVG `viewBox`, so the render stays crisp.
  */
 
-export const MIN_ZOOM = 1;
-export const MAX_ZOOM = 8;
+export const MIN_ZOOM = 1; // full world (~56 km across) — long finals visible
+export const MAX_ZOOM = 32; // close runway detail
+/** Default zoom: frames the runways (~14 km view) like the original map. */
+export const DEFAULT_ZOOM = 4;
 
 export interface ViewState {
   zoom: number;

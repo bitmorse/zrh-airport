@@ -3,7 +3,7 @@ import { RUNWAY_END_BY_ID, type RunwayEnd } from "../domain/runways";
 import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
 import { useViewport } from "../hooks/useViewport";
 import { SVG_W, SVG_H } from "../lib/projection";
-import { Plane } from "./Plane";
+import { PlaneLayer } from "./PlaneLayer";
 import { PoiLayer } from "./PoiLayer";
 import { RunwayHeat } from "./RunwayHeat";
 
@@ -16,11 +16,13 @@ const STRIP_PAIRS: [RunwayEnd, RunwayEnd][] = [
 function AirportSvgImpl({
   aircraft,
   counts,
+  lastUpdated,
   selectedHex,
   onSelect,
 }: {
   aircraft: AircraftWithAssignment[];
   counts: Record<string, number>;
+  lastUpdated: number | null;
   selectedHex?: string | null;
   onSelect?: (hex: string) => void;
 }) {
@@ -77,14 +79,12 @@ function AirportSvgImpl({
 
       <PoiLayer />
 
-      {aircraft.map((item) => (
-        <Plane
-          key={item.ac.hex}
-          item={item}
-          selected={item.ac.hex === selectedHex}
-          onSelect={onSelect}
-        />
-      ))}
+      <PlaneLayer
+        aircraft={aircraft}
+        lastUpdated={lastUpdated}
+        selectedHex={selectedHex}
+        onSelect={onSelect}
+      />
       </svg>
 
       <div className="absolute left-2 top-2 flex flex-col gap-1">

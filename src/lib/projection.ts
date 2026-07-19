@@ -8,16 +8,18 @@ import { toLocalMeters } from "./geo";
  * with north pointing up. Equal x/y scale keeps runway angles true.
  */
 
-// Half-extent of the visible world, in metres east / north of the ARP. Sized to
-// frame the runways prominently while still showing short finals; aircraft on
-// long final beyond the frame are simply not drawn.
-const HALF_EAST_M = 7000;
-const HALF_NORTH_M = 6300;
+// Half-extent of the *world*, in metres east / north of the ARP. Large enough to
+// cover ~15 NM finals in any direction; the default zoom (see useSettings) frames
+// the runways, and zooming out reveals inbound traffic on long final. Keeping the
+// same SCALE means every SVG-unit size (runways, glyphs, labels) is unchanged —
+// only the world (and thus the zoom-out range) grows.
+const HALF_EAST_M = 28000;
+const HALF_NORTH_M = 25000;
 
 const SCALE = 0.07; // px per metre
 
-export const SVG_W = Math.round(2 * HALF_EAST_M * SCALE); // 1000
-export const SVG_H = Math.round(2 * HALF_NORTH_M * SCALE); // 900
+export const SVG_W = Math.round(2 * HALF_EAST_M * SCALE); // 3920
+export const SVG_H = Math.round(2 * HALF_NORTH_M * SCALE); // 3500
 
 export interface Point {
   x: number;

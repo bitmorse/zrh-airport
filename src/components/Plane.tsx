@@ -1,3 +1,4 @@
+import type { LatLon } from "../domain/runways";
 import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
 import { projectToSvg, inViewport } from "../lib/projection";
 
@@ -14,15 +15,18 @@ const PHASE_COLOR: Record<string, string> = {
  */
 export function Plane({
   item,
+  pos,
   selected,
   onSelect,
 }: {
   item: AircraftWithAssignment;
+  /** Optional dead-reckoned position; falls back to the aircraft's last fix. */
+  pos?: LatLon;
   selected?: boolean;
   onSelect?: (hex: string) => void;
 }) {
   const { ac, assignment } = item;
-  const pt = projectToSvg({ lat: ac.lat, lon: ac.lon });
+  const pt = projectToSvg(pos ?? { lat: ac.lat, lon: ac.lon });
   if (!inViewport(pt, 20)) return null;
 
   const heading = ac.track ?? 0;
