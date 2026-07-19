@@ -8,6 +8,7 @@ import { NoiseRecorder } from "./components/NoiseRecorder";
 import { NoiseTable } from "./components/NoiseTable";
 import { PoiManager } from "./components/PoiManager";
 import { SettingsModal } from "./components/SettingsModal";
+import { snapshotAircraft, type AircraftSnapshot } from "./data/adsb";
 import { addNoiseEvent, type NoiseEvent } from "./data/noiseStore";
 import {
   useLandingNoiseTrigger,
@@ -47,18 +48,28 @@ export default function App() {
   const saveNoise = useCallback(
     (meta: NoiseMeta | null, rec: Recording, loc: GeoFix | null) => {
       if (!rec.blob) return;
-      const ac = meta?.hex
+      // Prefer the snapshot taken when recording began (aircraft at the runway);
+      // fall back to a fresh lookup for manual recordings.
+      const fallback = meta?.hex
         ? aircraftRef.current.find((a) => a.ac.hex === meta.hex)?.ac
         : undefined;
+      const snap: AircraftSnapshot | null =
+        meta?.snapshot ?? (fallback ? snapshotAircraft(fallback) : null);
       const ev: NoiseEvent = {
         id: crypto.randomUUID(),
         hex: meta?.hex ?? null,
         callsign: meta?.callsign ?? null,
         runwayEnd: meta?.end ?? null,
         kind: meta?.kind ?? null,
-        aircraftType: ac?.type ?? null,
-        aircraftTypeDesc: ac?.typeDesc ?? null,
-        registration: ac?.registration ?? null,
+        aircraftType: snap?.type ?? null,
+        aircraftTypeDesc: snap?.typeDesc ?? null,
+        registration: snap?.registration ?? null,
+        gsKt: snap?.gsKt ?? null,
+        altFt: snap?.altFt ?? null,
+        track: snap?.track ?? null,
+        verticalRateFpm: snap?.verticalRateFpm ?? null,
+        acLat: snap?.acLat ?? null,
+        acLon: snap?.acLon ?? null,
         heldSeconds: meta?.heldMs != null ? Math.round(meta.heldMs / 1000) : null,
         lat: loc?.lat ?? null,
         lon: loc?.lon ?? null,
@@ -75,6 +86,7 @@ export default function App() {
 
   const { activeCallsign } = useLandingNoiseTrigger({
     armed: recorder.isArmed,
+    aircraft: traffic.aircraft,
     arrivals,
     departures: traffic.departures,
     now,

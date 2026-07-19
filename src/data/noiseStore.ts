@@ -14,8 +14,16 @@ export interface NoiseEvent {
   aircraftType: string | null;
   aircraftTypeDesc: string | null;
   registration: string | null;
+  /** Aircraft state captured at the runway event (start of recording). */
+  gsKt: number | null;
+  altFt: number | null;
+  track: number | null;
+  verticalRateFpm: number | null;
+  acLat: number | null;
+  acLon: number | null;
   /** For departures: seconds held at the threshold before the takeoff roll. */
   heldSeconds: number | null;
+  /** The observer's (phone) location, from GPS. */
   lat: number | null;
   lon: number | null;
   /** Peak / average loudness in dBFS (≤ 0; higher = louder). Uncalibrated. */

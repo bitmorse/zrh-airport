@@ -34,6 +34,33 @@ export interface TrafficSnapshot {
   fetchedAt: number;
 }
 
+/** Point-in-time aircraft state captured with a noise measurement. */
+export interface AircraftSnapshot {
+  type: string | null;
+  typeDesc: string | null;
+  registration: string | null;
+  gsKt: number | null;
+  altFt: number | null;
+  track: number | null;
+  verticalRateFpm: number | null;
+  acLat: number | null;
+  acLon: number | null;
+}
+
+export function snapshotAircraft(ac: Aircraft): AircraftSnapshot {
+  return {
+    type: ac.type,
+    typeDesc: ac.typeDesc,
+    registration: ac.registration,
+    gsKt: ac.gs,
+    altFt: ac.altFt,
+    track: ac.track,
+    verticalRateFpm: ac.verticalRateFpm,
+    acLat: ac.lat,
+    acLon: ac.lon,
+  };
+}
+
 interface RawAircraft {
   hex?: string;
   flight?: string;

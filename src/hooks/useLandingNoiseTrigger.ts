@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import { snapshotAircraft, type AircraftSnapshot } from "../data/adsb";
 import type { DepartureEvent } from "../domain/departures";
 import type { Arrival } from "../domain/predictions";
+import type { AircraftWithAssignment } from "./useLiveTraffic";
 import type { NoiseRecorder, Recording } from "./useNoiseRecorder";
 
 const LEAD_S = 25; // start ~25 s before predicted touchdown
@@ -16,6 +18,8 @@ export interface NoiseMeta {
   kind: "arrival" | "departure";
   /** For departures: how long it waited at the threshold before the roll (ms). */
   heldMs?: number;
+  /** Aircraft state captured when recording started (at the runway event). */
+  snapshot?: AircraftSnapshot;
 }
 
 /**
@@ -27,6 +31,7 @@ export interface NoiseMeta {
  */
 export function useLandingNoiseTrigger(opts: {
   armed: boolean;
+  aircraft: AircraftWithAssignment[];
   arrivals: Arrival[];
   departures: DepartureEvent[];
   now: number;
@@ -50,6 +55,8 @@ export function useLandingNoiseTrigger(opts: {
   arrivalsRef.current = opts.arrivals;
   const departuresRef = useRef(opts.departures);
   departuresRef.current = opts.departures;
+  const aircraftRef = useRef(opts.aircraft);
+  aircraftRef.current = opts.aircraft;
 
   const finish = useRef(async () => {
     if (stopTimer.current) {
@@ -75,6 +82,8 @@ export function useLandingNoiseTrigger(opts: {
       return !(t && Date.now() - t < DEDUPE_MS);
     };
     const start = (m: NoiseMeta, durMs: number) => {
+      const ac = aircraftRef.current.find((a) => a.ac.hex === m.hex)?.ac;
+      if (ac) m.snapshot = snapshotAircraft(ac);
       recordingHex.current = m.hex;
       meta.current = m;
       recorderRef.current.startRecording();

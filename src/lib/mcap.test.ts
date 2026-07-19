@@ -27,6 +27,12 @@ function event(overrides: Partial<NoiseEvent>): NoiseEvent {
     aircraftType: "A320",
     aircraftTypeDesc: "AIRBUS A-320",
     registration: "HB-JCA",
+    gsKt: 145,
+    altFt: 1200,
+    track: 283,
+    verticalRateFpm: -640,
+    acLat: 47.44,
+    acLon: 8.56,
     heldSeconds: null,
     lat: 47.45,
     lon: 8.57,
@@ -92,6 +98,9 @@ describe("buildNoiseMcap audio blocking", () => {
       .json as Record<string, unknown>;
     expect(meas.aircraft_type).toBe("A320");
     expect(meas.registration).toBe("HB-JCA");
+    expect(meas.gs_kt).toBe(145);
+    expect(meas.alt_ft).toBe(1200);
+    expect(meas.vrate_fpm).toBe(-640);
 
     const audio = messages.filter((m) => m.topic === "/audio");
     // 30000 samples / (48000 * 0.2) = 3.125 → 4 blocks, not one giant message.

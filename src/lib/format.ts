@@ -27,6 +27,18 @@ export function formatAltitude(ft: number, units: Units): string {
     : `${Math.round(ft * FT_TO_M).toLocaleString()} m`;
 }
 
+const FPM_TO_MS = 0.00508;
+
+/** Vertical rate (feet/min) → "↑ 8.4 m/s" (metric) or "↑ 1,650 fpm". */
+export function formatVerticalRate(fpm: number, units: Units): string {
+  const arrow = fpm > 50 ? "↑" : fpm < -50 ? "↓" : "→";
+  const mag =
+    units === "imperial"
+      ? `${Math.abs(Math.round(fpm)).toLocaleString()} fpm`
+      : `${Math.abs(fpm * FPM_TO_MS).toFixed(1)} m/s`;
+  return `${arrow} ${mag}`;
+}
+
 /** Seconds → plain "m:ss" (for elapsed/wait timers). */
 export function formatDuration(seconds: number): string {
   const total = Math.max(0, Math.round(seconds));

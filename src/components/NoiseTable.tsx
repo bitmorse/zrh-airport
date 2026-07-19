@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { relLoudness, type NoiseEvent } from "../data/noiseStore";
 import { useNoiseEvents } from "../hooks/useNoiseEvents";
+import { useSettings } from "../hooks/useSettings";
+import {
+  formatAltitude,
+  formatSpeed,
+  formatVerticalRate,
+  type Units,
+} from "../lib/format";
 import { buildNoiseMcap } from "../lib/mcap";
 import { blobToWav } from "../lib/wav";
 
@@ -37,8 +44,14 @@ function exportCsv(events: NoiseEvent[]) {
     "type_desc",
     "registration",
     "runway",
-    "lat",
-    "lon",
+    "gs_kt",
+    "alt_ft",
+    "track_deg",
+    "vrate_fpm",
+    "ac_lat",
+    "ac_lon",
+    "obs_lat",
+    "obs_lon",
     "held_s",
     "peak_rel",
     "peak_dbfs",
@@ -54,6 +67,12 @@ function exportCsv(events: NoiseEvent[]) {
     e.aircraftTypeDesc ?? "",
     e.registration ?? "",
     e.runwayEnd ?? "",
+    e.gsKt ?? "",
+    e.altFt ?? "",
+    e.track ?? "",
+    e.verticalRateFpm ?? "",
+    e.acLat ?? "",
+    e.acLon ?? "",
     e.lat ?? "",
     e.lon ?? "",
     e.heldSeconds ?? "",
@@ -79,8 +98,19 @@ function audioExt(type: string): string {
  * Offline table of recorded landing-noise measurements: aircraft, where it was
  * measured, peak loudness, and playback of the captured audio.
  */
+function kinematicsLine(e: NoiseEvent, units: Units): string | null {
+  const parts: string[] = [];
+  if (e.gsKt != null) parts.push(formatSpeed(e.gsKt, units));
+  if (e.altFt != null) parts.push(formatAltitude(e.altFt, units));
+  if (e.verticalRateFpm != null && Math.abs(e.verticalRateFpm) > 50) {
+    parts.push(formatVerticalRate(e.verticalRateFpm, units));
+  }
+  return parts.length ? parts.join(" · ") : null;
+}
+
 export function NoiseTable() {
   const { events, remove, getAudio } = useNoiseEvents();
+  const [{ units }] = useSettings();
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -201,6 +231,11 @@ export function NoiseTable() {
                   {(e.aircraftType || e.registration) && (
                     <div className="text-[10px] text-slate-500">
                       {[e.aircraftType, e.registration].filter(Boolean).join(" · ")}
+                    </div>
+                  )}
+                  {kinematicsLine(e, units) && (
+                    <div className="text-[10px] text-slate-500">
+                      {kinematicsLine(e, units)}
                     </div>
                   )}
                 </td>
