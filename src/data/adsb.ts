@@ -55,6 +55,22 @@ const PROVIDERS: { name: string; url: (distNm: number) => string }[] = [
   },
 ];
 
+/** Per-provider request timeout; a slow provider must not block failover. */
+const PROVIDER_TIMEOUT_MS = 8000;
+
+/**
+ * Combine the caller's abort signal (unmount/refetch) with a timeout so a stalled
+ * provider aborts and the loop advances. Falls back gracefully on older engines
+ * that lack `AbortSignal.timeout` / `AbortSignal.any`.
+ */
+function withTimeout(signal: AbortSignal | undefined, ms: number): AbortSignal {
+  if (typeof AbortSignal.timeout !== "function") return signal ?? new AbortController().signal;
+  const timeout = AbortSignal.timeout(ms);
+  if (!signal) return timeout;
+  if (typeof AbortSignal.any === "function") return AbortSignal.any([signal, timeout]);
+  return signal; // very old engine: keep caller signal, skip timeout
+}
+
 function normalise(raw: RawAircraft): Aircraft | null {
   if (
     !raw.hex ||
@@ -88,16 +104,17 @@ export async function fetchAircraftNearZrh(
   signal?: AbortSignal,
 ): Promise<TrafficSnapshot> {
   const ordered = preferred
-    ? [...PROVIDERS].sort((a, b) =>
-        a.name === preferred ? -1 : b.name === preferred ? 1 : 0,
-      )
+    ? [
+        ...PROVIDERS.filter((p) => p.name === preferred),
+        ...PROVIDERS.filter((p) => p.name !== preferred),
+      ]
     : PROVIDERS;
 
   const errors: string[] = [];
   for (const provider of ordered) {
     try {
       const res = await fetch(provider.url(distNm), {
-        signal,
+        signal: withTimeout(signal, PROVIDER_TIMEOUT_MS),
         headers: { Accept: "application/json" },
       });
       if (!res.ok) {

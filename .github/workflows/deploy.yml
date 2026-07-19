@@ -2,7 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [claude/zrh-runway-visualization-efbivf]
+    branches: [main, claude/zrh-runway-visualization-efbivf]
   workflow_dispatch:
 
 permissions:

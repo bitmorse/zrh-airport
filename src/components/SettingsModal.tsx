@@ -83,8 +83,8 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
           </Field>
 
           <Field
-            label="API token (optional)"
-            hint="stored only in your browser; not needed for the default source"
+            label="API token (reserved)"
+            hint="not used by the current sources; stored only in your browser for future providers"
           >
             <input
               type="password"

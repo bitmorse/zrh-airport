@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { RUNWAY_END_BY_ID, type RunwayEnd } from "../domain/runways";
 import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
 import { SVG_W, SVG_H } from "../lib/projection";
@@ -10,7 +11,7 @@ const STRIP_PAIRS: [RunwayEnd, RunwayEnd][] = [
   [RUNWAY_END_BY_ID["10"], RUNWAY_END_BY_ID["28"]],
 ];
 
-export function AirportSvg({
+function AirportSvgImpl({
   aircraft,
   counts,
 }: {
@@ -66,3 +67,7 @@ export function AirportSvg({
     </svg>
   );
 }
+
+// Memoised: the 1 s clock in App re-renders the status text every second, but the
+// map only needs to update when traffic data (a new poll) actually changes.
+export const AirportSvg = memo(AirportSvgImpl);

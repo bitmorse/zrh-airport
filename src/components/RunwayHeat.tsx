@@ -24,8 +24,10 @@ function RunwayEndZone({
   const zoneEnd = lerp(ta, tb, END_FRACTION);
   const color = heatColor(count);
 
-  // Label sits just outside the threshold, along the runway axis.
-  const outward = lerp(ta, tb, -0.09);
+  // Label sits outside the threshold, along the runway axis. Pushing it well
+  // clear of the strip also separates the 14 & 16 badges, whose thresholds are
+  // close together but whose axes diverge.
+  const outward = lerp(ta, tb, -0.14);
 
   return (
     <g>
