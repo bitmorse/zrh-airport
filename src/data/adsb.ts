@@ -20,6 +20,12 @@ export interface Aircraft {
   verticalRateFpm: number | null;
   /** Seconds since this position was last updated. */
   seenPos: number | null;
+  /** ICAO type designator from the feed's aircraft DB, e.g. "A320" (may be null). */
+  type: string | null;
+  /** Human type description, e.g. "AIRBUS A-320" (may be null). */
+  typeDesc: string | null;
+  /** Registration / tail number, e.g. "HB-JCA" (may be null). */
+  registration: string | null;
 }
 
 export interface TrafficSnapshot {
@@ -39,6 +45,9 @@ interface RawAircraft {
   baro_rate?: number;
   geom_rate?: number;
   seen_pos?: number;
+  t?: string;
+  desc?: string;
+  r?: string;
 }
 
 /** No-key, CORS-enabled, ADSBExchange-compatible providers, tried in order. */
@@ -100,6 +109,9 @@ function normalise(raw: RawAircraft): Aircraft | null {
           ? raw.geom_rate
           : null,
     seenPos: typeof raw.seen_pos === "number" ? raw.seen_pos : null,
+    type: raw.t?.trim() || null,
+    typeDesc: raw.desc?.trim() || null,
+    registration: raw.r?.trim() || null,
   };
 }
 

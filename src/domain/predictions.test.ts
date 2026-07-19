@@ -28,6 +28,9 @@ function onApproach(endId: string, finalDistanceM: number, opts: Opts = {}) {
     track: end.bearingDeg,
     verticalRateFpm: vr,
     seenPos: 1,
+    type: null,
+    typeDesc: null,
+    registration: null,
   };
   return { ac, assignment: assignRunway(ac) };
 }

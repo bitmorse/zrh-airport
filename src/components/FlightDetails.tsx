@@ -55,6 +55,19 @@ export function FlightDetails({
             {Math.round(altAboveFieldFt(ac)).toLocaleString()} ft ·{" "}
             {ac.gs != null ? `${Math.round(ac.gs)} kt` : "— kt"}
           </p>
+          {(ac.type || ac.typeDesc || ac.registration) && (
+            <p className="mt-0.5 text-[11px] text-slate-400">
+              <span className="text-slate-300">
+                {ac.typeDesc ?? ac.type ?? "Unknown type"}
+              </span>
+              {ac.type && ac.typeDesc ? (
+                <span className="text-slate-500"> · {ac.type}</span>
+              ) : null}
+              {ac.registration ? (
+                <span className="font-mono text-slate-500"> · {ac.registration}</span>
+              ) : null}
+            </p>
+          )}
         </div>
         <button
           onClick={onClear}

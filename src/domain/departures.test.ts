@@ -21,6 +21,9 @@ function base(overrides: Partial<Aircraft>): Aircraft {
     track: null,
     verticalRateFpm: null,
     seenPos: 0,
+    type: null,
+    typeDesc: null,
+    registration: null,
     ...overrides,
   };
 }

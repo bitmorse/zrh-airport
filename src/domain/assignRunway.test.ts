@@ -20,6 +20,9 @@ function aircraftOnApproach(endId: string, finalDistanceM: number): Aircraft {
     track: end.bearingDeg,
     verticalRateFpm: -700,
     seenPos: 1,
+    type: null,
+    typeDesc: null,
+    registration: null,
   };
 }
 
@@ -65,6 +68,9 @@ describe("assignRunway", () => {
       track: 90,
       verticalRateFpm: null,
       seenPos: 1,
+      type: null,
+      typeDesc: null,
+      registration: null,
     };
     expect(assignRunway(far)).toBeNull();
   });
