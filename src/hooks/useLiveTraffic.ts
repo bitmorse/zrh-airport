@@ -6,8 +6,10 @@ import { assignRunway, type RunwayAssignment } from "../domain/assignRunway";
 import {
   detectDepartures,
   gsSnapshot,
+  lingerDepartures,
   trackHolding,
   type DepartureEvent,
+  type DepartureMemory,
 } from "../domain/departures";
 import {
   countsByEnd,
@@ -49,6 +51,7 @@ export function useLiveTraffic(settings: Settings, airport: Airport): LiveTraffi
   const [counts, setCounts] = useState<Record<string, number>>({});
   const prevGs = useRef(new Map<string, number>());
   const holdingSince = useRef(new Map<string, number>());
+  const depMemory = useRef(new Map<string, DepartureMemory>());
 
   // Seed counts from any persisted window on mount so the map isn't blank after
   // a reload within the 15-minute window.
@@ -80,9 +83,16 @@ export function useLiveTraffic(settings: Settings, airport: Airport): LiveTraffi
       const { counts: fresh } = await recordSnapshot(assignments, snap.fetchedAt);
 
       const arrivals = predictArrivals(withAssignment);
-      const departures = trackHolding(
+      // Coast departures across brief ground-coverage gaps so rows don't flicker,
+      // then stamp/track holding on the smoothed set (keeps wait timers stable).
+      const lingered = lingerDepartures(
         detectDepartures(airport, snap.aircraft, prevGs.current),
-        new Set(snap.aircraft.map((a) => a.hex)),
+        depMemory.current,
+        snap.fetchedAt,
+      );
+      const departures = trackHolding(
+        lingered,
+        new Set(lingered.map((d) => d.hex)),
         holdingSince.current,
         snap.fetchedAt,
       );

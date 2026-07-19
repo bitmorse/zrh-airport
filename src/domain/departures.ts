@@ -79,6 +79,37 @@ export function trackHolding(
   return departures;
 }
 
+export interface DepartureMemory {
+  ev: DepartureEvent;
+  lastSeen: number;
+}
+
+/**
+ * Keep a departure visible across brief ADS-B ground-coverage gaps. Community
+ * receivers cover the surface poorly, so a holding/rolling aircraft can drop out
+ * for a poll or two and blink in and out. We remember each departure and keep
+ * "coasting" its last-known row for `lingerMs` after it was last detected, so the
+ * departures list stays stable instead of flickering (and, run before
+ * `trackHolding`, this also stops the wait timer resetting when an aircraft briefly
+ * disappears). `memory` persists across polls.
+ */
+export function lingerDepartures(
+  fresh: DepartureEvent[],
+  memory: Map<string, DepartureMemory>,
+  nowMs: number,
+  lingerMs = 45000,
+): DepartureEvent[] {
+  const freshHexes = new Set(fresh.map((d) => d.hex));
+  for (const d of fresh) memory.set(d.hex, { ev: d, lastSeen: nowMs });
+
+  const out = [...fresh];
+  for (const [hex, m] of [...memory]) {
+    if (nowMs - m.lastSeen > lingerMs) memory.delete(hex);
+    else if (!freshHexes.has(hex)) out.push(m.ev); // coasting on last-known state
+  }
+  return out;
+}
+
 /** Snapshot of each aircraft's groundspeed, to compare against next poll. */
 export function gsSnapshot(aircraft: Aircraft[]): Map<string, number> {
   const m = new Map<string, number>();

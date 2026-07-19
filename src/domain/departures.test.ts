@@ -6,8 +6,10 @@ import { buildAirport } from "./airport";
 import {
   detectDepartures,
   gsSnapshot,
+  lingerDepartures,
   trackHolding,
   type DepartureEvent,
+  type DepartureMemory,
 } from "./departures";
 
 const AP = buildAirport(ZRH);
@@ -117,5 +119,37 @@ describe("trackHolding", () => {
     trackHolding([dep("holding")], new Set(["d1"]), holdingSince, 1000);
     const again = trackHolding([dep("holding")], new Set(["d1"]), holdingSince, 5000);
     expect(again[0].holdingSinceMs).toBe(1000); // unchanged start
+  });
+});
+
+describe("lingerDepartures", () => {
+  const dep = (hex: string, phase: DepartureEvent["phase"]): DepartureEvent => ({
+    end: "28",
+    strip: "10/28",
+    hex,
+    callsign: "SWR40L",
+    phase,
+    gsKt: 0,
+  });
+
+  it("coasts a departure across a brief gap, then drops it after the window", () => {
+    const mem = new Map<string, DepartureMemory>();
+    expect(lingerDepartures([dep("a", "holding")], mem, 1000, 45000).map((d) => d.hex)).toEqual([
+      "a",
+    ]);
+    // A poll later the aircraft is missing from the feed — still shown.
+    expect(lingerDepartures([], mem, 16000, 45000).map((d) => d.hex)).toEqual(["a"]);
+    // Past the linger window — gone.
+    expect(lingerDepartures([], mem, 60000, 45000)).toHaveLength(0);
+    expect(mem.has("a")).toBe(false);
+  });
+
+  it("refreshes on reappearance and coasts the last-known phase", () => {
+    const mem = new Map<string, DepartureMemory>();
+    lingerDepartures([dep("a", "holding")], mem, 0, 45000);
+    lingerDepartures([dep("a", "roll")], mem, 40000, 45000); // seen again, now rolling
+    const out = lingerDepartures([], mem, 80000, 45000); // 40 s after last seen → still within
+    expect(out.map((d) => d.hex)).toEqual(["a"]);
+    expect(out[0].phase).toBe("roll");
   });
 });
