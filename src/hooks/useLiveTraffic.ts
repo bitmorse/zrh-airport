@@ -15,6 +15,10 @@ export interface AircraftWithAssignment {
   assignment: RunwayAssignment | null;
 }
 
+// Stable identity for the pre-data case so the memoized map doesn't re-render
+// every second (App's 1 s clock) before the first poll arrives.
+const EMPTY_AIRCRAFT: AircraftWithAssignment[] = [];
+
 export interface LiveTraffic {
   aircraft: AircraftWithAssignment[];
   counts: Record<string, number>;
@@ -68,7 +72,7 @@ export function useLiveTraffic(settings: Settings): LiveTraffic {
   }, [query.data]);
 
   return {
-    aircraft: query.data?.withAssignment ?? [],
+    aircraft: query.data?.withAssignment ?? EMPTY_AIRCRAFT,
     counts,
     provider: query.data?.snap.provider ?? null,
     lastUpdated: query.data?.snap.fetchedAt ?? null,

@@ -12,7 +12,8 @@ const HALF_WIDTH_M = 1500; // max perpendicular distance from centreline
 const APPROACH_M = 9000; // corridor length before the threshold (~5 NM final)
 const DEPARTURE_M = 6000; // corridor length past the far end (initial climb)
 const TRACK_TOL_DEG = 40; // how closely track must match the runway bearing
-const MAX_ALT_FT = 7000; // ignore aircraft cruising over the top
+const MAX_ALT_FT = 6000; // ignore aircraft crossing above the approach/climb band
+const MIN_ACTIVE_GS_KT = 40; // below this an aircraft is taxiing/holding, not using the runway
 const ZRH_FIELD_ELEV_FT = 1416;
 
 export type RunwayPhase = "approach" | "runway" | "departure";
@@ -46,6 +47,10 @@ const ENDS_LOCAL = RUNWAY_ENDS.map((e) => ({
 export function assignRunway(ac: Aircraft): RunwayAssignment | null {
   if (!ac.onGround && (ac.altFt === null || ac.altFt > MAX_ALT_FT)) return null;
   if (ac.track === null) return null;
+  // Exclude taxiing / holding aircraft (e.g. on a parallel taxiway within the
+  // corridor) so they don't inflate the runway-usage counts. Landing rollouts and
+  // takeoff rolls are well above this.
+  if (ac.gs !== null && ac.gs < MIN_ACTIVE_GS_KT) return null;
 
   const p: Vec2 = toLocalMeters(ZRH_ARP, { lat: ac.lat, lon: ac.lon });
 

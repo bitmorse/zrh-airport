@@ -7,9 +7,10 @@ import {
 import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
 
 function formatEta(seconds: number): string {
-  if (seconds <= 5) return "landing";
-  const m = Math.floor(seconds / 60);
-  const s = Math.round(seconds % 60);
+  const total = Math.max(0, Math.round(seconds));
+  if (total <= 5) return "landing";
+  const m = Math.floor(total / 60);
+  const s = total % 60;
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
@@ -22,12 +23,14 @@ export function ArrivalsBoard({
   aircraft,
   lastUpdated,
   now,
+  stale,
   selectedHex,
   onSelect,
 }: {
   aircraft: AircraftWithAssignment[];
   lastUpdated: number | null;
   now: number;
+  stale?: boolean;
   selectedHex?: string | null;
   onSelect?: (hex: string) => void;
 }) {
@@ -49,6 +52,7 @@ export function ArrivalsBoard({
             strip={strip.name}
             arrival={byStrip[strip.name]}
             ageSec={ageSec}
+            stale={stale}
             selectedHex={selectedHex}
             onSelect={onSelect}
           />
@@ -81,17 +85,19 @@ function StripRow({
   strip,
   arrival,
   ageSec,
+  stale,
   selectedHex,
   onSelect,
 }: {
   strip: string;
   arrival: Arrival | undefined;
   ageSec: number;
+  stale?: boolean;
   selectedHex?: string | null;
   onSelect?: (hex: string) => void;
 }) {
   const remaining = arrival ? Math.max(0, arrival.etaSeconds - ageSec) : null;
-  const soon = remaining != null && remaining <= 60;
+  const soon = remaining != null && remaining <= 60 && !stale;
   const isSelected = !!arrival && arrival.hex === selectedHex;
   const clickable = !!arrival && !!onSelect;
 
@@ -113,10 +119,11 @@ function StripRow({
       {remaining != null && (
         <span
           className={`shrink-0 font-mono text-sm font-semibold tabular-nums ${
-            soon ? "text-emerald-300" : "text-slate-300"
+            stale ? "text-slate-600" : soon ? "text-emerald-300" : "text-slate-300"
           }`}
+          title={stale ? "data is stale" : undefined}
         >
-          {formatEta(remaining)}
+          {stale ? "—" : formatEta(remaining)}
         </span>
       )}
     </>

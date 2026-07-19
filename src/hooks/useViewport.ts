@@ -27,10 +27,16 @@ interface Viewport {
   };
 }
 
+interface Pt {
+  x: number;
+  y: number;
+}
+
 /**
- * Zoom/pan controller for the map SVG. State is seeded from persisted settings
- * and written back (throttled) so the zoom level and pan survive reloads.
- * `svgRef` is needed to map screen coordinates into the viewport.
+ * Zoom/pan controller for the map SVG. Supports desktop wheel + buttons and touch
+ * drag-to-pan / two-finger pinch-to-zoom. State is seeded from persisted settings
+ * and written back (throttled) so zoom + pan survive reloads. `svgRef` maps screen
+ * coordinates into the viewport.
  */
 export function useViewport(svgRef: React.RefObject<SVGSVGElement | null>): Viewport {
   const [settings, update] = useSettings();
@@ -41,7 +47,9 @@ export function useViewport(svgRef: React.RefObject<SVGSVGElement | null>): View
   const viewRef = useRef(view);
   viewRef.current = view;
   const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const drag = useRef<{ x: number; y: number } | null>(null);
+  const pointers = useRef(new Map<number, Pt>());
+  const dragLast = useRef<Pt | null>(null);
+  const pinchDist = useRef<number | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
   const schedulePersist = useCallback(
@@ -62,6 +70,14 @@ export function useViewport(svgRef: React.RefObject<SVGSVGElement | null>): View
     [schedulePersist],
   );
 
+  // Clear any pending persist on unmount so it can't fire after teardown.
+  useEffect(
+    () => () => {
+      if (persistTimer.current) clearTimeout(persistTimer.current);
+    },
+    [],
+  );
+
   // Native, non-passive wheel listener so we can preventDefault (page scroll).
   useEffect(() => {
     const el = svgRef.current;
@@ -79,27 +95,72 @@ export function useViewport(svgRef: React.RefObject<SVGSVGElement | null>): View
   }, [svgRef, apply]);
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
-    drag.current = { x: e.clientX, y: e.clientY };
-    setIsDragging(true);
-    (e.currentTarget as SVGSVGElement).setPointerCapture?.(e.pointerId);
-  }, []);
+    const el = svgRef.current;
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    try {
+      el?.setPointerCapture?.(e.pointerId);
+    } catch {
+      /* pointer no longer active */
+    }
+    if (pointers.current.size === 1) {
+      dragLast.current = { x: e.clientX, y: e.clientY };
+      setIsDragging(true);
+    } else if (pointers.current.size === 2) {
+      // Entering a pinch — stop single-finger panning.
+      dragLast.current = null;
+      const [a, b] = [...pointers.current.values()];
+      pinchDist.current = Math.hypot(b.x - a.x, b.y - a.y);
+    }
+  }, [svgRef]);
 
   const onPointerMove = useCallback(
     (e: React.PointerEvent) => {
-      if (!drag.current || !svgRef.current) return;
-      const rect = svgRef.current.getBoundingClientRect();
-      const dxFrac = -(e.clientX - drag.current.x) / rect.width;
-      const dyFrac = -(e.clientY - drag.current.y) / rect.height;
-      drag.current = { x: e.clientX, y: e.clientY };
-      apply(panBy(viewRef.current, dxFrac, dyFrac));
+      const el = svgRef.current;
+      if (!el || !pointers.current.has(e.pointerId)) return;
+      pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      const rect = el.getBoundingClientRect();
+
+      if (pointers.current.size >= 2 && pinchDist.current) {
+        const [a, b] = [...pointers.current.values()];
+        const dist = Math.hypot(b.x - a.x, b.y - a.y);
+        const midX = (a.x + b.x) / 2;
+        const midY = (a.y + b.y) / 2;
+        const factor = dist / pinchDist.current;
+        pinchDist.current = dist; // incremental baseline
+        if (Number.isFinite(factor) && factor > 0) {
+          const fx = (midX - rect.left) / rect.width;
+          const fy = (midY - rect.top) / rect.height;
+          apply(zoomAtPoint(viewRef.current, factor, fx, fy));
+        }
+        return;
+      }
+
+      if (dragLast.current) {
+        const dxFrac = -(e.clientX - dragLast.current.x) / rect.width;
+        const dyFrac = -(e.clientY - dragLast.current.y) / rect.height;
+        dragLast.current = { x: e.clientX, y: e.clientY };
+        apply(panBy(viewRef.current, dxFrac, dyFrac));
+      }
     },
     [svgRef, apply],
   );
 
-  const endDrag = useCallback((e: React.PointerEvent) => {
-    drag.current = null;
-    setIsDragging(false);
-    (e.currentTarget as SVGSVGElement).releasePointerCapture?.(e.pointerId);
+  const endPointer = useCallback((e: React.PointerEvent) => {
+    pointers.current.delete(e.pointerId);
+    try {
+      (e.currentTarget as SVGSVGElement).releasePointerCapture?.(e.pointerId);
+    } catch {
+      /* pointer no longer active */
+    }
+    if (pointers.current.size < 2) pinchDist.current = null;
+    if (pointers.current.size === 0) {
+      dragLast.current = null;
+      setIsDragging(false);
+    } else {
+      // Resume single-finger panning from the remaining pointer.
+      const rem = [...pointers.current.values()][0];
+      dragLast.current = { x: rem.x, y: rem.y };
+    }
   }, []);
 
   const zoomIn = useCallback(
@@ -125,8 +186,8 @@ export function useViewport(svgRef: React.RefObject<SVGSVGElement | null>): View
     bind: {
       onPointerDown,
       onPointerMove,
-      onPointerUp: endDrag,
-      onPointerCancel: endDrag,
+      onPointerUp: endPointer,
+      onPointerCancel: endPointer,
     },
   };
 }

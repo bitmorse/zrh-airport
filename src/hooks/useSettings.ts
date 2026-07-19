@@ -57,6 +57,13 @@ function subscribe(cb: () => void) {
   return () => listeners.delete(cb);
 }
 
+// Reflect settings changed in another tab.
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === KEY) emit();
+  });
+}
+
 export function useSettings(): [Settings, (patch: Partial<Settings>) => void] {
   const settings = useSyncExternalStore(subscribe, () => cache);
 

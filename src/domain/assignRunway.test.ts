@@ -41,6 +41,12 @@ describe("assignRunway", () => {
     expect(result?.end).not.toBe("28");
   });
 
+  it("ignores slow taxiing aircraft near a runway", () => {
+    const taxi = aircraftOnApproach("28", 500);
+    taxi.gs = 15; // taxi speed
+    expect(assignRunway(taxi)).toBeNull();
+  });
+
   it("ignores high-altitude overflights", () => {
     const overflight = aircraftOnApproach("16", 3000);
     overflight.altFt = 20000;

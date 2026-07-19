@@ -88,6 +88,7 @@ export default function App() {
               aircraft={traffic.aircraft}
               lastUpdated={traffic.lastUpdated}
               now={now}
+              stale={ageSec != null && ageSec > Math.max(90, settings.pollSeconds * 2)}
               selectedHex={selectedHex}
               onSelect={handleSelect}
             />

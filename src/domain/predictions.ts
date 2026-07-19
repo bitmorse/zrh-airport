@@ -45,6 +45,9 @@ function isArriving(w: AircraftWithAssignment): boolean {
   if (ac.onGround) return false; // on final ⇒ airborne
   if (ac.gs === null || ac.gs < MIN_GS_KT) return false;
   if (assignment.alongTrackM >= 0) return false; // must be before the threshold
+  // Asymmetry vs. isDeparting is deliberate: on the approach side, being low and
+  // fast already implies a landing, so a missing vertical rate is treated as
+  // "not climbing" and kept; only a clear climb (go-around) rules it out.
   if (ac.verticalRateFpm !== null && ac.verticalRateFpm > ARRIVAL_MAX_CLIMB_FPM)
     return false;
   return true;
@@ -103,6 +106,9 @@ function isDeparting(w: AircraftWithAssignment): boolean {
   const { ac, assignment } = w;
   if (!assignment || ac.onGround) return false;
   if (assignment.phase === "approach") return false; // approach side ⇒ not departing
+  // Require a confirmed climb: without it we can't distinguish a departure from a
+  // just-landed aircraft rolling out past the far threshold, so a missing vertical
+  // rate excludes it (conservative — no false departures).
   return (
     ac.verticalRateFpm !== null && ac.verticalRateFpm >= DEPARTURE_MIN_CLIMB_FPM
   );

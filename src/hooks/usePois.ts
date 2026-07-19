@@ -26,10 +26,14 @@ function read(): Poi[] {
 const listeners = new Set<() => void>();
 let cache = read();
 
+function emit() {
+  for (const l of listeners) l();
+}
+
 function write(next: Poi[]) {
   localStorage.setItem(KEY, JSON.stringify(next));
   cache = next;
-  for (const l of listeners) l();
+  emit();
 }
 
 function subscribe(cb: () => void) {
@@ -37,11 +41,22 @@ function subscribe(cb: () => void) {
   return () => listeners.delete(cb);
 }
 
+// Reflect edits made in another tab.
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === KEY) {
+      cache = read();
+      emit();
+    }
+  });
+}
+
+let idCounter = 0;
 function newId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();
   }
-  return `poi-${cache.length}-${cache.reduce((n, p) => n + p.id.length, 0)}`;
+  return `poi-${Date.now()}-${idCounter++}`;
 }
 
 export function usePois() {
