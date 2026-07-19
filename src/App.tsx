@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { AirportSvg } from "./components/AirportSvg";
 import { ArrivalsBoard } from "./components/ArrivalsBoard";
+import { AtcPanel } from "./components/AtcPanel";
 import { FlightDetails } from "./components/FlightDetails";
 import { Legend } from "./components/Legend";
 import { TrafficBar } from "./components/TrafficBar";
@@ -259,6 +260,15 @@ export default function App() {
               now={now}
               stale={stale}
               selectedHex={selectedHex}
+              onSelect={handleSelect}
+            />
+          </div>
+
+          <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+            <AtcPanel
+              arrivals={arrivals}
+              departures={traffic.departures}
+              now={now}
               onSelect={handleSelect}
             />
           </div>
