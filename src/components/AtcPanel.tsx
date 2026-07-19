@@ -52,6 +52,7 @@ export function AtcPanel({
   const { config } = useAirport();
   const { feeds, setUrl } = useAtcFeeds(config.icao);
   const player = useAtcPlayer();
+  const findFeedsUrl = `https://www.liveatc.net/search/?icao=${config.icao}`;
 
   const activeEnds = activeRunwayEnds(arrivals, departures);
   const candidates = player.playingRole
@@ -60,11 +61,22 @@ export function AtcPanel({
 
   return (
     <div className="text-sm">
-      <div className="mb-2">
-        <h2 className="font-semibold text-slate-200">Listen · ATC</h2>
-        <p className="text-[11px] text-slate-500">
-          bring-your-own stream · plays in your browser
-        </p>
+      <div className="mb-2 flex items-start justify-between gap-2">
+        <div>
+          <h2 className="font-semibold text-slate-200">Listen · ATC</h2>
+          <p className="text-[11px] text-slate-500">
+            bring-your-own stream · plays in your browser
+          </p>
+        </div>
+        <a
+          href={findFeedsUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="shrink-0 rounded border border-slate-700 px-2 py-0.5 text-[11px] text-sky-300 hover:bg-slate-800"
+          title={`Open LiveATC's ${config.icao} page to copy a current stream URL`}
+        >
+          Find {config.iata} feeds ↗
+        </a>
       </div>
 
       <div className="flex flex-col gap-1.5">
@@ -147,8 +159,10 @@ export function AtcPanel({
       <p className="mt-3 text-[10px] leading-relaxed text-slate-600">
         A frequency covers a controller position, not one runway — the active runways
         and the “on frequency” list are inferred from ADS-B, and the audio lags the map,
-        so the match is a best guess. No feeds are bundled; paste your own source (e.g.
-        an Icecast MP3). LiveATC’s terms don’t permit embedding their streams here.
+        so the match is a best guess. No stream URLs are bundled: LiveATC’s terms don’t
+        permit embedding their feeds, and direct links rotate/block hotlinking. Use
+        “Find {config.iata} feeds ↗” to grab a current URL and paste it above (any
+        Icecast/MP3 source works).
       </p>
     </div>
   );

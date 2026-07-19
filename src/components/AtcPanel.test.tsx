@@ -54,6 +54,12 @@ describe("AtcPanel", () => {
     }
     const play = screen.getByRole("button", { name: /Play Tower/i });
     expect(play).toBeDisabled();
+
+    // A "find feeds" link deep-links to LiveATC's page for the current airport
+    // (we don't bundle their stream URLs).
+    const link = screen.getByRole("link", { name: /Find ZRH feeds/i });
+    expect(link).toHaveAttribute("href", "https://www.liveatc.net/search/?icao=LSZH");
+    expect(link).toHaveAttribute("target", "_blank");
   });
 
   it("plays a feed after a URL is entered and shows who's on frequency", async () => {
