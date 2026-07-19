@@ -18,6 +18,32 @@ export function PoiManager() {
   const [lon, setLon] = useState("");
   const [label, setLabel] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [locating, setLocating] = useState(false);
+
+  function useMyLocation() {
+    if (!("geolocation" in navigator)) {
+      setError("Geolocation isn’t available in this browser.");
+      return;
+    }
+    setLocating(true);
+    setError(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLat(pos.coords.latitude.toFixed(5));
+        setLon(pos.coords.longitude.toFixed(5));
+        setLocating(false);
+      },
+      (err) => {
+        setLocating(false);
+        setError(
+          err.code === err.PERMISSION_DENIED
+            ? "Location permission denied."
+            : "Couldn’t get your location.",
+        );
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+    );
+  }
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -111,6 +137,15 @@ export function PoiManager() {
             className={inputCls}
           />
         </div>
+
+        <button
+          type="button"
+          onClick={useMyLocation}
+          disabled={locating}
+          className="flex items-center justify-center gap-1.5 rounded-md border border-slate-700 bg-slate-800/60 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-800 disabled:opacity-50"
+        >
+          {locating ? "Locating…" : "📍 Use my location"}
+        </button>
 
         <input
           value={label}

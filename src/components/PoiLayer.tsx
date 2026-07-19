@@ -1,20 +1,30 @@
 import { usePois } from "../hooks/usePois";
-import { inViewport, projectToSvg } from "../lib/projection";
+import { projectToSvg, SVG_H, SVG_W } from "../lib/projection";
+
+const PAD = 12;
 
 /**
  * Renders user-defined regions of interest as emoji pins in the map's coordinate
- * space, so they pan and zoom with everything else. Non-interactive (pointer
- * events pass through to the map for drag/zoom).
+ * space, so they pan and zoom with everything else. A pin outside the mapped area
+ * (e.g. a phone location several km from the field) is clamped to the nearest
+ * edge and dimmed, so it's still indicated rather than silently missing.
+ * Non-interactive (pointer events pass through to the map for drag/zoom).
  */
 export function PoiLayer() {
   const { pois } = usePois();
   return (
     <g style={{ pointerEvents: "none" }}>
       {pois.map((p) => {
-        const pt = projectToSvg({ lat: p.lat, lon: p.lon });
-        if (!inViewport(pt, 40)) return null;
+        const raw = projectToSvg({ lat: p.lat, lon: p.lon });
+        const x = Math.max(PAD, Math.min(SVG_W - PAD, raw.x));
+        const y = Math.max(PAD, Math.min(SVG_H - PAD, raw.y));
+        const offMap = x !== raw.x || y !== raw.y;
         return (
-          <g key={p.id} transform={`translate(${pt.x.toFixed(1)} ${pt.y.toFixed(1)})`}>
+          <g
+            key={p.id}
+            transform={`translate(${x.toFixed(1)} ${y.toFixed(1)})`}
+            opacity={offMap ? 0.5 : 1}
+          >
             <text
               textAnchor="middle"
               dominantBaseline="central"
@@ -23,7 +33,7 @@ export function PoiLayer() {
             >
               {p.emoji}
             </text>
-            {p.label && (
+            {p.label && !offMap && (
               <text
                 y={15}
                 textAnchor="middle"

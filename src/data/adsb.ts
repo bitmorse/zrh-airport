@@ -16,6 +16,8 @@ export interface Aircraft {
   gs: number | null;
   /** True track over ground, degrees (0..360). */
   track: number | null;
+  /** Vertical rate, feet/min (barometric, or geometric fallback). Positive = climbing. */
+  verticalRateFpm: number | null;
   /** Seconds since this position was last updated. */
   seenPos: number | null;
 }
@@ -34,6 +36,8 @@ interface RawAircraft {
   alt_baro?: number | "ground";
   gs?: number;
   track?: number;
+  baro_rate?: number;
+  geom_rate?: number;
   seen_pos?: number;
 }
 
@@ -89,6 +93,12 @@ function normalise(raw: RawAircraft): Aircraft | null {
     onGround,
     gs: typeof raw.gs === "number" ? raw.gs : null,
     track: typeof raw.track === "number" ? raw.track : null,
+    verticalRateFpm:
+      typeof raw.baro_rate === "number"
+        ? raw.baro_rate
+        : typeof raw.geom_rate === "number"
+          ? raw.geom_rate
+          : null,
     seenPos: typeof raw.seen_pos === "number" ? raw.seen_pos : null,
   };
 }
