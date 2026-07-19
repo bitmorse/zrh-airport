@@ -34,7 +34,7 @@ export function NoiseRecorder({
   }
 
   return (
-    <div className="flex flex-col gap-3 text-sm">
+    <div className="flex flex-col gap-2.5 text-sm">
       <div>
         <h2 className="font-semibold text-slate-200">Landing noise</h2>
         <p className="text-[11px] text-slate-500">
@@ -45,9 +45,9 @@ export function NoiseRecorder({
       {!isArmed ? (
         <button
           onClick={() => void arm()}
-          className="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500"
+          className="w-fit rounded-md bg-sky-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-sky-500"
         >
-          🎤 Enable microphone
+          🎤 Enable mic
         </button>
       ) : (
         <>
@@ -82,20 +82,20 @@ export function NoiseRecorder({
               : "📍 acquiring GPS…"}
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
             <button
               onClick={() => void manualToggle()}
-              className={`flex-1 rounded-lg px-3 py-1.5 text-sm font-medium ${
+              className={`rounded-md px-2.5 py-1 text-xs font-medium ${
                 isRecording
                   ? "bg-red-600 text-white hover:bg-red-500"
                   : "border border-slate-700 text-slate-200 hover:bg-slate-800"
               }`}
             >
-              {isRecording ? "■ Stop" : "● Record now"}
+              {isRecording ? "■ Stop" : "● Rec"}
             </button>
             <button
               onClick={disarm}
-              className="rounded-lg border border-slate-700 px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-800"
+              className="rounded-md border border-slate-700 px-2.5 py-1 text-xs text-slate-300 hover:bg-slate-800"
             >
               Disable
             </button>

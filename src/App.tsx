@@ -209,10 +209,9 @@ export default function App() {
               position={geo.position}
               onManualStop={onManualStop}
             />
-          </div>
-
-          <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
-            <NoiseTable />
+            <div className="mt-4 border-t border-slate-800 pt-4">
+              <NoiseTable />
+            </div>
           </div>
 
           <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
