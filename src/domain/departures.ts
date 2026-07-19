@@ -5,7 +5,7 @@ import {
   toLocalMeters,
   type Vec2,
 } from "../lib/geo";
-import { RUNWAY_ENDS, ZRH_ARP } from "./runways";
+import type { Airport, RunwayEnd } from "./airport";
 
 /**
  * Departure detection from ADS-B, phase by phase:
@@ -47,12 +47,6 @@ const ACCEL_MIN_KT = 3; // gs increase between polls to count as accelerating
 const CLIMB_MIN_FPM = 200;
 const MAX_ALT_FT = 6000;
 
-const ENDS_LOCAL = RUNWAY_ENDS.map((e) => ({
-  end: e,
-  a: toLocalMeters(ZRH_ARP, e.threshold),
-  b: toLocalMeters(ZRH_ARP, e.farEnd),
-}));
-
 const label = (ac: Aircraft) => ac.flight ?? ac.hex.toUpperCase();
 
 /**
@@ -93,16 +87,16 @@ export function gsSnapshot(aircraft: Aircraft[]): Map<string, number> {
 }
 
 export function detectDepartures(
+  airport: Airport,
   aircraft: Aircraft[],
   prevGs: Map<string, number>,
 ): DepartureEvent[] {
   const out: DepartureEvent[] = [];
   for (const ac of aircraft) {
-    const p: Vec2 = toLocalMeters(ZRH_ARP, { lat: ac.lat, lon: ac.lon });
-    let best: { end: (typeof RUNWAY_ENDS)[number]; phase: DeparturePhase; cross: number } | null =
-      null;
+    const p: Vec2 = toLocalMeters(airport.config.arp, { lat: ac.lat, lon: ac.lon });
+    let best: { end: RunwayEnd; phase: DeparturePhase; cross: number } | null = null;
 
-    for (const { end, a, b } of ENDS_LOCAL) {
+    for (const { end, a, b } of airport.endsLocal) {
       const { crossTrack, alongTrack, len } = projectOntoSegment(p, a, b);
       if (crossTrack > HALF_WIDTH_M) continue;
 

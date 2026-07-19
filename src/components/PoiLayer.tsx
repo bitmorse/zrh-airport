@@ -1,3 +1,4 @@
+import { useAirport } from "../hooks/useAirport";
 import { usePois } from "../hooks/usePois";
 import { projectToSvg, SVG_H, SVG_W } from "../lib/projection";
 
@@ -12,10 +13,11 @@ const PAD = 12;
  */
 export function PoiLayer() {
   const { pois } = usePois();
+  const { arp } = useAirport().config;
   return (
     <g style={{ pointerEvents: "none" }}>
       {pois.map((p) => {
-        const raw = projectToSvg({ lat: p.lat, lon: p.lon });
+        const raw = projectToSvg(arp, { lat: p.lat, lon: p.lon });
         const x = Math.max(PAD, Math.min(SVG_W - PAD, raw.x));
         const y = Math.max(PAD, Math.min(SVG_H - PAD, raw.y));
         const offMap = x !== raw.x || y !== raw.y;

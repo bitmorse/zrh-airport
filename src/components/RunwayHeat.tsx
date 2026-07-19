@@ -1,4 +1,5 @@
-import type { RunwayEnd } from "../domain/runways";
+import type { RunwayEnd } from "../domain/airport";
+import { useAirport } from "../hooks/useAirport";
 import { heatColor } from "../lib/heat";
 import { projectToSvg, type Point } from "../lib/projection";
 
@@ -81,8 +82,9 @@ export function RunwayHeat({
   counts: Record<string, number>;
 }) {
   const [e0, e1] = ends;
-  const t0 = projectToSvg(e0.threshold);
-  const t1 = projectToSvg(e1.threshold);
+  const { arp } = useAirport().config;
+  const t0 = projectToSvg(arp, e0.threshold);
+  const t1 = projectToSvg(arp, e1.threshold);
 
   return (
     <g>

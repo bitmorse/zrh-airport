@@ -9,7 +9,10 @@ import { NoiseTable } from "./components/NoiseTable";
 import { PoiManager } from "./components/PoiManager";
 import { SettingsModal } from "./components/SettingsModal";
 import { snapshotAircraft, type AircraftSnapshot } from "./data/adsb";
+import { AIRPORTS, airportConfigByIcao } from "./data/airports";
 import { addNoiseEvent, type NoiseEvent } from "./data/noiseStore";
+import { buildAirport } from "./domain/airport";
+import { AirportContext } from "./hooks/useAirport";
 import {
   useLandingNoiseTrigger,
   type NoiseMeta,
@@ -19,11 +22,17 @@ import { useLiveTraffic } from "./hooks/useLiveTraffic";
 import { useNoiseRecorder, type Recording } from "./hooks/useNoiseRecorder";
 import { useNow } from "./hooks/useNow";
 import { useSettings } from "./hooks/useSettings";
+import { DEFAULT_ZOOM } from "./lib/viewport";
 
 export default function App() {
-  const [settings] = useSettings();
-  const traffic = useLiveTraffic(settings);
+  const [settings, updateSettings] = useSettings();
+  const airport = useMemo(
+    () => buildAirport(airportConfigByIcao(settings.airport)),
+    [settings.airport],
+  );
+  const traffic = useLiveTraffic(settings, airport);
   const [showSettings, setShowSettings] = useState(false);
+  const [airportMenu, setAirportMenu] = useState(false);
   const [selectedHex, setSelectedHex] = useState<string | null>(null);
   const now = useNow(1000);
 
@@ -118,15 +127,67 @@ export default function App() {
     [traffic.aircraft],
   );
 
+  const switchAirport = useCallback(
+    (icao: string) => {
+      setAirportMenu(false);
+      setSelectedHex(null);
+      // New geometry ⇒ reset the framed view to the airport's default.
+      updateSettings({ airport: icao, zoom: DEFAULT_ZOOM, cx: 0.5, cy: 0.5 });
+    },
+    [updateSettings],
+  );
+
   return (
+    <AirportContext.Provider value={airport}>
     <div className="flex min-h-dvh flex-col bg-slate-950 text-slate-100">
       <header className="flex items-center justify-between gap-3 border-b border-slate-800 px-4 py-2.5">
-        <span
-          className="font-brand text-2xl font-black leading-none tracking-[0.18em] text-slate-100"
-          title="Zürich Airport (LSZH) · live runway traffic from open ADS-B"
-        >
-          ZRH
-        </span>
+        <div className="relative">
+          <button
+            onClick={() => setAirportMenu((o) => !o)}
+            className="flex items-center gap-1.5 rounded-lg px-1 py-0.5 text-slate-100 hover:bg-slate-800"
+            aria-haspopup="listbox"
+            aria-expanded={airportMenu}
+            title={`${airport.config.name} (${airport.config.icao}) · live runway traffic from open ADS-B · tap to switch airport`}
+          >
+            <span className="font-brand text-2xl font-black leading-none tracking-[0.18em]">
+              {airport.config.iata}
+            </span>
+            <span className="text-sm text-slate-500" aria-hidden>
+              ▾
+            </span>
+          </button>
+          {airportMenu && (
+            <>
+              <button
+                className="fixed inset-0 z-10 cursor-default"
+                aria-label="Close airport menu"
+                onClick={() => setAirportMenu(false)}
+              />
+              <ul
+                className="absolute left-0 top-full z-20 mt-1 min-w-44 overflow-hidden rounded-lg border border-slate-700 bg-slate-900 py-1 shadow-2xl"
+                role="listbox"
+              >
+                {AIRPORTS.map((a) => (
+                  <li key={a.icao}>
+                    <button
+                      onClick={() => switchAirport(a.icao)}
+                      role="option"
+                      aria-selected={a.icao === airport.config.icao}
+                      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-slate-800 ${
+                        a.icao === airport.config.icao ? "bg-slate-800/60" : ""
+                      }`}
+                    >
+                      <span className="font-brand text-base font-black tracking-wider text-slate-100">
+                        {a.iata}
+                      </span>
+                      <span className="text-xs text-slate-400">{a.name}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
         <div className="flex items-center gap-3">
           <div className="flex flex-col items-end leading-tight">
             <span className={`text-xs ${stale ? "text-amber-400" : "text-slate-300"}`}>
@@ -242,5 +303,6 @@ export default function App() {
 
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
     </div>
+    </AirportContext.Provider>
   );
 }

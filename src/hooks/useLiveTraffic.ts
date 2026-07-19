@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { fetchAircraftNearZrh, type Aircraft } from "../data/adsb";
+import { fetchAircraftNear, type Aircraft } from "../data/adsb";
+import type { Airport } from "../domain/airport";
 import { assignRunway, type RunwayAssignment } from "../domain/assignRunway";
 import {
   detectDepartures,
@@ -44,7 +45,7 @@ export interface LiveTraffic {
   refetch: () => void;
 }
 
-export function useLiveTraffic(settings: Settings): LiveTraffic {
+export function useLiveTraffic(settings: Settings, airport: Airport): LiveTraffic {
   const [counts, setCounts] = useState<Record<string, number>>({});
   const prevGs = useRef(new Map<string, number>());
   const holdingSince = useRef(new Map<string, number>());
@@ -62,15 +63,16 @@ export function useLiveTraffic(settings: Settings): LiveTraffic {
   }, []);
 
   const query = useQuery({
-    queryKey: ["adsb", settings.radiusNm, settings.provider],
+    queryKey: ["adsb", airport.config.icao, settings.radiusNm, settings.provider],
     queryFn: async ({ signal }) => {
-      const snap = await fetchAircraftNearZrh(
+      const snap = await fetchAircraftNear(
+        airport.config.arp,
         settings.radiusNm,
         settings.provider ?? undefined,
         signal,
       );
       const withAssignment: AircraftWithAssignment[] = snap.aircraft.map(
-        (ac) => ({ ac, assignment: assignRunway(ac) }),
+        (ac) => ({ ac, assignment: assignRunway(airport, ac) }),
       );
       const assignments = withAssignment
         .filter((w) => w.assignment)
@@ -79,7 +81,7 @@ export function useLiveTraffic(settings: Settings): LiveTraffic {
 
       const arrivals = predictArrivals(withAssignment);
       const departures = trackHolding(
-        detectDepartures(snap.aircraft, prevGs.current),
+        detectDepartures(airport, snap.aircraft, prevGs.current),
         new Set(snap.aircraft.map((a) => a.hex)),
         holdingSince.current,
         snap.fetchedAt,

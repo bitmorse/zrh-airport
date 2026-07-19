@@ -1,4 +1,4 @@
-import { ZRH_ARP } from "../domain/runways";
+import type { LatLon } from "../lib/geo";
 
 /**
  * Normalised aircraft state. Field names follow the readsb / ADSBExchange v2
@@ -78,20 +78,18 @@ interface RawAircraft {
 }
 
 /** No-key, CORS-enabled, ADSBExchange-compatible providers, tried in order. */
-const PROVIDERS: { name: string; url: (distNm: number) => string }[] = [
+const PROVIDERS: { name: string; url: (c: LatLon, distNm: number) => string }[] = [
   {
     name: "adsb.lol",
-    url: (d) => `https://api.adsb.lol/v2/lat/${ZRH_ARP.lat}/lon/${ZRH_ARP.lon}/dist/${d}`,
+    url: (c, d) => `https://api.adsb.lol/v2/lat/${c.lat}/lon/${c.lon}/dist/${d}`,
   },
   {
     name: "adsb.fi",
-    url: (d) =>
-      `https://opendata.adsb.fi/api/v2/lat/${ZRH_ARP.lat}/lon/${ZRH_ARP.lon}/dist/${d}`,
+    url: (c, d) => `https://opendata.adsb.fi/api/v2/lat/${c.lat}/lon/${c.lon}/dist/${d}`,
   },
   {
     name: "airplanes.live",
-    url: (d) =>
-      `https://api.airplanes.live/v2/point/${ZRH_ARP.lat}/${ZRH_ARP.lon}/${d}`,
+    url: (c, d) => `https://api.airplanes.live/v2/point/${c.lat}/${c.lon}/${d}`,
   },
 ];
 
@@ -143,11 +141,12 @@ function normalise(raw: RawAircraft): Aircraft | null {
 }
 
 /**
- * Fetch aircraft within `distNm` nautical miles of ZRH, failing over across
+ * Fetch aircraft within `distNm` nautical miles of `center`, failing over across
  * providers. Throws only if every provider fails. Callers should keep the last
  * good snapshot visible and surface the error alongside it.
  */
-export async function fetchAircraftNearZrh(
+export async function fetchAircraftNear(
+  center: LatLon,
   distNm = 25,
   preferred?: string,
   signal?: AbortSignal,
@@ -162,7 +161,7 @@ export async function fetchAircraftNearZrh(
   const errors: string[] = [];
   for (const provider of ordered) {
     try {
-      const res = await fetch(provider.url(distNm), {
+      const res = await fetch(provider.url(center, distNm), {
         signal: withTimeout(signal, PROVIDER_TIMEOUT_MS),
         headers: { Accept: "application/json" },
       });

@@ -1,4 +1,5 @@
-import type { LatLon } from "../domain/runways";
+import type { LatLon } from "../lib/geo";
+import { useAirport } from "../hooks/useAirport";
 import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
 import { projectToSvg, inViewport } from "../lib/projection";
 
@@ -26,7 +27,8 @@ export function Plane({
   onSelect?: (hex: string) => void;
 }) {
   const { ac, assignment } = item;
-  const pt = projectToSvg(pos ?? { lat: ac.lat, lon: ac.lon });
+  const { arp } = useAirport().config;
+  const pt = projectToSvg(arp, pos ?? { lat: ac.lat, lon: ac.lon });
   if (!inViewport(pt, 20)) return null;
 
   const heading = ac.track ?? 0;

@@ -1,5 +1,6 @@
 import { type Airport } from "../data/flightInfo";
 import { altAboveFieldFt } from "../domain/assignRunway";
+import { useAirport } from "../hooks/useAirport";
 import { useFlightRoute } from "../hooks/useFlightRoute";
 import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
 import { useSettings } from "../hooks/useSettings";
@@ -26,6 +27,7 @@ export function FlightDetails({
   const callsign = item?.ac.flight ?? null;
   const route = useFlightRoute(callsign);
   const [{ units }] = useSettings();
+  const { fieldElevationFt } = useAirport().config;
 
   if (!item) {
     return (
@@ -55,7 +57,7 @@ export function FlightDetails({
               ? `${PHASE_LABEL[assignment.phase]} · RWY ${assignment.end}`
               : "in range"}
             {" · "}
-            {formatAltitude(altAboveFieldFt(ac), units)} ·{" "}
+            {formatAltitude(altAboveFieldFt(ac, fieldElevationFt), units)} ·{" "}
             {ac.gs != null ? formatSpeed(ac.gs, units) : "—"}
           </p>
           {(ac.type || ac.typeDesc || ac.registration) && (

@@ -1,17 +1,11 @@
 import { memo, useRef } from "react";
-import { RUNWAY_END_BY_ID, type RunwayEnd } from "../domain/runways";
+import { useAirport } from "../hooks/useAirport";
 import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
 import { useViewport } from "../hooks/useViewport";
 import { SVG_W, SVG_H } from "../lib/projection";
 import { PlaneLayer } from "./PlaneLayer";
 import { PoiLayer } from "./PoiLayer";
 import { RunwayHeat } from "./RunwayHeat";
-
-const STRIP_PAIRS: [RunwayEnd, RunwayEnd][] = [
-  [RUNWAY_END_BY_ID["16"], RUNWAY_END_BY_ID["34"]],
-  [RUNWAY_END_BY_ID["14"], RUNWAY_END_BY_ID["32"]],
-  [RUNWAY_END_BY_ID["10"], RUNWAY_END_BY_ID["28"]],
-];
 
 function AirportSvgImpl({
   aircraft,
@@ -27,6 +21,7 @@ function AirportSvgImpl({
   onSelect?: (hex: string) => void;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
+  const airport = useAirport();
   const { viewBox, zoom, zoomIn, zoomOut, reset, isDragging, bind } =
     useViewport(svgRef);
 
@@ -38,7 +33,7 @@ function AirportSvgImpl({
         className="h-full w-full"
         style={{ touchAction: "none", cursor: isDragging ? "grabbing" : "grab" }}
         role="img"
-        aria-label="Schematic map of Zurich Airport runways with live traffic"
+        aria-label={`Schematic map of ${airport.config.name} runways with live traffic`}
         {...bind}
       >
       <defs>
@@ -73,7 +68,7 @@ function AirportSvgImpl({
         </text>
       </g>
 
-      {STRIP_PAIRS.map((pair) => (
+      {airport.stripPairs.map((pair) => (
         <RunwayHeat key={pair[0].strip} ends={pair} counts={counts} />
       ))}
 

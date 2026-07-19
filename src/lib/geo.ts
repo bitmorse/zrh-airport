@@ -1,7 +1,10 @@
-import type { LatLon } from "../domain/runways";
-
 const R_EARTH = 6371000; // metres
 const DEG = Math.PI / 180;
+
+export interface LatLon {
+  lat: number;
+  lon: number;
+}
 
 /** Planar point in local metres (east, north) relative to some origin. */
 export interface Vec2 {

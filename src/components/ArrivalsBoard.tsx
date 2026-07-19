@@ -1,6 +1,6 @@
-import { STRIPS } from "../domain/runways";
 import type { DepartureEvent, DeparturePhase } from "../domain/departures";
 import { nextArrivalByStrip, type Arrival } from "../domain/predictions";
+import { useAirport } from "../hooks/useAirport";
 import { useFlightRoute } from "../hooks/useFlightRoute";
 import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
 import { useSettings } from "../hooks/useSettings";
@@ -49,6 +49,7 @@ export function ArrivalsBoard({
   selectedHex?: string | null;
   onSelect?: (hex: string) => void;
 }) {
+  const { strips } = useAirport();
   const byStrip = nextArrivalByStrip(aircraft);
   const deps = [...departures].sort(
     (a, b) => DEP_ORDER[a.phase] - DEP_ORDER[b.phase],
@@ -63,7 +64,7 @@ export function ArrivalsBoard({
       </div>
 
       <ul className="flex flex-col gap-1.5">
-        {STRIPS.map((strip) => (
+        {strips.map((strip) => (
           <StripRow
             key={strip.name}
             strip={strip.name}

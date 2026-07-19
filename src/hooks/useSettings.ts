@@ -1,4 +1,5 @@
 import { useCallback, useSyncExternalStore } from "react";
+import { DEFAULT_AIRPORT_ICAO } from "../data/airports";
 import type { Units } from "../lib/format";
 import { DEFAULT_ZOOM } from "../lib/viewport";
 
@@ -11,9 +12,11 @@ const MAP_VERSION = 2;
  * store a key without any code change if a provider later requires one.
  */
 export interface Settings {
+  /** Active airport, by ICAO id (see src/data/airports.ts). */
+  airport: string;
   /** Poll interval in seconds. */
   pollSeconds: number;
-  /** Query radius around ZRH, nautical miles. */
+  /** Query radius around the airport, nautical miles. */
   radiusNm: number;
   /** Preferred provider name, tried first before fallbacks. */
   provider: string | null;
@@ -31,6 +34,7 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
+  airport: DEFAULT_AIRPORT_ICAO,
   pollSeconds: 15,
   radiusNm: 25,
   provider: null,

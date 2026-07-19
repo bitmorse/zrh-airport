@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { Aircraft } from "../data/adsb";
 import { assignRunway } from "./assignRunway";
-import { RUNWAY_END_BY_ID } from "./runways";
+import { ZRH } from "../data/airports";
+import { buildAirport } from "./airport";
 import { destinationPoint } from "../lib/geo";
 
+const AP = buildAirport(ZRH);
+
 function aircraftOnApproach(endId: string, finalDistanceM: number): Aircraft {
-  const end = RUNWAY_END_BY_ID[endId];
+  const end = AP.endById[endId];
   // Sit on the extended centreline, before the threshold, tracking toward it.
   const reverse = (end.bearingDeg + 180) % 360;
   const pos = destinationPoint(end.threshold, reverse, finalDistanceM);
@@ -29,31 +32,31 @@ function aircraftOnApproach(endId: string, finalDistanceM: number): Aircraft {
 describe("assignRunway", () => {
   it("attributes an aircraft on 3 km final to the correct runway end", () => {
     for (const endId of ["28", "10", "16", "34", "14", "32"]) {
-      const a = assignRunway(aircraftOnApproach(endId, 3000));
+      const a = assignRunway(AP, aircraftOnApproach(endId, 3000));
       expect(a?.end, `end ${endId}`).toBe(endId);
       expect(a?.phase).toBe("approach");
     }
   });
 
   it("does not attribute an aircraft flying the wrong way down the corridor", () => {
-    const end = RUNWAY_END_BY_ID["28"];
+    const end = AP.endById["28"];
     const onApproach = aircraftOnApproach("28", 3000);
     // Same position, but tracking the opposite direction (toward 10, not 28).
     const wrongWay: Aircraft = { ...onApproach, track: (end.bearingDeg + 180) % 360 };
-    const result = assignRunway(wrongWay);
+    const result = assignRunway(AP, wrongWay);
     expect(result?.end).not.toBe("28");
   });
 
   it("ignores slow taxiing aircraft near a runway", () => {
     const taxi = aircraftOnApproach("28", 500);
     taxi.gs = 15; // taxi speed
-    expect(assignRunway(taxi)).toBeNull();
+    expect(assignRunway(AP, taxi)).toBeNull();
   });
 
   it("ignores high-altitude overflights", () => {
     const overflight = aircraftOnApproach("16", 3000);
     overflight.altFt = 20000;
-    expect(assignRunway(overflight)).toBeNull();
+    expect(assignRunway(AP, overflight)).toBeNull();
   });
 
   it("ignores aircraft far from every runway", () => {
@@ -72,12 +75,12 @@ describe("assignRunway", () => {
       typeDesc: null,
       registration: null,
     };
-    expect(assignRunway(far)).toBeNull();
+    expect(assignRunway(AP, far)).toBeNull();
   });
 
   it("ignores aircraft with no track information", () => {
     const noTrack = aircraftOnApproach("28", 3000);
     noTrack.track = null;
-    expect(assignRunway(noTrack)).toBeNull();
+    expect(assignRunway(AP, noTrack)).toBeNull();
   });
 });

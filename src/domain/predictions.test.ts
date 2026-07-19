@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { Aircraft } from "../data/adsb";
 import { assignRunway } from "./assignRunway";
-import { RUNWAY_END_BY_ID } from "./runways";
+import { ZRH } from "../data/airports";
+import { buildAirport } from "./airport";
 import { destinationPoint } from "../lib/geo";
 import { nextArrivalByStrip, predictArrivals } from "./predictions";
+
+const AP = buildAirport(ZRH);
 
 interface Opts {
   gs?: number | null;
@@ -14,7 +17,7 @@ interface Opts {
 
 function onApproach(endId: string, finalDistanceM: number, opts: Opts = {}) {
   const { gs = 140, hex = "abc123", vr = -700, onGround = false } = opts;
-  const end = RUNWAY_END_BY_ID[endId];
+  const end = AP.endById[endId];
   const reverse = (end.bearingDeg + 180) % 360;
   const pos = destinationPoint(end.threshold, reverse, finalDistanceM);
   const ac: Aircraft = {
@@ -32,7 +35,7 @@ function onApproach(endId: string, finalDistanceM: number, opts: Opts = {}) {
     typeDesc: null,
     registration: null,
   };
-  return { ac, assignment: assignRunway(ac) };
+  return { ac, assignment: assignRunway(AP, ac) };
 }
 
 describe("predictArrivals", () => {

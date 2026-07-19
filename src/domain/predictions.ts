@@ -1,5 +1,4 @@
 import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
-import { RUNWAY_END_BY_ID } from "./runways";
 
 const KT_TO_MS = 0.514444;
 const M_TO_NM = 1 / 1852;
@@ -65,7 +64,7 @@ export function predictArrivals(items: AircraftWithAssignment[]): Arrival[] {
 
     out.push({
       end: a.end,
-      strip: RUNWAY_END_BY_ID[a.end]?.strip ?? a.end,
+      strip: a.strip,
       hex: w.ac.hex,
       callsign: label(w),
       etaSeconds,

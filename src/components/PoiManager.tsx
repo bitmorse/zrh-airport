@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ZRH_ARP } from "../domain/runways";
+import { useAirport } from "../hooks/useAirport";
 import { usePois } from "../hooks/usePois";
 
 const QUICK_EMOJI = ["📍", "⭐", "🎯", "✈️", "🏠", "📷", "⚠️", "🚗", "🅿️", "❤️"];
@@ -13,6 +13,7 @@ const inputCls =
  */
 export function PoiManager() {
   const { pois, add, remove } = usePois();
+  const { arp } = useAirport().config;
   const [emoji, setEmoji] = useState("📍");
   const [lat, setLat] = useState("");
   const [lon, setLon] = useState("");
@@ -124,7 +125,7 @@ export function PoiManager() {
             value={lat}
             onChange={(ev) => setLat(ev.target.value)}
             inputMode="decimal"
-            placeholder={`lat (${ZRH_ARP.lat})`}
+            placeholder={`lat (${arp.lat})`}
             aria-label="Latitude"
             className={inputCls}
           />
@@ -132,7 +133,7 @@ export function PoiManager() {
             value={lon}
             onChange={(ev) => setLon(ev.target.value)}
             inputMode="decimal"
-            placeholder={`lon (${ZRH_ARP.lon})`}
+            placeholder={`lon (${arp.lon})`}
             aria-label="Longitude"
             className={inputCls}
           />

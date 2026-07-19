@@ -1,11 +1,11 @@
-import type { LatLon } from "../domain/runways";
-import { ZRH_ARP } from "../domain/runways";
-import { toLocalMeters } from "./geo";
+import { toLocalMeters, type LatLon } from "./geo";
 
 /**
- * A distortion-free projection from WGS84 to SVG coordinates for the ZRH area.
- * Everything is projected to local metres around the ARP, then linearly scaled
- * with north pointing up. Equal x/y scale keeps runway angles true.
+ * A distortion-free projection from WGS84 to SVG coordinates, centred on an
+ * airport reference point (`arp`). Everything is projected to local metres around
+ * the ARP, then linearly scaled with north pointing up. Equal x/y scale keeps
+ * runway angles true. The world extent is airport-independent, so the same SVG
+ * frame and glyph sizes work for any airport.
  */
 
 // Half-extent of the *world*, in metres east / north of the ARP. Large enough to
@@ -26,8 +26,8 @@ export interface Point {
   y: number;
 }
 
-export function projectToSvg(p: LatLon): Point {
-  const v = toLocalMeters(ZRH_ARP, p);
+export function projectToSvg(arp: LatLon, p: LatLon): Point {
+  const v = toLocalMeters(arp, p);
   return {
     x: (v.x + HALF_EAST_M) * SCALE,
     y: (HALF_NORTH_M - v.y) * SCALE, // flip so north is up
