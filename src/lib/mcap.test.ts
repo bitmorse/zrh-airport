@@ -24,6 +24,9 @@ function event(overrides: Partial<NoiseEvent>): NoiseEvent {
     callsign: "SWR40L",
     runwayEnd: "28",
     kind: "arrival",
+    aircraftType: "A320",
+    aircraftTypeDesc: "AIRBUS A-320",
+    registration: "HB-JCA",
     heldSeconds: null,
     lat: 47.45,
     lon: 8.57,
@@ -84,6 +87,11 @@ describe("buildNoiseMcap audio blocking", () => {
   it("streams a clip as many contiguous mono pcm-s16 blocks the Audio panel can play", async () => {
     const blob = await buildNoiseMcap([event({})], async () => new Blob(["x"]));
     const { messages } = await readMcap(blob);
+
+    const meas = messages.find((m) => m.topic === "/measurement")!
+      .json as Record<string, unknown>;
+    expect(meas.aircraft_type).toBe("A320");
+    expect(meas.registration).toBe("HB-JCA");
 
     const audio = messages.filter((m) => m.topic === "/audio");
     // 30000 samples / (48000 * 0.2) = 3.125 → 4 blocks, not one giant message.

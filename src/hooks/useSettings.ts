@@ -1,4 +1,5 @@
 import { useCallback, useSyncExternalStore } from "react";
+import type { Units } from "../lib/format";
 import { DEFAULT_ZOOM } from "../lib/viewport";
 
 // Bump when the map projection/zoom semantics change so persisted zoom resets.
@@ -18,6 +19,8 @@ export interface Settings {
   provider: string | null;
   /** Optional API token, stored locally only (future use). */
   apiToken: string | null;
+  /** Display units for distances, speeds and altitudes. */
+  units: Units;
   /** Map zoom factor (1 = full extent). */
   zoom: number;
   /** Normalized view centre in [0,1] (0.5,0.5 = airport reference point). */
@@ -32,6 +35,7 @@ export const DEFAULT_SETTINGS: Settings = {
   radiusNm: 25,
   provider: null,
   apiToken: null,
+  units: "metric",
   zoom: DEFAULT_ZOOM,
   cx: 0.5,
   cy: 0.5,

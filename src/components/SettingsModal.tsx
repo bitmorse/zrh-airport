@@ -1,6 +1,13 @@
 import { useEffect, useState } from "react";
 import { PROVIDER_NAMES } from "../data/adsb";
 import { DEFAULT_SETTINGS, useSettings } from "../hooks/useSettings";
+import type { Units } from "../lib/format";
+
+const NM_TO_KM = 1.852;
+// Radius is stored in NM; show it in the user's units.
+const radiusToDisplay = (nm: number, u: Units) =>
+  u === "metric" ? Math.round(nm * NM_TO_KM) : Math.round(nm);
+const displayToNm = (val: number, u: Units) => (u === "metric" ? val / NM_TO_KM : val);
 
 /**
  * Settings dialog. All values are persisted to localStorage. The default data
@@ -10,9 +17,22 @@ import { DEFAULT_SETTINGS, useSettings } from "../hooks/useSettings";
 export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [settings, update] = useSettings();
   const [pollSeconds, setPollSeconds] = useState(String(settings.pollSeconds));
-  const [radiusNm, setRadiusNm] = useState(String(settings.radiusNm));
+  const [units, setUnits] = useState<Units>(settings.units);
+  const [radius, setRadius] = useState(String(radiusToDisplay(settings.radiusNm, settings.units)));
   const [provider, setProvider] = useState(settings.provider ?? "");
   const [apiToken, setApiToken] = useState(settings.apiToken ?? "");
+
+  // Switching units re-expresses the radius field so it stays the same distance.
+  function changeUnits(next: Units) {
+    const nm = displayToNm(Number(radius) || settings.radiusNm, units);
+    setRadius(String(radiusToDisplay(nm, next)));
+    setUnits(next);
+  }
+
+  const metric = units === "metric";
+  const radiusUnit = metric ? "km" : "nautical miles";
+  const radiusMin = metric ? 9 : 5;
+  const radiusMax = metric ? 463 : 250;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -21,9 +41,11 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   }, [onClose]);
 
   function save() {
+    const nm = displayToNm(Number(radius) || radiusToDisplay(DEFAULT_SETTINGS.radiusNm, units), units);
     update({
       pollSeconds: clamp(Number(pollSeconds) || DEFAULT_SETTINGS.pollSeconds, 10, 600),
-      radiusNm: clamp(Number(radiusNm) || DEFAULT_SETTINGS.radiusNm, 5, 250),
+      radiusNm: Math.round(clamp(nm, 5, 250)),
+      units,
       provider: provider || null,
       apiToken: apiToken.trim() || null,
     });
@@ -56,13 +78,24 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             />
           </Field>
 
-          <Field label="Query radius (nautical miles)" hint="5–250">
+          <Field label="Units" hint="applies to distances, speeds and altitudes">
+            <select
+              value={units}
+              onChange={(e) => changeUnits(e.target.value as Units)}
+              className={inputCls}
+            >
+              <option value="metric">Metric (km, km/h, m)</option>
+              <option value="imperial">Aviation (NM, kt, ft)</option>
+            </select>
+          </Field>
+
+          <Field label={`Query radius (${radiusUnit})`} hint={`${radiusMin}–${radiusMax}`}>
             <input
               type="number"
-              min={5}
-              max={250}
-              value={radiusNm}
-              onChange={(e) => setRadiusNm(e.target.value)}
+              min={radiusMin}
+              max={radiusMax}
+              value={radius}
+              onChange={(e) => setRadius(e.target.value)}
               className={inputCls}
             />
           </Field>

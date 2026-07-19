@@ -49,6 +49,9 @@ const MEASUREMENT_SCHEMA = {
   properties: {
     callsign: { type: "string" },
     hex: { type: "string" },
+    aircraft_type: { type: "string" },
+    type_desc: { type: "string" },
+    registration: { type: "string" },
     runway: { type: "string" },
     kind: { type: "string" },
     held_s: { type: "number" },
@@ -147,6 +150,9 @@ export async function buildNoiseMcap(
     await add(measCh, logTime, {
       callsign: e.callsign ?? "",
       hex: e.hex ?? "",
+      aircraft_type: e.aircraftType ?? "",
+      type_desc: e.aircraftTypeDesc ?? "",
+      registration: e.registration ?? "",
       runway: e.runwayEnd ?? "",
       kind: e.kind ?? "",
       held_s: e.heldSeconds ?? 0,

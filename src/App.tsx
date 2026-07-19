@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { AirportSvg } from "./components/AirportSvg";
 import { ArrivalsBoard } from "./components/ArrivalsBoard";
 import { FlightDetails } from "./components/FlightDetails";
@@ -40,15 +40,25 @@ export default function App() {
   const geo = useGeoWatch(recorder.isArmed); // live GPS while the mic is on
   const arrivals = traffic.arrivals;
 
+  // Latest aircraft list, read at save time to enrich a measurement by hex.
+  const aircraftRef = useRef(traffic.aircraft);
+  aircraftRef.current = traffic.aircraft;
+
   const saveNoise = useCallback(
     (meta: NoiseMeta | null, rec: Recording, loc: GeoFix | null) => {
       if (!rec.blob) return;
+      const ac = meta?.hex
+        ? aircraftRef.current.find((a) => a.ac.hex === meta.hex)?.ac
+        : undefined;
       const ev: NoiseEvent = {
         id: crypto.randomUUID(),
         hex: meta?.hex ?? null,
         callsign: meta?.callsign ?? null,
         runwayEnd: meta?.end ?? null,
         kind: meta?.kind ?? null,
+        aircraftType: ac?.type ?? null,
+        aircraftTypeDesc: ac?.typeDesc ?? null,
+        registration: ac?.registration ?? null,
         heldSeconds: meta?.heldMs != null ? Math.round(meta.heldMs / 1000) : null,
         lat: loc?.lat ?? null,
         lon: loc?.lon ?? null,

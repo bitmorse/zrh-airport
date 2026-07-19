@@ -10,6 +10,10 @@ export interface NoiseEvent {
   callsign: string | null;
   runwayEnd: string | null;
   kind: "arrival" | "departure" | null;
+  /** ICAO type designator, description and registration, from the ADS-B feed. */
+  aircraftType: string | null;
+  aircraftTypeDesc: string | null;
+  registration: string | null;
   /** For departures: seconds held at the threshold before the takeoff roll. */
   heldSeconds: number | null;
   lat: number | null;

@@ -1,5 +1,32 @@
 import type { FlightRoute } from "../data/flightInfo";
 
+export type Units = "metric" | "imperial";
+
+const NM_TO_KM = 1.852;
+const KT_TO_KMH = 1.852;
+const FT_TO_M = 0.3048;
+
+/** Distance (nautical miles) → "12.3 km" / "480 m" (metric) or "6.6 NM". */
+export function formatDistance(nm: number, units: Units): string {
+  if (units === "imperial") return `${nm.toFixed(1)} NM`;
+  const km = nm * NM_TO_KM;
+  return km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`;
+}
+
+/** Ground speed (knots) → "260 km/h" (metric) or "140 kt". */
+export function formatSpeed(kt: number, units: Units): string {
+  return units === "imperial"
+    ? `${Math.round(kt)} kt`
+    : `${Math.round(kt * KT_TO_KMH)} km/h`;
+}
+
+/** Altitude (feet) → "1,220 m" (metric) or "4,000 ft". */
+export function formatAltitude(ft: number, units: Units): string {
+  return units === "imperial"
+    ? `${Math.round(ft).toLocaleString()} ft`
+    : `${Math.round(ft * FT_TO_M).toLocaleString()} m`;
+}
+
 /** Seconds → plain "m:ss" (for elapsed/wait timers). */
 export function formatDuration(seconds: number): string {
   const total = Math.max(0, Math.round(seconds));

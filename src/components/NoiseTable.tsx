@@ -33,6 +33,9 @@ function exportCsv(events: NoiseEvent[]) {
     "kind",
     "callsign",
     "hex",
+    "aircraft_type",
+    "type_desc",
+    "registration",
     "runway",
     "lat",
     "lon",
@@ -47,6 +50,9 @@ function exportCsv(events: NoiseEvent[]) {
     e.kind ?? "",
     e.callsign ?? "",
     e.hex ?? "",
+    e.aircraftType ?? "",
+    e.aircraftTypeDesc ?? "",
+    e.registration ?? "",
     e.runwayEnd ?? "",
     e.lat ?? "",
     e.lon ?? "",
@@ -185,10 +191,17 @@ export function NoiseTable() {
               <tr key={e.id} className="border-t border-slate-800">
                 <td className="py-1.5 pr-2 tabular-nums">{hhmm(e.startedAt)}</td>
                 <td className="py-1.5 pr-2 font-mono">
-                  {e.kind === "departure" ? "🛫" : e.kind === "arrival" ? "🛬" : ""}{" "}
-                  {e.callsign ?? e.hex?.toUpperCase() ?? "—"}
-                  {e.runwayEnd && (
-                    <span className="ml-1 text-sky-300">{e.runwayEnd}</span>
+                  <div>
+                    {e.kind === "departure" ? "🛫" : e.kind === "arrival" ? "🛬" : ""}{" "}
+                    {e.callsign ?? e.hex?.toUpperCase() ?? "—"}
+                    {e.runwayEnd && (
+                      <span className="ml-1 text-sky-300">{e.runwayEnd}</span>
+                    )}
+                  </div>
+                  {(e.aircraftType || e.registration) && (
+                    <div className="text-[10px] text-slate-500">
+                      {[e.aircraftType, e.registration].filter(Boolean).join(" · ")}
+                    </div>
                   )}
                 </td>
                 <td className="py-1.5 pr-2 tabular-nums text-slate-400">

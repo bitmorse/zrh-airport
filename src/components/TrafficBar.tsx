@@ -1,7 +1,8 @@
 import type { DepartureEvent, DeparturePhase } from "../domain/departures";
 import type { Arrival } from "../domain/predictions";
 import { useFlightRoute } from "../hooks/useFlightRoute";
-import { formatDuration, formatEta, routeText } from "../lib/format";
+import { useSettings } from "../hooks/useSettings";
+import { formatDistance, formatDuration, formatEta, routeText } from "../lib/format";
 
 const DEP_CLS: Record<DeparturePhase, string> = {
   holding: "bg-amber-500/15 text-amber-300 ring-amber-500/30",
@@ -45,6 +46,7 @@ export function TrafficBar({
   onSelect?: (hex: string) => void;
 }) {
   const soonest = arrivals[0];
+  const [{ units }] = useSettings();
   const route = useFlightRoute(soonest?.callsign ?? null);
   const routeLabel = routeText(route.data);
   const ageSec = lastUpdated != null ? (now - lastUpdated) / 1000 : 0;
@@ -68,7 +70,7 @@ export function TrafficBar({
               <span className="font-semibold text-slate-100"> {soonest.callsign}</span>
               <span className="text-slate-500">
                 {" · "}
-                {soonest.distanceNm.toFixed(1)} NM
+                {formatDistance(soonest.distanceNm, units)}
                 {routeLabel ? ` · ${routeLabel}` : ""}
               </span>
             </span>

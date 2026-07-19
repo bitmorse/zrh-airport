@@ -3,7 +3,8 @@ import type { DepartureEvent, DeparturePhase } from "../domain/departures";
 import { nextArrivalByStrip, type Arrival } from "../domain/predictions";
 import { useFlightRoute } from "../hooks/useFlightRoute";
 import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
-import { formatDuration, formatEta, routeText } from "../lib/format";
+import { useSettings } from "../hooks/useSettings";
+import { formatDistance, formatDuration, formatEta, routeText } from "../lib/format";
 
 const DEP_CLS: Record<DeparturePhase, string> = {
   holding: "bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30",
@@ -122,6 +123,7 @@ function StripRow({
   onSelect?: (hex: string) => void;
 }) {
   const route = useFlightRoute(arrival?.callsign ?? null);
+  const [{ units }] = useSettings();
   const remaining = arrival ? Math.max(0, arrival.etaSeconds - ageSec) : null;
   const soon = remaining != null && remaining <= 60 && !stale;
   const isSelected = !!arrival && arrival.hex === selectedHex;
@@ -138,7 +140,7 @@ function StripRow({
           {arrival ? (
             <span className="truncate text-xs text-slate-400">
               <span className="text-sky-300">{arrival.end}</span> · {arrival.callsign} ·{" "}
-              {arrival.distanceNm.toFixed(1)} NM
+              {formatDistance(arrival.distanceNm, units)}
             </span>
           ) : (
             <span className="text-xs text-slate-600">— no inbound</span>
