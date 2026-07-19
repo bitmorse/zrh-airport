@@ -1,13 +1,19 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fetchAircraftNearZrh, type Aircraft } from "../data/adsb";
 import { assignRunway, type RunwayAssignment } from "../domain/assignRunway";
+import {
+  detectDepartures,
+  gsSnapshot,
+  type DepartureEvent,
+} from "../domain/departures";
 import {
   countsByEnd,
   loadObservations,
   pruneObservations,
   recordSnapshot,
 } from "../domain/observations";
+import { predictArrivals, type Arrival } from "../domain/predictions";
 import type { Settings } from "./useSettings";
 
 export interface AircraftWithAssignment {
@@ -15,12 +21,19 @@ export interface AircraftWithAssignment {
   assignment: RunwayAssignment | null;
 }
 
-// Stable identity for the pre-data case so the memoized map doesn't re-render
-// every second (App's 1 s clock) before the first poll arrives.
+// Adaptive polling: burst when a departure/arrival is imminent near a threshold.
+const FAST_POLL_MS = 4000;
+const FAST_ARRIVAL_S = 45;
+
+// Stable identities for the pre-data case so memoized consumers don't churn.
 const EMPTY_AIRCRAFT: AircraftWithAssignment[] = [];
+const EMPTY_ARRIVALS: Arrival[] = [];
+const EMPTY_DEPARTURES: DepartureEvent[] = [];
 
 export interface LiveTraffic {
   aircraft: AircraftWithAssignment[];
+  arrivals: Arrival[];
+  departures: DepartureEvent[];
   counts: Record<string, number>;
   provider: string | null;
   lastUpdated: number | null;
@@ -32,6 +45,7 @@ export interface LiveTraffic {
 
 export function useLiveTraffic(settings: Settings): LiveTraffic {
   const [counts, setCounts] = useState<Record<string, number>>({});
+  const prevGs = useRef(new Map<string, number>());
 
   // Seed counts from any persisted window on mount so the map isn't blank after
   // a reload within the 15-minute window.
@@ -60,11 +74,23 @@ export function useLiveTraffic(settings: Settings): LiveTraffic {
         .filter((w) => w.assignment)
         .map((w) => ({ hex: w.ac.hex, end: w.assignment!.end }));
       const { counts: fresh } = await recordSnapshot(assignments, snap.fetchedAt);
-      return { snap, withAssignment, counts: fresh };
+
+      const arrivals = predictArrivals(withAssignment);
+      const departures = detectDepartures(snap.aircraft, prevGs.current);
+      prevGs.current = gsSnapshot(snap.aircraft);
+
+      const needsFastPoll =
+        departures.some((d) => d.phase === "holding" || d.phase === "roll") ||
+        arrivals.some((a) => a.etaSeconds < FAST_ARRIVAL_S);
+
+      return { snap, withAssignment, counts: fresh, arrivals, departures, needsFastPoll };
     },
-    refetchInterval: Math.max(10, settings.pollSeconds) * 1000,
+    refetchInterval: (query) => {
+      if (query.state.data?.needsFastPoll) return FAST_POLL_MS;
+      return Math.max(10, settings.pollSeconds) * 1000;
+    },
     refetchOnWindowFocus: false,
-    staleTime: 10_000,
+    staleTime: 3_000,
     retry: 1,
   });
 
@@ -74,6 +100,8 @@ export function useLiveTraffic(settings: Settings): LiveTraffic {
 
   return {
     aircraft: query.data?.withAssignment ?? EMPTY_AIRCRAFT,
+    arrivals: query.data?.arrivals ?? EMPTY_ARRIVALS,
+    departures: query.data?.departures ?? EMPTY_DEPARTURES,
     counts,
     provider: query.data?.snap.provider ?? null,
     lastUpdated: query.data?.snap.fetchedAt ?? null,

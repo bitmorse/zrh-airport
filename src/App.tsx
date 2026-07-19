@@ -9,10 +9,9 @@ import { NoiseTable } from "./components/NoiseTable";
 import { PoiManager } from "./components/PoiManager";
 import { SettingsModal } from "./components/SettingsModal";
 import { addNoiseEvent, type NoiseEvent } from "./data/noiseStore";
-import { predictArrivals } from "./domain/predictions";
 import {
   useLandingNoiseTrigger,
-  type LandingMeta,
+  type NoiseMeta,
 } from "./hooks/useLandingNoiseTrigger";
 import { useGeoWatch, type GeoFix } from "./hooks/useGeoWatch";
 import { useLiveTraffic } from "./hooks/useLiveTraffic";
@@ -39,19 +38,17 @@ export default function App() {
   // Landing-noise recording.
   const recorder = useNoiseRecorder();
   const geo = useGeoWatch(recorder.isArmed); // live GPS while the mic is on
-  const arrivals = useMemo(
-    () => predictArrivals(traffic.aircraft),
-    [traffic.aircraft],
-  );
+  const arrivals = traffic.arrivals;
 
   const saveNoise = useCallback(
-    (meta: LandingMeta | null, rec: Recording, loc: GeoFix | null) => {
+    (meta: NoiseMeta | null, rec: Recording, loc: GeoFix | null) => {
       if (!rec.blob) return;
       const ev: NoiseEvent = {
         id: crypto.randomUUID(),
         hex: meta?.hex ?? null,
         callsign: meta?.callsign ?? null,
         runwayEnd: meta?.end ?? null,
+        kind: meta?.kind ?? null,
         lat: loc?.lat ?? null,
         lon: loc?.lon ?? null,
         peakDbfs: rec.peakDbfs,
@@ -68,6 +65,7 @@ export default function App() {
   const { activeCallsign } = useLandingNoiseTrigger({
     armed: recorder.isArmed,
     arrivals,
+    departures: traffic.departures,
     now,
     lastUpdated: traffic.lastUpdated,
     recorder,
@@ -78,8 +76,8 @@ export default function App() {
     (rec: Recording) => {
       // Tag a manual recording with the soonest current arrival, if any.
       const soonest = arrivals[0];
-      const meta: LandingMeta | null = soonest
-        ? { hex: soonest.hex, callsign: soonest.callsign, end: soonest.end }
+      const meta: NoiseMeta | null = soonest
+        ? { hex: soonest.hex, callsign: soonest.callsign, end: soonest.end, kind: "arrival" }
         : null;
       saveNoise(meta, rec, geo.ref.current);
     },
@@ -161,6 +159,7 @@ export default function App() {
           <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
             <ArrivalsBoard
               aircraft={traffic.aircraft}
+              departures={traffic.departures}
               lastUpdated={traffic.lastUpdated}
               now={now}
               stale={stale}

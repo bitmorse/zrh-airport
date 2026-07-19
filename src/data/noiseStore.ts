@@ -9,6 +9,7 @@ export interface NoiseEvent {
   hex: string | null;
   callsign: string | null;
   runwayEnd: string | null;
+  kind: "arrival" | "departure" | null;
   lat: number | null;
   lon: number | null;
   /** Peak / average loudness in dBFS (≤ 0; higher = louder). Uncalibrated. */

@@ -3,7 +3,7 @@ import type { Aircraft } from "../data/adsb";
 import { assignRunway } from "./assignRunway";
 import { RUNWAY_END_BY_ID } from "./runways";
 import { destinationPoint } from "../lib/geo";
-import { departingNow, nextArrivalByStrip, predictArrivals } from "./predictions";
+import { nextArrivalByStrip, predictArrivals } from "./predictions";
 
 interface Opts {
   gs?: number | null;
@@ -85,36 +85,5 @@ describe("nextArrivalByStrip", () => {
     ]);
     expect(byStrip["10/28"].hex).toBe("sooner");
     expect(byStrip["10/28"].end).toBe("10");
-  });
-});
-
-describe("departingNow", () => {
-  function departure(endId: string, distPastFarEndM: number, opts: Opts = {}) {
-    const { vr = 1800, hex = "dep1", onGround = false } = opts;
-    const end = RUNWAY_END_BY_ID[endId];
-    const pos = destinationPoint(end.farEnd, end.bearingDeg, distPastFarEndM);
-    const ac: Aircraft = {
-      hex,
-      flight: "DLH9",
-      lat: pos.lat,
-      lon: pos.lon,
-      altFt: 2200,
-      onGround,
-      gs: 180,
-      track: end.bearingDeg,
-      verticalRateFpm: vr,
-      seenPos: 1,
-    };
-    return { ac, assignment: assignRunway(ac) };
-  }
-
-  it("lists a climbing aircraft off the runway, not arrivals", () => {
-    const deps = departingNow([departure("16", 2000), onApproach("28", 3000)]);
-    expect(deps).toHaveLength(1);
-    expect(deps[0].hex).toBe("dep1");
-  });
-
-  it("does not list a non-climbing aircraft past the threshold", () => {
-    expect(departingNow([departure("16", 2000, { vr: 0 })])).toHaveLength(0);
   });
 });

@@ -30,6 +30,7 @@ function csvCell(v: string | number | null): string {
 function exportCsv(events: NoiseEvent[]) {
   const header = [
     "time",
+    "kind",
     "callsign",
     "hex",
     "runway",
@@ -42,6 +43,7 @@ function exportCsv(events: NoiseEvent[]) {
   ];
   const rows = events.map((e) => [
     new Date(e.startedAt).toISOString(),
+    e.kind ?? "",
     e.callsign ?? "",
     e.hex ?? "",
     e.runwayEnd ?? "",
@@ -181,6 +183,7 @@ export function NoiseTable() {
               <tr key={e.id} className="border-t border-slate-800">
                 <td className="py-1.5 pr-2 tabular-nums">{hhmm(e.startedAt)}</td>
                 <td className="py-1.5 pr-2 font-mono">
+                  {e.kind === "departure" ? "🛫" : e.kind === "arrival" ? "🛬" : ""}{" "}
                   {e.callsign ?? e.hex?.toUpperCase() ?? "—"}
                   {e.runwayEnd && (
                     <span className="ml-1 text-sky-300">{e.runwayEnd}</span>

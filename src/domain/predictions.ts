@@ -6,10 +6,9 @@ const M_TO_NM = 1 / 1852;
 
 const MIN_GS_KT = 40; // below this an "arrival" is more likely taxi / bad data
 const MAX_ETA_S = 12 * 60; // ignore very distant / implausible estimates
-// Vertical-rate gates (ft/min). A landing aircraft descends or holds level; a
-// climbing one is going around or overflying, not landing. A departure climbs.
+// A landing aircraft descends or holds level; a climbing one is going around or
+// overflying, not landing.
 const ARRIVAL_MAX_CLIMB_FPM = 300;
-const DEPARTURE_MIN_CLIMB_FPM = 300;
 
 export interface Arrival {
   /** Runway end being landed on, e.g. "28". */
@@ -21,13 +20,6 @@ export interface Arrival {
   etaSeconds: number;
   distanceNm: number;
   gsKt: number;
-}
-
-export interface Departure {
-  end: string;
-  strip: string;
-  hex: string;
-  callsign: string;
 }
 
 function label(w: AircraftWithAssignment): string {
@@ -94,38 +86,4 @@ export function nextArrivalByStrip(
     if (!byStrip[arr.strip]) byStrip[arr.strip] = arr;
   }
   return byStrip;
-}
-
-/**
- * Is this aircraft climbing out off a runway? Airborne, past the threshold (not on
- * the approach side), and climbing. We require a confirmed climb rather than
- * relying on position alone, so a just-landed aircraft rolling out isn't
- * mislabelled as departing. Timing can't be predicted ahead — this is "now".
- */
-function isDeparting(w: AircraftWithAssignment): boolean {
-  const { ac, assignment } = w;
-  if (!assignment || ac.onGround) return false;
-  if (assignment.phase === "approach") return false; // approach side ⇒ not departing
-  // Require a confirmed climb: without it we can't distinguish a departure from a
-  // just-landed aircraft rolling out past the far threshold, so a missing vertical
-  // rate excludes it (conservative — no false departures).
-  return (
-    ac.verticalRateFpm !== null && ac.verticalRateFpm >= DEPARTURE_MIN_CLIMB_FPM
-  );
-}
-
-/** Aircraft currently climbing out off a runway (live, no countdown). */
-export function departingNow(items: AircraftWithAssignment[]): Departure[] {
-  const out: Departure[] = [];
-  for (const w of items) {
-    if (!isDeparting(w)) continue;
-    const a = w.assignment!;
-    out.push({
-      end: a.end,
-      strip: RUNWAY_END_BY_ID[a.end]?.strip ?? a.end,
-      hex: w.ac.hex,
-      callsign: label(w),
-    });
-  }
-  return out;
 }

@@ -1,12 +1,16 @@
 import { STRIPS } from "../domain/runways";
-import {
-  departingNow,
-  nextArrivalByStrip,
-  type Arrival,
-} from "../domain/predictions";
+import type { DepartureEvent, DeparturePhase } from "../domain/departures";
+import { nextArrivalByStrip, type Arrival } from "../domain/predictions";
 import { useFlightRoute } from "../hooks/useFlightRoute";
 import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
 import { formatEta, routeText } from "../lib/format";
+
+const DEP_STYLE: Record<DeparturePhase, { label: string; cls: string }> = {
+  holding: { label: "holding", cls: "bg-slate-700/40 text-slate-300" },
+  roll: { label: "🛫 rolling", cls: "bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-500/40" },
+  climb: { label: "↑ climb", cls: "bg-amber-500/15 text-amber-300" },
+};
+const DEP_ORDER: Record<DeparturePhase, number> = { roll: 0, holding: 1, climb: 2 };
 
 /**
  * Per-runway next-landing board with live countdowns and looked-up airline/route,
@@ -15,6 +19,7 @@ import { formatEta, routeText } from "../lib/format";
  */
 export function ArrivalsBoard({
   aircraft,
+  departures,
   lastUpdated,
   now,
   stale,
@@ -22,6 +27,7 @@ export function ArrivalsBoard({
   onSelect,
 }: {
   aircraft: AircraftWithAssignment[];
+  departures: DepartureEvent[];
   lastUpdated: number | null;
   now: number;
   stale?: boolean;
@@ -29,7 +35,9 @@ export function ArrivalsBoard({
   onSelect?: (hex: string) => void;
 }) {
   const byStrip = nextArrivalByStrip(aircraft);
-  const departures = departingNow(aircraft);
+  const deps = [...departures].sort(
+    (a, b) => DEP_ORDER[a.phase] - DEP_ORDER[b.phase],
+  );
   const ageSec = lastUpdated != null ? (now - lastUpdated) / 1000 : 0;
 
   return (
@@ -55,19 +63,28 @@ export function ArrivalsBoard({
 
       <div className="border-t border-slate-800 pt-2">
         <div className="text-[11px] font-medium text-slate-400">Departing now</div>
-        {departures.length === 0 ? (
+        {deps.length === 0 ? (
           <div className="text-xs text-slate-600">none detected</div>
         ) : (
           <div className="mt-1 flex flex-wrap gap-1">
-            {departures.map((d) => (
-              <span
-                key={d.hex}
-                className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[11px] text-amber-300"
-                title={`departing runway ${d.end}`}
-              >
-                {d.callsign} · {d.end}↑
-              </span>
-            ))}
+            {deps.map((d) => {
+              const s = DEP_STYLE[d.phase];
+              const chip = (
+                <span
+                  className={`rounded px-1.5 py-0.5 text-[11px] ${s.cls}`}
+                  title={`runway ${d.end} — ${s.label}`}
+                >
+                  {d.callsign} · {d.end} {s.label}
+                </span>
+              );
+              return onSelect ? (
+                <button key={d.hex} type="button" onClick={() => onSelect(d.hex)}>
+                  {chip}
+                </button>
+              ) : (
+                <span key={d.hex}>{chip}</span>
+              );
+            })}
           </div>
         )}
       </div>
