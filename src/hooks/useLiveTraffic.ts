@@ -27,6 +27,7 @@ export interface LiveTraffic {
   isError: boolean;
   error: Error | null;
   isFetching: boolean;
+  refetch: () => void;
 }
 
 export function useLiveTraffic(settings: Settings): LiveTraffic {
@@ -79,5 +80,8 @@ export function useLiveTraffic(settings: Settings): LiveTraffic {
     isError: query.isError,
     error: (query.error as Error) ?? null,
     isFetching: query.isFetching,
+    refetch: () => {
+      void query.refetch();
+    },
   };
 }

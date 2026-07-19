@@ -3,9 +3,19 @@ import { AirportSvg } from "./components/AirportSvg";
 import { ArrivalsBoard } from "./components/ArrivalsBoard";
 import { FlightDetails } from "./components/FlightDetails";
 import { Legend } from "./components/Legend";
+import { NoiseRecorder } from "./components/NoiseRecorder";
+import { NoiseTable } from "./components/NoiseTable";
 import { PoiManager } from "./components/PoiManager";
 import { SettingsModal } from "./components/SettingsModal";
+import { addNoiseEvent, type NoiseEvent } from "./data/noiseStore";
+import { predictArrivals } from "./domain/predictions";
+import {
+  useLandingNoiseTrigger,
+  type LandingMeta,
+  type RecordLocation,
+} from "./hooks/useLandingNoiseTrigger";
 import { useLiveTraffic } from "./hooks/useLiveTraffic";
+import { useNoiseRecorder, type Recording } from "./hooks/useNoiseRecorder";
 import { useNow } from "./hooks/useNow";
 import { useSettings } from "./hooks/useSettings";
 
@@ -23,6 +33,55 @@ export default function App() {
   const selectedAircraft = useMemo(
     () => traffic.aircraft.find((a) => a.ac.hex === selectedHex) ?? null,
     [traffic.aircraft, selectedHex],
+  );
+
+  // Landing-noise recording.
+  const recorder = useNoiseRecorder();
+  const arrivals = useMemo(
+    () => predictArrivals(traffic.aircraft),
+    [traffic.aircraft],
+  );
+
+  const saveNoise = useCallback(
+    (meta: LandingMeta | null, rec: Recording, loc: RecordLocation) => {
+      if (!rec.blob) return;
+      const ev: NoiseEvent = {
+        id: crypto.randomUUID(),
+        hex: meta?.hex ?? null,
+        callsign: meta?.callsign ?? null,
+        runwayEnd: meta?.end ?? null,
+        lat: loc.lat,
+        lon: loc.lon,
+        peakDbfs: rec.peakDbfs,
+        avgDbfs: rec.avgDbfs,
+        startedAt: Date.now() - rec.durationMs,
+        durationMs: rec.durationMs,
+        hasAudio: true,
+      };
+      void addNoiseEvent(ev, rec.blob);
+    },
+    [],
+  );
+
+  const { activeCallsign } = useLandingNoiseTrigger({
+    armed: recorder.isArmed,
+    arrivals,
+    now,
+    lastUpdated: traffic.lastUpdated,
+    recorder,
+    onComplete: (meta, rec, loc) => saveNoise(meta, rec, loc),
+  });
+
+  const onManualStop = useCallback(
+    (rec: Recording) => {
+      // Tag a manual recording with the soonest current arrival, if any.
+      const soonest = arrivals[0];
+      const meta: LandingMeta | null = soonest
+        ? { hex: soonest.hex, callsign: soonest.callsign, end: soonest.end }
+        : null;
+      saveNoise(meta, rec, { lat: null, lon: null });
+    },
+    [arrivals, saveNoise],
   );
 
   const ageSec =
@@ -80,6 +139,7 @@ export default function App() {
               activeCount={activeCount}
               total={traffic.aircraft.length}
               isFetching={traffic.isFetching}
+              onRefresh={traffic.refetch}
             />
           </div>
 
@@ -92,6 +152,18 @@ export default function App() {
               selectedHex={selectedHex}
               onSelect={handleSelect}
             />
+          </div>
+
+          <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+            <NoiseRecorder
+              recorder={recorder}
+              activeCallsign={activeCallsign}
+              onManualStop={onManualStop}
+            />
+          </div>
+
+          <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+            <NoiseTable />
           </div>
 
           <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
@@ -131,24 +203,39 @@ function StatusBar({
   activeCount,
   total,
   isFetching,
+  onRefresh,
 }: {
   ageSec: number | null;
   provider: string | null;
   activeCount: number;
   total: number;
   isFetching: boolean;
+  onRefresh: () => void;
 }) {
   const stale = ageSec != null && ageSec > 120;
   return (
     <div className="flex flex-col gap-2 text-sm">
       <Row label="Updated">
-        {ageSec == null ? (
-          <span className="text-slate-400">—</span>
-        ) : (
-          <span className={stale ? "text-amber-400" : "text-slate-200"}>
-            {ageSec}s ago{isFetching ? " · refreshing" : ""}
-          </span>
-        )}
+        <span className="flex items-center gap-2">
+          {ageSec == null ? (
+            <span className="text-slate-400">—</span>
+          ) : (
+            <span className={stale ? "text-amber-400" : "text-slate-200"}>
+              {ageSec}s ago{isFetching ? " · refreshing" : ""}
+            </span>
+          )}
+          <button
+            onClick={onRefresh}
+            disabled={isFetching}
+            aria-label="Refresh now"
+            title="Refresh now"
+            className={`rounded p-1 text-slate-300 hover:bg-slate-800 disabled:opacity-40 ${
+              isFetching ? "animate-spin" : ""
+            }`}
+          >
+            ⟳
+          </button>
+        </span>
       </Row>
       <Row label="Source">
         <span className="text-slate-200">{provider ?? "—"}</span>
