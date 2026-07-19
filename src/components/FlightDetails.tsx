@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { type Airport } from "../data/flightInfo";
-import { altAboveFieldFt } from "../domain/assignRunway";
 import { useAirport } from "../hooks/useAirport";
 import { useFlightRoute } from "../hooks/useFlightRoute";
 import { useGpws } from "../hooks/useGpws";
 import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
 import { useSettings } from "../hooks/useSettings";
 import { formatAltitude, formatSpeed } from "../lib/format";
+import { elapsedSec, reckonAltFt } from "../lib/reckon";
 
 const PHASE_LABEL: Record<string, string> = {
   approach: "on approach",
@@ -21,9 +21,13 @@ const PHASE_LABEL: Record<string, string> = {
  */
 export function FlightDetails({
   item,
+  now,
+  lastUpdated,
   onClear,
 }: {
   item: AircraftWithAssignment | null;
+  now: number;
+  lastUpdated: number | null;
   onClear: () => void;
 }) {
   const callsign = item?.ac.flight ?? null;
@@ -50,6 +54,15 @@ export function FlightDetails({
   const { ac, assignment } = item;
   const title = ac.flight ?? ac.hex.toUpperCase();
   const r = route.data;
+  // Dead-reckon the altitude from vertical rate so it ticks live between polls.
+  const aglFt =
+    ac.onGround || ac.altFt == null
+      ? 0
+      : Math.max(
+          0,
+          reckonAltFt(ac.altFt, ac.verticalRateFpm, elapsedSec(lastUpdated, now)) -
+            fieldElevationFt,
+        );
 
   return (
     <div className="text-sm">
@@ -63,7 +76,7 @@ export function FlightDetails({
               ? `${PHASE_LABEL[assignment.phase]} · RWY ${assignment.end}`
               : "in range"}
             {" · "}
-            {formatAltitude(altAboveFieldFt(ac, fieldElevationFt), units)} ·{" "}
+            {formatAltitude(aglFt, units)} ·{" "}
             {ac.gs != null ? formatSpeed(ac.gs, units) : "—"}
           </p>
           {(ac.type || ac.typeDesc || ac.registration) && (

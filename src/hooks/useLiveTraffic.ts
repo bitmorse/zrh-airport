@@ -19,9 +19,11 @@ import {
 } from "../domain/observations";
 import {
   predictArrivals,
-  trackDecisionHeight,
+  recentGate,
+  trackApproachGates,
   trackLandings,
   type Arrival,
+  type GateCrossings,
 } from "../domain/predictions";
 import type { Settings } from "./useSettings";
 
@@ -57,7 +59,7 @@ export function useLiveTraffic(settings: Settings, airport: Airport): LiveTraffi
   const prevGs = useRef(new Map<string, number>());
   const holdingSince = useRef(new Map<string, number>());
   const depMemory = useRef(new Map<string, DepartureMemory>());
-  const dhCrossings = useRef(new Map<string, number>());
+  const gateCrossings = useRef<GateCrossings>(new Map());
   const landingMemory: { current: Parameters<typeof trackLandings>[2] } = useRef(new Map());
 
   // Seed counts from any persisted window on mount so the map isn't blank after
@@ -90,16 +92,17 @@ export function useLiveTraffic(settings: Settings, airport: Airport): LiveTraffi
       const { counts: freshCounts } = await recordSnapshot(assignments, snap.fetchedAt);
 
       const freshArrivals = predictArrivals(withAssignment);
-      // Stamp the moment each inbound descends through decision height (~200 ft AGL).
-      trackDecisionHeight(
+      // Stamp when each inbound crosses the approach gates (stabilise, decision height).
+      trackApproachGates(
         withAssignment,
-        dhCrossings.current,
+        gateCrossings.current,
         airport.config.fieldElevationFt,
+        airport.config.geoidFt ?? 0,
         snap.fetchedAt,
       );
       for (const a of freshArrivals) {
-        const t = dhCrossings.current.get(a.hex);
-        if (t != null) a.dhAtMs = t;
+        // Carry the latest recent gate; the UI applies the short flash window vs. `now`.
+        a.flash = recentGate(gateCrossings.current, a.hex, snap.fetchedAt, 30000);
       }
       // Keep a just-landed aircraft labelled "landing" through its rollout.
       const arrivals = trackLandings(

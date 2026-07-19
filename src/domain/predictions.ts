@@ -1,4 +1,5 @@
 import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
+import { heightAglFt } from "./gpws";
 
 const KT_TO_MS = 0.514444;
 const M_TO_NM = 1 / 1852;
@@ -19,38 +20,81 @@ export interface Arrival {
   etaSeconds: number;
   distanceNm: number;
   gsKt: number;
-  /** Epoch ms this aircraft descended through decision height, if it has. */
-  dhAtMs?: number;
+  /** The approach gate this aircraft most recently crossed (for a brief flash). */
+  flash?: { label: string; atMs: number };
 }
 
 /** CAT I ILS decision height — ~200 ft above the touchdown zone. */
 export const DECISION_HEIGHT_FT = 200;
 
+export interface ApproachGate {
+  ft: number;
+  label: string;
+}
+
 /**
- * Record the moment a landing aircraft first descends through decision height
- * (~200 ft AGL), so the UI can briefly flash it. Estimated from barometric
- * altitude above field elevation, so it's approximate (the real DH/DA depends on
- * the approach, and pressure vs. standard offsets alt). Mutates `crossings`
+ * Approach gates a landing aircraft passes, high → low: the stabilised-approach gate
+ * (1000 ft AGL — must be on speed/path/configured or go around) and decision height
+ * (~200 ft — land or go around). Heights are AGL, estimated from GNSS altitude.
+ */
+export const APPROACH_GATES: ApproachGate[] = [
+  { ft: 1000, label: "stabilise" },
+  { ft: DECISION_HEIGHT_FT, label: "decision height" },
+];
+
+/** hex → (gate height → epoch ms first crossed). */
+export type GateCrossings = Map<string, Map<number, number>>;
+
+/**
+ * Record when a landing aircraft first descends through each approach gate, so the
+ * UI can briefly flash it. AGL from GNSS altitude (approximate). Mutates `crossings`
  * (persistent across polls); prunes aircraft once they leave the feed.
  */
-export function trackDecisionHeight(
+export function trackApproachGates(
   items: AircraftWithAssignment[],
-  crossings: Map<string, number>,
+  crossings: GateCrossings,
   fieldElevationFt: number,
+  geoidFt: number,
   nowMs: number,
-  dhFt = DECISION_HEIGHT_FT,
+  gates: ApproachGate[] = APPROACH_GATES,
 ): void {
   const present = new Set<string>();
   for (const w of items) {
     present.add(w.ac.hex);
     if (!w.assignment || w.assignment.phase !== "approach") continue;
-    if (w.ac.onGround || w.ac.altFt == null) continue;
-    const aglFt = w.ac.altFt - fieldElevationFt;
-    if (aglFt > 0 && aglFt <= dhFt && !crossings.has(w.ac.hex)) {
-      crossings.set(w.ac.hex, nowMs);
+    if (w.ac.onGround) continue;
+    const aglFt = heightAglFt(w.ac, fieldElevationFt, geoidFt);
+    if (aglFt <= 0) continue;
+    let byGate = crossings.get(w.ac.hex);
+    for (const g of gates) {
+      if (aglFt <= g.ft) {
+        if (!byGate) crossings.set(w.ac.hex, (byGate = new Map()));
+        if (!byGate.has(g.ft)) byGate.set(g.ft, nowMs);
+      }
     }
   }
   for (const hex of [...crossings.keys()]) if (!present.has(hex)) crossings.delete(hex);
+}
+
+/** The most recently crossed gate for `hex`, if within `windowMs`. */
+export function recentGate(
+  crossings: GateCrossings,
+  hex: string,
+  nowMs: number,
+  windowMs: number,
+  gates: ApproachGate[] = APPROACH_GATES,
+): { label: string; atMs: number } | undefined {
+  const byGate = crossings.get(hex);
+  if (!byGate) return undefined;
+  let best: { label: string; atMs: number } | undefined;
+  // gates are high → low, so `>=` makes the lower (more advanced) gate win ties.
+  for (const g of gates) {
+    const t = byGate.get(g.ft);
+    if (t != null && nowMs - t <= windowMs && (!best || t >= best.atMs)) {
+      best = { label: g.label, atMs: t };
+    }
+  }
+  return best;
 }
 
 function label(w: AircraftWithAssignment): string {

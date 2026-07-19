@@ -53,10 +53,10 @@ describe("TrafficBar", () => {
     expect(onSelect).toHaveBeenCalledWith("d1");
   });
 
-  it("flashes 'decision height' while the crossing is recent, then stops", () => {
+  it("flashes an approach gate while the crossing is recent, then stops", () => {
     const { rerender } = render(
       <TrafficBar
-        arrivals={[{ ...arrival, dhAtMs: NOW - 2000 }]}
+        arrivals={[{ ...arrival, flash: { label: "decision height", atMs: NOW - 2000 } }]}
         departures={[]}
         now={NOW}
         lastUpdated={NOW}
@@ -66,7 +66,7 @@ describe("TrafficBar", () => {
 
     rerender(
       <TrafficBar
-        arrivals={[{ ...arrival, dhAtMs: NOW - 10_000 }]}
+        arrivals={[{ ...arrival, flash: { label: "decision height", atMs: NOW - 10_000 } }]}
         departures={[]}
         now={NOW}
         lastUpdated={NOW}

@@ -21,23 +21,28 @@ export function heightAglFt(
 
 export interface Callout {
   ft: number;
-  say: string;
+  url: string;
 }
+
+// Real GPWS callout recordings (the GeoFS GPWS set). Played cross-origin via an
+// <audio> element (no CORS needed for playback); this is the one external fetch in
+// the app, only when "play GPWS" is on.
+const SND = "https://tylerbmusic.github.io/GPWS-files_geofs/";
 
 /** Standard radio-altimeter auto-callouts, high → low. */
 export const CALLOUTS: Callout[] = [
-  { ft: 2500, say: "twenty five hundred" },
-  { ft: 1000, say: "one thousand" },
-  { ft: 500, say: "five hundred" },
-  { ft: 400, say: "four hundred" },
-  { ft: 300, say: "three hundred" },
-  { ft: 200, say: "two hundred" },
-  { ft: 100, say: "one hundred" },
-  { ft: 50, say: "fifty" },
-  { ft: 40, say: "forty" },
-  { ft: 30, say: "thirty" },
-  { ft: 20, say: "twenty" },
-  { ft: 10, say: "ten" },
+  { ft: 2500, url: `${SND}2500.wav` },
+  { ft: 1000, url: `${SND}1000.wav` },
+  { ft: 500, url: `${SND}500.wav` },
+  { ft: 400, url: `${SND}400.wav` },
+  { ft: 300, url: `${SND}300.wav` },
+  { ft: 200, url: `${SND}200.wav` },
+  { ft: 100, url: `${SND}100.wav` },
+  { ft: 50, url: `${SND}50.wav` },
+  { ft: 40, url: `${SND}40.wav` },
+  { ft: 30, url: `${SND}30.wav` },
+  { ft: 20, url: `${SND}20.wav` },
+  { ft: 10, url: `${SND}10.wav` },
 ];
 
 /**

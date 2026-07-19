@@ -3,10 +3,11 @@ import type { Arrival } from "../domain/predictions";
 import { useFlightRoute } from "../hooks/useFlightRoute";
 import { useSettings } from "../hooks/useSettings";
 import { formatDistance, formatDuration, formatEta, routeText } from "../lib/format";
+import { elapsedSec, reckonDistanceNm } from "../lib/reckon";
 
 const DEP_ORDER: Record<DeparturePhase, number> = { roll: 0, holding: 1, climb: 2 };
 const MAX_DEP_ROWS = 3;
-const DH_SHOW_MS = 6000; // flash "decision height" for ~6 s after the crossing
+const FLASH_SHOW_MS = 6000; // flash an approach gate for ~6 s after the crossing
 
 /** One traffic row — identical layout for arrivals and departures. */
 function TrafficRow({
@@ -105,10 +106,14 @@ export function TrafficBar({
   const [{ units }] = useSettings();
   const route = useFlightRoute(soonest?.callsign ?? null);
   const routeLabel = routeText(route.data);
-  const ageSec = lastUpdated != null ? (now - lastUpdated) / 1000 : 0;
+  const ageSec = elapsedSec(lastUpdated, now);
   const remaining = soonest ? Math.max(0, soonest.etaSeconds - ageSec) : null;
   const soon = remaining != null && remaining <= 60 && !stale;
-  const dhActive = soonest?.dhAtMs != null && now - soonest.dhAtMs <= DH_SHOW_MS;
+  const flash =
+    soonest?.flash != null && now - soonest.flash.atMs <= FLASH_SHOW_MS
+      ? soonest.flash.label
+      : null;
+  const distNm = soonest ? reckonDistanceNm(soonest.distanceNm, soonest.gsKt, ageSec) : 0;
 
   const deps = [...departures].sort((a, b) => DEP_ORDER[a.phase] - DEP_ORDER[b.phase]);
   const shown = deps.slice(0, MAX_DEP_ROWS);
@@ -122,20 +127,20 @@ export function TrafficBar({
           end={soonest.end}
           callsign={soonest.callsign}
           secondary={
-            dhActive ? (
+            flash ? (
               <span
                 className="animate-pulse font-semibold text-amber-300"
-                title="≈200 ft AGL (CAT I decision height) — estimated from barometric altitude"
+                title="Approach gate (AGL from GNSS altitude — an estimate)"
               >
-                ◈ decision height
+                ◈ {flash}
               </span>
             ) : (
-              `${formatDistance(soonest.distanceNm, units)}${routeLabel ? ` · ${routeLabel}` : ""}`
+              `${formatDistance(distNm, units)}${routeLabel ? ` · ${routeLabel}` : ""}`
             )
           }
           time={stale ? "—" : formatEta(remaining!)}
           timeClass={
-            dhActive
+            flash
               ? "text-amber-300"
               : stale
                 ? "text-slate-500"
@@ -143,7 +148,7 @@ export function TrafficBar({
                   ? "text-emerald-300"
                   : "text-slate-100"
           }
-          highlight={dhActive}
+          highlight={!!flash}
           onClick={() => onSelect?.(soonest.hex)}
         />
       ) : (

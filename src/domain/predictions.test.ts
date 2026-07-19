@@ -8,9 +8,11 @@ import { destinationPoint } from "../lib/geo";
 import {
   nextArrivalByStrip,
   predictArrivals,
-  trackDecisionHeight,
+  recentGate,
+  trackApproachGates,
   trackLandings,
   type Arrival,
+  type GateCrossings,
 } from "./predictions";
 
 const AP = buildAirport(ZRH);
@@ -128,27 +130,31 @@ function inbound(
   };
 }
 
-describe("trackDecisionHeight", () => {
-  it("stamps the crossing through decision height exactly once", () => {
-    const cr = new Map<string, number>();
-    trackDecisionHeight([inbound("a", 300)], cr, 0, 5000); // above DH — nothing
-    expect(cr.has("a")).toBe(false);
-    trackDecisionHeight([inbound("a", 150)], cr, 0, 9000); // descends through ≤200
-    expect(cr.get("a")).toBe(9000);
-    trackDecisionHeight([inbound("a", 80)], cr, 0, 12000); // lower still — unchanged
-    expect(cr.get("a")).toBe(9000);
+describe("trackApproachGates", () => {
+  it("stamps each approach gate as the aircraft descends through it", () => {
+    const cr: GateCrossings = new Map();
+    trackApproachGates([inbound("a", 1500)], cr, 0, 0, 1000); // above all gates
+    expect(cr.get("a")).toBeUndefined();
+    trackApproachGates([inbound("a", 800)], cr, 0, 0, 2000); // through 1000 ft
+    expect(recentGate(cr, "a", 2000, 6000)?.label).toBe("stabilise");
+    trackApproachGates([inbound("a", 150)], cr, 0, 0, 9000); // through 200 ft
+    expect(recentGate(cr, "a", 9000, 6000)?.label).toBe("decision height");
   });
 
-  it("ignores a departure climbing through the same altitude", () => {
-    const cr = new Map<string, number>();
-    trackDecisionHeight([inbound("b", 150, "departure")], cr, 0, 1000);
+  it("expires a gate flash after the window", () => {
+    const cr: GateCrossings = new Map();
+    trackApproachGates([inbound("a", 150)], cr, 0, 0, 1000);
+    expect(recentGate(cr, "a", 1000, 6000)?.label).toBe("decision height");
+    expect(recentGate(cr, "a", 20000, 6000)).toBeUndefined();
+  });
+
+  it("ignores a departure climbing through the same altitude, prunes on exit", () => {
+    const cr: GateCrossings = new Map();
+    trackApproachGates([inbound("b", 150, "departure")], cr, 0, 0, 1000);
     expect(cr.has("b")).toBe(false);
-  });
-
-  it("prunes an aircraft once it leaves the feed", () => {
-    const cr = new Map<string, number>([["a", 9000]]);
-    trackDecisionHeight([], cr, 0, 20000);
-    expect(cr.has("a")).toBe(false);
+    cr.set("gone", new Map([[200, 1000]]));
+    trackApproachGates([], cr, 0, 0, 5000);
+    expect(cr.has("gone")).toBe(false);
   });
 });
 

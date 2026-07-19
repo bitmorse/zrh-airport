@@ -3,6 +3,7 @@ import type { Arrival } from "../domain/predictions";
 import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
 import { useSettings } from "../hooks/useSettings";
 import { formatDistance, formatDuration, formatEta } from "../lib/format";
+import { elapsedSec, reckonDistanceNm } from "../lib/reckon";
 
 const DEP_ORDER: Record<DeparturePhase, number> = { roll: 0, holding: 1, climb: 2 };
 
@@ -69,7 +70,7 @@ export function ArrivalsBoard({
 }) {
   const [{ units }] = useSettings();
   const typeByHex = new Map(aircraft.map((w) => [w.ac.hex, w.ac.type]));
-  const ageSec = lastUpdated != null ? (now - lastUpdated) / 1000 : 0;
+  const ageSec = elapsedSec(lastUpdated, now);
 
   const arrByEnd = groupSorted(arrivals, (a) => a.end, (x, y) => x.etaSeconds - y.etaSeconds);
   const depByEnd = groupSorted(
@@ -89,7 +90,10 @@ export function ArrivalsBoard({
       dir: "↓",
       callsign: a.callsign,
       type: typeByHex.get(a.hex) ?? null,
-      mid: a.distanceNm > 0 ? formatDistance(a.distanceNm, units) : "",
+      mid:
+        a.distanceNm > 0
+          ? formatDistance(reckonDistanceNm(a.distanceNm, a.gsKt, ageSec), units)
+          : "",
       extra: list.length - 1,
       right: {
         text: stale ? "—" : formatEta(remaining),
