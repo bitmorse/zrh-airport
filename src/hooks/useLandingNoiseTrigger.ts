@@ -12,16 +12,12 @@ export interface LandingMeta {
   callsign: string;
   end: string;
 }
-export interface RecordLocation {
-  lat: number | null;
-  lon: number | null;
-}
 
 /**
  * Auto-records the microphone around each predicted landing: starts ~20 s before
  * the estimated touchdown and stops after the roll-out. One clip at a time. On
- * completion it hands back the recording plus the aircraft + GPS location for the
- * caller to persist.
+ * completion it hands back the recording plus the aircraft; the caller tags it
+ * with the user's current (continuously tracked) GPS location.
  */
 export function useLandingNoiseTrigger(opts: {
   armed: boolean;
@@ -29,7 +25,7 @@ export function useLandingNoiseTrigger(opts: {
   now: number;
   lastUpdated: number | null;
   recorder: NoiseRecorder;
-  onComplete: (meta: LandingMeta, rec: Recording, loc: RecordLocation) => void;
+  onComplete: (meta: LandingMeta, rec: Recording) => void;
 }): { activeCallsign: string | null } {
   const { armed, now, lastUpdated, recorder } = opts;
   const [activeCallsign, setActiveCallsign] = useState<string | null>(null);
@@ -38,7 +34,6 @@ export function useLandingNoiseTrigger(opts: {
   const recentlyRecorded = useRef(new Map<string, number>());
   const stopTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const meta = useRef<LandingMeta | null>(null);
-  const loc = useRef<RecordLocation>({ lat: null, lon: null });
 
   const recorderRef = useRef(recorder);
   recorderRef.current = recorder;
@@ -58,7 +53,7 @@ export function useLandingNoiseTrigger(opts: {
     setActiveCallsign(null);
     const rec = await recorderRef.current.stopRecording();
     recentlyRecorded.current.set(m.hex, Date.now());
-    onCompleteRef.current(m, rec, loc.current);
+    onCompleteRef.current(m, rec);
     meta.current = null;
   });
 
@@ -75,16 +70,6 @@ export function useLandingNoiseTrigger(opts: {
 
       recordingHex.current = a.hex;
       meta.current = { hex: a.hex, callsign: a.callsign, end: a.end };
-      loc.current = { lat: null, lon: null };
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          (p) => {
-            loc.current = { lat: p.coords.latitude, lon: p.coords.longitude };
-          },
-          () => {},
-          { enableHighAccuracy: true, timeout: 5000, maximumAge: 30000 },
-        );
-      }
       recorderRef.current.startRecording();
       setActiveCallsign(a.callsign);
       const durMs = Math.min(MAX_REC_MS, Math.max(0, remaining) * 1000 + POST_ROLL_MS);

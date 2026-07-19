@@ -13,8 +13,8 @@ import { predictArrivals } from "./domain/predictions";
 import {
   useLandingNoiseTrigger,
   type LandingMeta,
-  type RecordLocation,
 } from "./hooks/useLandingNoiseTrigger";
+import { useGeoWatch, type GeoFix } from "./hooks/useGeoWatch";
 import { useLiveTraffic } from "./hooks/useLiveTraffic";
 import { useNoiseRecorder, type Recording } from "./hooks/useNoiseRecorder";
 import { useNow } from "./hooks/useNow";
@@ -38,21 +38,22 @@ export default function App() {
 
   // Landing-noise recording.
   const recorder = useNoiseRecorder();
+  const geo = useGeoWatch(recorder.isArmed); // live GPS while the mic is on
   const arrivals = useMemo(
     () => predictArrivals(traffic.aircraft),
     [traffic.aircraft],
   );
 
   const saveNoise = useCallback(
-    (meta: LandingMeta | null, rec: Recording, loc: RecordLocation) => {
+    (meta: LandingMeta | null, rec: Recording, loc: GeoFix | null) => {
       if (!rec.blob) return;
       const ev: NoiseEvent = {
         id: crypto.randomUUID(),
         hex: meta?.hex ?? null,
         callsign: meta?.callsign ?? null,
         runwayEnd: meta?.end ?? null,
-        lat: loc.lat,
-        lon: loc.lon,
+        lat: loc?.lat ?? null,
+        lon: loc?.lon ?? null,
         peakDbfs: rec.peakDbfs,
         avgDbfs: rec.avgDbfs,
         startedAt: Date.now() - rec.durationMs,
@@ -70,7 +71,7 @@ export default function App() {
     now,
     lastUpdated: traffic.lastUpdated,
     recorder,
-    onComplete: (meta, rec, loc) => saveNoise(meta, rec, loc),
+    onComplete: (meta, rec) => saveNoise(meta, rec, geo.ref.current),
   });
 
   const onManualStop = useCallback(
@@ -80,9 +81,9 @@ export default function App() {
       const meta: LandingMeta | null = soonest
         ? { hex: soonest.hex, callsign: soonest.callsign, end: soonest.end }
         : null;
-      saveNoise(meta, rec, { lat: null, lon: null });
+      saveNoise(meta, rec, geo.ref.current);
     },
-    [arrivals, saveNoise],
+    [arrivals, saveNoise, geo.ref],
   );
 
   const ageSec =
@@ -172,6 +173,7 @@ export default function App() {
             <NoiseRecorder
               recorder={recorder}
               activeCallsign={activeCallsign}
+              position={geo.position}
               onManualStop={onManualStop}
             />
           </div>

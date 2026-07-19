@@ -1,3 +1,4 @@
+import type { GeoFix } from "../hooks/useGeoWatch";
 import type { NoiseRecorder as Recorder } from "../hooks/useNoiseRecorder";
 
 /** dBFS (≤0) → 0..100% meter width (−60 dBFS floor). */
@@ -12,10 +13,12 @@ function meterPct(dbfs: number): number {
 export function NoiseRecorder({
   recorder,
   activeCallsign,
+  position,
   onManualStop,
 }: {
   recorder: Recorder;
   activeCallsign: string | null;
+  position: GeoFix | null;
   onManualStop: (rec: Awaited<ReturnType<Recorder["stopRecording"]>>) => void;
 }) {
   const { isArmed, isRecording, level, error, arm, disarm, startRecording, stopRecording } =
@@ -67,6 +70,16 @@ export function NoiseRecorder({
               className="h-full rounded bg-gradient-to-r from-emerald-500 via-amber-400 to-red-500 transition-[width] duration-75 ease-out"
               style={{ width: `${meterPct(level).toFixed(0)}%` }}
             />
+          </div>
+
+          <div className="text-[11px] text-slate-500">
+            {position
+              ? `📍 ${position.lat.toFixed(5)}, ${position.lon.toFixed(5)}${
+                  position.accuracyM != null
+                    ? ` (±${Math.round(position.accuracyM)} m)`
+                    : ""
+                }`
+              : "📍 acquiring GPS…"}
           </div>
 
           <div className="flex gap-2">
