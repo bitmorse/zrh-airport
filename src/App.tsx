@@ -108,22 +108,43 @@ export default function App() {
 
   return (
     <div className="flex min-h-dvh flex-col bg-slate-950 text-slate-100">
-      <header className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
-        <div>
-          <h1 className="text-lg font-bold tracking-tight">
-            ZRH Runway Traffic
-          </h1>
-          <p className="text-xs text-slate-400">
-            Zürich Airport (LSZH) · last 15 min · inferred from open ADS-B
-          </p>
-        </div>
-        <button
-          onClick={() => setShowSettings(true)}
-          className="rounded-lg border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800"
-          aria-label="Open settings"
+      <header className="flex items-center justify-between gap-3 border-b border-slate-800 px-4 py-2.5">
+        <span
+          className="font-brand text-2xl font-black leading-none tracking-[0.18em] text-slate-100"
+          title="Zürich Airport (LSZH) · live runway traffic from open ADS-B"
         >
-          ⚙︎ Settings
-        </button>
+          ZRH
+        </span>
+        <div className="flex items-center gap-3">
+          <div className="flex flex-col items-end leading-tight">
+            <span className={`text-xs ${stale ? "text-amber-400" : "text-slate-300"}`}>
+              {ageSec == null ? "—" : `${ageSec}s ago`}
+              {traffic.isFetching ? " · refreshing" : ""}
+            </span>
+            <span className="hidden text-[11px] text-slate-500 sm:block">
+              {traffic.provider ?? "—"} · {activeCount}/{traffic.aircraft.length} on runways
+            </span>
+          </div>
+          <button
+            onClick={traffic.refetch}
+            disabled={traffic.isFetching}
+            aria-label="Refresh now"
+            title="Refresh now"
+            className={`rounded-lg border border-slate-700 p-1.5 text-slate-300 hover:bg-slate-800 disabled:opacity-40 ${
+              traffic.isFetching ? "animate-spin" : ""
+            }`}
+          >
+            ⟳
+          </button>
+          <button
+            onClick={() => setShowSettings(true)}
+            className="rounded-lg border border-slate-700 p-1.5 text-slate-200 hover:bg-slate-800"
+            aria-label="Open settings"
+            title="Settings"
+          >
+            ⚙︎
+          </button>
+        </div>
       </header>
 
       {/* Mobile-only quick glance above the map: next landing + departures. */}
@@ -154,17 +175,6 @@ export default function App() {
             <FlightDetails
               item={selectedAircraft}
               onClear={() => setSelectedHex(null)}
-            />
-          </div>
-
-          <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
-            <StatusBar
-              ageSec={ageSec}
-              provider={traffic.provider}
-              activeCount={activeCount}
-              total={traffic.aircraft.length}
-              isFetching={traffic.isFetching}
-              onRefresh={traffic.refetch}
             />
           </div>
 
@@ -220,67 +230,6 @@ export default function App() {
       </main>
 
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
-    </div>
-  );
-}
-
-function StatusBar({
-  ageSec,
-  provider,
-  activeCount,
-  total,
-  isFetching,
-  onRefresh,
-}: {
-  ageSec: number | null;
-  provider: string | null;
-  activeCount: number;
-  total: number;
-  isFetching: boolean;
-  onRefresh: () => void;
-}) {
-  const stale = ageSec != null && ageSec > 120;
-  return (
-    <div className="flex flex-col gap-2 text-sm">
-      <Row label="Updated">
-        <span className="flex items-center gap-2">
-          {ageSec == null ? (
-            <span className="text-slate-400">—</span>
-          ) : (
-            <span className={stale ? "text-amber-400" : "text-slate-200"}>
-              {ageSec}s ago{isFetching ? " · refreshing" : ""}
-            </span>
-          )}
-          <button
-            onClick={onRefresh}
-            disabled={isFetching}
-            aria-label="Refresh now"
-            title="Refresh now"
-            className={`rounded p-1 text-slate-300 hover:bg-slate-800 disabled:opacity-40 ${
-              isFetching ? "animate-spin" : ""
-            }`}
-          >
-            ⟳
-          </button>
-        </span>
-      </Row>
-      <Row label="Source">
-        <span className="text-slate-200">{provider ?? "—"}</span>
-      </Row>
-      <Row label="Near field">
-        <span className="text-slate-200">
-          {activeCount} on runways · {total} tracked
-        </span>
-      </Row>
-    </div>
-  );
-}
-
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className="text-slate-400">{label}</span>
-      {children}
     </div>
   );
 }

@@ -11,3 +11,8 @@ body {
   font-family:
     ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
+
+/* Aerospace-flavoured wordmark (Titillium Web has a technical/aerospace pedigree). */
+.font-brand {
+  font-family: "Titillium Web", ui-sans-serif, system-ui, sans-serif;
+}
