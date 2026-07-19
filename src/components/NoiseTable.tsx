@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { relLoudness } from "../data/noiseStore";
+import { relLoudness, type NoiseEvent } from "../data/noiseStore";
 import { useNoiseEvents } from "../hooks/useNoiseEvents";
-
-import type { NoiseEvent } from "../data/noiseStore";
+import { blobToWav } from "../lib/wav";
 
 function hhmm(ts: number): string {
   const d = new Date(ts);
@@ -117,8 +116,16 @@ export function NoiseTable() {
   async function download(e: NoiseEvent) {
     const blob = await getAudio(e.id);
     if (!blob) return;
+    let out = blob;
+    let ext = audioExt(blob.type);
+    try {
+      out = await blobToWav(blob); // universally playable
+      ext = "wav";
+    } catch {
+      /* fall back to the native recording format */
+    }
     const name = (e.callsign ?? e.hex ?? "clip").replace(/\s+/g, "");
-    downloadBlob(blob, `zrh-${name}-${hhmm(e.startedAt).replace(":", "")}.${audioExt(blob.type)}`);
+    downloadBlob(out, `zrh-${name}-${hhmm(e.startedAt).replace(":", "")}.${ext}`);
   }
 
   return (
@@ -205,7 +212,7 @@ export function NoiseTable() {
       <p className="mt-2 text-[10px] text-slate-600">
         * uncalibrated relative loudness (0–100 from dBFS), not certified SPL. While
         the mic is recording, in-app playback may be quiet or routed to the earpiece
-        (a phone-OS limit) — use ⭳ to download and play a clip at full volume.
+        (a phone-OS limit) — use ⭳ to download a clip as WAV and play it at full volume.
       </p>
     </div>
   );
