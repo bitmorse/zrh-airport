@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { Aircraft } from "../data/adsb";
+import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
 import { assignRunway } from "./assignRunway";
 import { ZRH } from "../data/airports";
 import { buildAirport } from "./airport";
 import { destinationPoint } from "../lib/geo";
-import { nextArrivalByStrip, predictArrivals } from "./predictions";
+import { nextArrivalByStrip, predictArrivals, trackDecisionHeight } from "./predictions";
 
 const AP = buildAirport(ZRH);
 
@@ -91,5 +92,54 @@ describe("nextArrivalByStrip", () => {
     ]);
     expect(byStrip["10/28"].hex).toBe("sooner");
     expect(byStrip["10/28"].end).toBe("10");
+  });
+});
+
+function inbound(
+  hex: string,
+  aglFt: number,
+  phase: "approach" | "departure" = "approach",
+): AircraftWithAssignment {
+  return {
+    ac: {
+      hex,
+      flight: null,
+      lat: 0,
+      lon: 0,
+      altFt: aglFt, // field elevation 0 in these tests, so altFt == AGL
+      onGround: false,
+      gs: 140,
+      track: 280,
+      verticalRateFpm: -700,
+      seenPos: 1,
+      type: null,
+      typeDesc: null,
+      registration: null,
+    },
+    assignment: { end: "28", strip: "10/28", phase, crossTrackM: 0, alongTrackM: -800 },
+  };
+}
+
+describe("trackDecisionHeight", () => {
+  it("stamps the crossing through decision height exactly once", () => {
+    const cr = new Map<string, number>();
+    trackDecisionHeight([inbound("a", 300)], cr, 0, 5000); // above DH — nothing
+    expect(cr.has("a")).toBe(false);
+    trackDecisionHeight([inbound("a", 150)], cr, 0, 9000); // descends through ≤200
+    expect(cr.get("a")).toBe(9000);
+    trackDecisionHeight([inbound("a", 80)], cr, 0, 12000); // lower still — unchanged
+    expect(cr.get("a")).toBe(9000);
+  });
+
+  it("ignores a departure climbing through the same altitude", () => {
+    const cr = new Map<string, number>();
+    trackDecisionHeight([inbound("b", 150, "departure")], cr, 0, 1000);
+    expect(cr.has("b")).toBe(false);
+  });
+
+  it("prunes an aircraft once it leaves the feed", () => {
+    const cr = new Map<string, number>([["a", 9000]]);
+    trackDecisionHeight([], cr, 0, 20000);
+    expect(cr.has("a")).toBe(false);
   });
 });

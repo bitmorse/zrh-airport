@@ -6,6 +6,7 @@ import { formatDistance, formatDuration, formatEta, routeText } from "../lib/for
 
 const DEP_ORDER: Record<DeparturePhase, number> = { roll: 0, holding: 1, climb: 2 };
 const MAX_DEP_ROWS = 3;
+const DH_SHOW_MS = 6000; // flash "decision height" for ~6 s after the crossing
 
 /** One traffic row — identical layout for arrivals and departures. */
 function TrafficRow({
@@ -16,15 +17,17 @@ function TrafficRow({
   time,
   timeClass = "text-slate-100",
   muted,
+  highlight,
   onClick,
 }: {
   icon: string;
   end?: string;
   callsign?: string;
-  secondary?: string | null;
+  secondary?: React.ReactNode;
   time?: string;
   timeClass?: string;
   muted?: string;
+  highlight?: boolean;
   onClick?: () => void;
 }) {
   return (
@@ -32,7 +35,9 @@ function TrafficRow({
       type="button"
       onClick={onClick}
       disabled={!onClick}
-      className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-slate-800/50 disabled:cursor-default disabled:hover:bg-transparent"
+      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-slate-800/50 disabled:cursor-default disabled:hover:bg-transparent ${
+        highlight ? "bg-amber-500/10" : ""
+      }`}
     >
       <span aria-hidden>{icon}</span>
       {muted ? (
@@ -103,6 +108,7 @@ export function TrafficBar({
   const ageSec = lastUpdated != null ? (now - lastUpdated) / 1000 : 0;
   const remaining = soonest ? Math.max(0, soonest.etaSeconds - ageSec) : null;
   const soon = remaining != null && remaining <= 60 && !stale;
+  const dhActive = soonest?.dhAtMs != null && now - soonest.dhAtMs <= DH_SHOW_MS;
 
   const deps = [...departures].sort((a, b) => DEP_ORDER[a.phase] - DEP_ORDER[b.phase]);
   const shown = deps.slice(0, MAX_DEP_ROWS);
@@ -115,11 +121,29 @@ export function TrafficBar({
           icon="🛬"
           end={soonest.end}
           callsign={soonest.callsign}
-          secondary={`${formatDistance(soonest.distanceNm, units)}${
-            routeLabel ? ` · ${routeLabel}` : ""
-          }`}
+          secondary={
+            dhActive ? (
+              <span
+                className="animate-pulse font-semibold text-amber-300"
+                title="≈200 ft AGL (CAT I decision height) — estimated from barometric altitude"
+              >
+                ◈ decision height
+              </span>
+            ) : (
+              `${formatDistance(soonest.distanceNm, units)}${routeLabel ? ` · ${routeLabel}` : ""}`
+            )
+          }
           time={stale ? "—" : formatEta(remaining!)}
-          timeClass={stale ? "text-slate-500" : soon ? "text-emerald-300" : "text-slate-100"}
+          timeClass={
+            dhActive
+              ? "text-amber-300"
+              : stale
+                ? "text-slate-500"
+                : soon
+                  ? "text-emerald-300"
+                  : "text-slate-100"
+          }
+          highlight={dhActive}
           onClick={() => onSelect?.(soonest.hex)}
         />
       ) : (

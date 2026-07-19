@@ -19,6 +19,38 @@ export interface Arrival {
   etaSeconds: number;
   distanceNm: number;
   gsKt: number;
+  /** Epoch ms this aircraft descended through decision height, if it has. */
+  dhAtMs?: number;
+}
+
+/** CAT I ILS decision height — ~200 ft above the touchdown zone. */
+export const DECISION_HEIGHT_FT = 200;
+
+/**
+ * Record the moment a landing aircraft first descends through decision height
+ * (~200 ft AGL), so the UI can briefly flash it. Estimated from barometric
+ * altitude above field elevation, so it's approximate (the real DH/DA depends on
+ * the approach, and pressure vs. standard offsets alt). Mutates `crossings`
+ * (persistent across polls); prunes aircraft once they leave the feed.
+ */
+export function trackDecisionHeight(
+  items: AircraftWithAssignment[],
+  crossings: Map<string, number>,
+  fieldElevationFt: number,
+  nowMs: number,
+  dhFt = DECISION_HEIGHT_FT,
+): void {
+  const present = new Set<string>();
+  for (const w of items) {
+    present.add(w.ac.hex);
+    if (!w.assignment || w.assignment.phase !== "approach") continue;
+    if (w.ac.onGround || w.ac.altFt == null) continue;
+    const aglFt = w.ac.altFt - fieldElevationFt;
+    if (aglFt > 0 && aglFt <= dhFt && !crossings.has(w.ac.hex)) {
+      crossings.set(w.ac.hex, nowMs);
+    }
+  }
+  for (const hex of [...crossings.keys()]) if (!present.has(hex)) crossings.delete(hex);
 }
 
 function label(w: AircraftWithAssignment): string {

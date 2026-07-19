@@ -53,6 +53,28 @@ describe("TrafficBar", () => {
     expect(onSelect).toHaveBeenCalledWith("d1");
   });
 
+  it("flashes 'decision height' while the crossing is recent, then stops", () => {
+    const { rerender } = render(
+      <TrafficBar
+        arrivals={[{ ...arrival, dhAtMs: NOW - 2000 }]}
+        departures={[]}
+        now={NOW}
+        lastUpdated={NOW}
+      />,
+    );
+    expect(screen.getByText(/decision height/)).toBeInTheDocument();
+
+    rerender(
+      <TrafficBar
+        arrivals={[{ ...arrival, dhAtMs: NOW - 10_000 }]}
+        departures={[]}
+        now={NOW}
+        lastUpdated={NOW}
+      />,
+    );
+    expect(screen.queryByText(/decision height/)).toBeNull();
+  });
+
   it("caps the list at 3 departures and shows a '+N more' line", () => {
     render(
       <TrafficBar
