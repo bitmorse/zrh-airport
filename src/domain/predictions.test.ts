@@ -5,7 +5,13 @@ import { assignRunway } from "./assignRunway";
 import { ZRH } from "../data/airports";
 import { buildAirport } from "./airport";
 import { destinationPoint } from "../lib/geo";
-import { nextArrivalByStrip, predictArrivals, trackDecisionHeight } from "./predictions";
+import {
+  nextArrivalByStrip,
+  predictArrivals,
+  trackDecisionHeight,
+  trackLandings,
+  type Arrival,
+} from "./predictions";
 
 const AP = buildAirport(ZRH);
 
@@ -27,6 +33,7 @@ function onApproach(endId: string, finalDistanceM: number, opts: Opts = {}) {
     lat: pos.lat,
     lon: pos.lon,
     altFt: 2500,
+    altGeomFt: null,
     onGround,
     gs,
     track: end.bearingDeg,
@@ -107,6 +114,7 @@ function inbound(
       lat: 0,
       lon: 0,
       altFt: aglFt, // field elevation 0 in these tests, so altFt == AGL
+      altGeomFt: null,
       onGround: false,
       gs: 140,
       track: 280,
@@ -141,5 +149,61 @@ describe("trackDecisionHeight", () => {
     const cr = new Map<string, number>([["a", 9000]]);
     trackDecisionHeight([], cr, 0, 20000);
     expect(cr.has("a")).toBe(false);
+  });
+});
+
+describe("trackLandings", () => {
+  const arr = (hex: string): Arrival => ({
+    end: "28",
+    strip: "10/28",
+    hex,
+    callsign: "SWR1",
+    etaSeconds: 8,
+    distanceNm: 0.3,
+    gsKt: 130,
+  });
+
+  function onRunway(hex: string, gs: number, onGround = true): AircraftWithAssignment {
+    return {
+      ac: {
+        hex,
+        flight: "SWR1",
+        lat: 0,
+        lon: 0,
+        altFt: onGround ? null : 50,
+        altGeomFt: null,
+        onGround,
+        gs,
+        track: 280,
+        verticalRateFpm: onGround ? null : -100,
+        seenPos: 1,
+        type: null,
+        typeDesc: null,
+        registration: null,
+      },
+      assignment: { end: "28", strip: "10/28", phase: "runway", crossTrackM: 0, alongTrackM: 200 },
+    };
+  }
+
+  it("keeps a touched-down aircraft as a landing until it slows below ~100 km/h", () => {
+    const mem = new Map();
+    // On final — a real arrival.
+    expect(trackLandings([arr("a")], [], mem, 1000).map((x) => x.hex)).toEqual(["a"]);
+    // Crossed the threshold: no longer a fresh arrival, but rolling fast → kept as landing.
+    const rollout = trackLandings([], [onRunway("a", 90)], mem, 5000);
+    expect(rollout).toHaveLength(1);
+    expect(rollout[0].etaSeconds).toBe(0); // shows "landing"
+    // Slowed to a taxi → dropped.
+    expect(trackLandings([], [onRunway("a", 30)], mem, 9000)).toHaveLength(0);
+  });
+
+  it("drops a go-around (climbing away) rather than calling it a landing", () => {
+    const mem = new Map();
+    trackLandings([arr("b")], [], mem, 1000);
+    const ga: AircraftWithAssignment = {
+      ac: { ...onRunway("b", 140, false).ac, verticalRateFpm: 1800 },
+      assignment: { end: "28", strip: "10/28", phase: "runway", crossTrackM: 0, alongTrackM: 100 },
+    };
+    expect(trackLandings([], [ga], mem, 5000)).toHaveLength(0);
   });
 });

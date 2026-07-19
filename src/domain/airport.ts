@@ -47,6 +47,12 @@ export interface AirportConfig {
   arp: LatLon;
   /** Field elevation in feet (for altitude-above-field). */
   fieldElevationFt: number;
+  /**
+   * EGM96 geoid undulation at the field, feet — the offset between GNSS/geometric
+   * altitude (above the ellipsoid) and MSL. Used to turn ADS-B `alt_geom` into a
+   * true height AGL for the GPWS sim. Approximate/tunable; defaults to 0.
+   */
+  geoidFt?: number;
   runways: RunwaySpec[];
 }
 

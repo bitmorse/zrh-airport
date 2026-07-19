@@ -118,3 +118,67 @@ export function nextArrivalByStrip(
   }
   return byStrip;
 }
+
+/** Keep the "landing" label until the aircraft has slowed on the runway to this. */
+export const LANDING_ROLLOUT_MIN_KT = 54; // ≈ 100 km/h
+
+interface LandingMemory {
+  arr: Arrival;
+  lastSeen: number;
+}
+
+/**
+ * `predictArrivals` drops an aircraft the instant it crosses the threshold, but it's
+ * still landing — decelerating down the runway. Keep it in the list (as a landing,
+ * `etaSeconds: 0`) through the rollout until it slows below ~100 km/h, then drop it.
+ * A go-around (climbing away) also drops it. Mirrors `trackDepartures`; `memory`
+ * persists across polls.
+ */
+export function trackLandings(
+  freshArrivals: Arrival[],
+  items: AircraftWithAssignment[],
+  memory: Map<string, LandingMemory>,
+  nowMs: number,
+  lingerMs = 20000,
+): Arrival[] {
+  const itemByHex = new Map(items.map((w) => [w.ac.hex, w]));
+  const freshHexes = new Set(freshArrivals.map((a) => a.hex));
+  for (const a of freshArrivals) memory.set(a.hex, { arr: a, lastSeen: nowMs });
+
+  const out = [...freshArrivals];
+  for (const [hex, m] of [...memory]) {
+    if (freshHexes.has(hex)) continue; // already emitted as a fresh (on-approach) arrival
+    const w = itemByHex.get(hex);
+
+    if (w) {
+      const { ac, assignment } = w;
+      const goingAround =
+        !ac.onGround &&
+        ac.verticalRateFpm != null &&
+        ac.verticalRateFpm > ARRIVAL_MAX_CLIMB_FPM;
+      const rollingOut =
+        ac.gs != null &&
+        ac.gs >= LANDING_ROLLOUT_MIN_KT &&
+        (ac.onGround || assignment?.phase === "runway");
+      if (goingAround || !rollingOut) {
+        memory.delete(hex); // slowed to a taxi, or went around — done landing
+        continue;
+      }
+      const landing: Arrival = {
+        ...m.arr,
+        end: assignment?.end ?? m.arr.end,
+        strip: assignment?.strip ?? m.arr.strip,
+        etaSeconds: 0,
+        distanceNm: 0,
+        gsKt: ac.gs ?? m.arr.gsKt,
+      };
+      memory.set(hex, { arr: landing, lastSeen: nowMs });
+      out.push(landing);
+    } else if (nowMs - m.lastSeen <= lingerMs) {
+      out.push({ ...m.arr, etaSeconds: 0, distanceNm: 0 }); // briefly off the feed
+    } else {
+      memory.delete(hex);
+    }
+  }
+  return out.sort((x, y) => x.etaSeconds - y.etaSeconds);
+}

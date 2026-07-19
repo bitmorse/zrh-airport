@@ -76,6 +76,7 @@ describe("buildAirport", () => {
       lat: behind.lat,
       lon: behind.lon,
       altFt: 2000,
+      altGeomFt: null,
       onGround: false,
       gs: 150,
       track: end.bearingDeg,

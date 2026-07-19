@@ -254,6 +254,7 @@ export default function App() {
 
           <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
             <ArrivalsBoard
+              arrivals={arrivals}
               aircraft={traffic.aircraft}
               departures={traffic.departures}
               lastUpdated={traffic.lastUpdated}

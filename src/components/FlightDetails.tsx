@@ -1,7 +1,9 @@
+import { useEffect, useState } from "react";
 import { type Airport } from "../data/flightInfo";
 import { altAboveFieldFt } from "../domain/assignRunway";
 import { useAirport } from "../hooks/useAirport";
 import { useFlightRoute } from "../hooks/useFlightRoute";
+import { useGpws } from "../hooks/useGpws";
 import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
 import { useSettings } from "../hooks/useSettings";
 import { formatAltitude, formatSpeed } from "../lib/format";
@@ -28,6 +30,10 @@ export function FlightDetails({
   const route = useFlightRoute(callsign);
   const [{ units }] = useSettings();
   const { fieldElevationFt } = useAirport().config;
+  const [gpws, setGpws] = useState(false);
+  // Reset the toggle whenever the selection changes.
+  useEffect(() => setGpws(false), [item?.ac.hex]);
+  useGpws(item, gpws);
 
   if (!item) {
     return (
@@ -73,6 +79,19 @@ export function FlightDetails({
               ) : null}
             </p>
           )}
+          <label
+            className="mt-1.5 flex w-fit cursor-pointer items-center gap-1.5 text-[11px] text-slate-400"
+            title="Speak GPWS altitude callouts as it descends (simulation from GNSS altitude)"
+          >
+            <input
+              type="checkbox"
+              checked={gpws}
+              onChange={(e) => setGpws(e.target.checked)}
+              className="accent-sky-500"
+            />
+            play GPWS
+            {gpws && <span className="text-amber-300">◉ live</span>}
+          </label>
         </div>
         <button
           onClick={onClear}

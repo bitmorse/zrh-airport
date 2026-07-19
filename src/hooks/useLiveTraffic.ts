@@ -17,7 +17,12 @@ import {
   pruneObservations,
   recordSnapshot,
 } from "../domain/observations";
-import { predictArrivals, trackDecisionHeight, type Arrival } from "../domain/predictions";
+import {
+  predictArrivals,
+  trackDecisionHeight,
+  trackLandings,
+  type Arrival,
+} from "../domain/predictions";
 import type { Settings } from "./useSettings";
 
 export interface AircraftWithAssignment {
@@ -53,6 +58,7 @@ export function useLiveTraffic(settings: Settings, airport: Airport): LiveTraffi
   const holdingSince = useRef(new Map<string, number>());
   const depMemory = useRef(new Map<string, DepartureMemory>());
   const dhCrossings = useRef(new Map<string, number>());
+  const landingMemory: { current: Parameters<typeof trackLandings>[2] } = useRef(new Map());
 
   // Seed counts from any persisted window on mount so the map isn't blank after
   // a reload within the 15-minute window.
@@ -81,9 +87,9 @@ export function useLiveTraffic(settings: Settings, airport: Airport): LiveTraffi
       const assignments = withAssignment
         .filter((w) => w.assignment)
         .map((w) => ({ hex: w.ac.hex, end: w.assignment!.end }));
-      const { counts: fresh } = await recordSnapshot(assignments, snap.fetchedAt);
+      const { counts: freshCounts } = await recordSnapshot(assignments, snap.fetchedAt);
 
-      const arrivals = predictArrivals(withAssignment);
+      const freshArrivals = predictArrivals(withAssignment);
       // Stamp the moment each inbound descends through decision height (~200 ft AGL).
       trackDecisionHeight(
         withAssignment,
@@ -91,10 +97,17 @@ export function useLiveTraffic(settings: Settings, airport: Airport): LiveTraffi
         airport.config.fieldElevationFt,
         snap.fetchedAt,
       );
-      for (const a of arrivals) {
+      for (const a of freshArrivals) {
         const t = dhCrossings.current.get(a.hex);
         if (t != null) a.dhAtMs = t;
       }
+      // Keep a just-landed aircraft labelled "landing" through its rollout.
+      const arrivals = trackLandings(
+        freshArrivals,
+        withAssignment,
+        landingMemory.current,
+        snap.fetchedAt,
+      );
       // Track each departure as one continuous row (wait → roll → climb, until it
       // climbs past 1000 ft AGL), then stamp/track holding on that smoothed set.
       const tracked = trackDepartures(
@@ -116,7 +129,7 @@ export function useLiveTraffic(settings: Settings, airport: Airport): LiveTraffi
         departures.some((d) => d.phase === "holding" || d.phase === "roll") ||
         arrivals.some((a) => a.etaSeconds < FAST_ARRIVAL_S);
 
-      return { snap, withAssignment, counts: fresh, arrivals, departures, needsFastPoll };
+      return { snap, withAssignment, counts: freshCounts, arrivals, departures, needsFastPoll };
     },
     refetchInterval: (query) => {
       if (query.state.data?.needsFastPoll) return FAST_POLL_MS;

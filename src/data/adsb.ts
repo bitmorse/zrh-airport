@@ -11,6 +11,8 @@ export interface Aircraft {
   lon: number;
   /** Barometric altitude in feet, or null when the aircraft reports "ground". */
   altFt: number | null;
+  /** Geometric (GNSS) altitude above the WGS84 ellipsoid, feet (may be null). */
+  altGeomFt: number | null;
   onGround: boolean;
   /** Ground speed, knots. */
   gs: number | null;
@@ -67,6 +69,7 @@ interface RawAircraft {
   lat?: number;
   lon?: number;
   alt_baro?: number | "ground";
+  alt_geom?: number;
   gs?: number;
   track?: number;
   baro_rate?: number;
@@ -124,6 +127,7 @@ function normalise(raw: RawAircraft): Aircraft | null {
     lat: raw.lat,
     lon: raw.lon,
     altFt: onGround || typeof raw.alt_baro !== "number" ? null : raw.alt_baro,
+    altGeomFt: typeof raw.alt_geom === "number" ? raw.alt_geom : null,
     onGround,
     gs: typeof raw.gs === "number" ? raw.gs : null,
     track: typeof raw.track === "number" ? raw.track : null,

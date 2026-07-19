@@ -12,6 +12,8 @@ export const ZRH: AirportConfig = {
   name: "Zürich",
   arp: { lat: 47.4647, lon: 8.5492 },
   fieldElevationFt: 1416,
+  geoidFt: 157, // EGM96 undulation ≈ +48 m
+
   runways: [
     {
       ends: [
@@ -40,6 +42,8 @@ export const BKK: AirportConfig = {
   name: "Bangkok Suvarnabhumi",
   arp: { lat: 13.6811, lon: 100.747 },
   fieldElevationFt: 5,
+  geoidFt: -98, // EGM96 undulation ≈ −30 m
+
   runways: [
     {
       ends: [

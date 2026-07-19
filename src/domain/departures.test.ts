@@ -21,6 +21,7 @@ function base(overrides: Partial<Aircraft>): Aircraft {
     lat: 0,
     lon: 0,
     altFt: null,
+    altGeomFt: null,
     onGround: false,
     gs: null,
     track: null,
@@ -72,6 +73,7 @@ describe("detectDepartures", () => {
     const ac = onRunway("32", 2500, {
       onGround: false,
       altFt: 2200,
+      altGeomFt: null,
       gs: 160,
       verticalRateFpm: 1800,
     });
