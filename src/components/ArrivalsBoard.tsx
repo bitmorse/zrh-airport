@@ -22,10 +22,14 @@ export function ArrivalsBoard({
   aircraft,
   lastUpdated,
   now,
+  selectedHex,
+  onSelect,
 }: {
   aircraft: AircraftWithAssignment[];
   lastUpdated: number | null;
   now: number;
+  selectedHex?: string | null;
+  onSelect?: (hex: string) => void;
 }) {
   const byStrip = nextArrivalByStrip(aircraft);
   const departures = departingNow(aircraft);
@@ -45,6 +49,8 @@ export function ArrivalsBoard({
             strip={strip.name}
             arrival={byStrip[strip.name]}
             ageSec={ageSec}
+            selectedHex={selectedHex}
+            onSelect={onSelect}
           />
         ))}
       </ul>
@@ -75,16 +81,22 @@ function StripRow({
   strip,
   arrival,
   ageSec,
+  selectedHex,
+  onSelect,
 }: {
   strip: string;
   arrival: Arrival | undefined;
   ageSec: number;
+  selectedHex?: string | null;
+  onSelect?: (hex: string) => void;
 }) {
   const remaining = arrival ? Math.max(0, arrival.etaSeconds - ageSec) : null;
   const soon = remaining != null && remaining <= 60;
+  const isSelected = !!arrival && arrival.hex === selectedHex;
+  const clickable = !!arrival && !!onSelect;
 
-  return (
-    <li className="flex items-center justify-between gap-2 rounded-lg bg-slate-800/40 px-2.5 py-1.5">
+  const inner = (
+    <>
       <div className="flex min-w-0 items-baseline gap-2">
         <span className="w-12 shrink-0 font-mono text-sm font-semibold text-slate-200">
           {strip}
@@ -106,6 +118,26 @@ function StripRow({
         >
           {formatEta(remaining)}
         </span>
+      )}
+    </>
+  );
+
+  const base = `flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left ${
+    isSelected ? "bg-sky-600/20 ring-1 ring-sky-500/50" : "bg-slate-800/40"
+  }`;
+
+  return (
+    <li>
+      {clickable ? (
+        <button
+          type="button"
+          onClick={() => onSelect!(arrival!.hex)}
+          className={`${base} hover:bg-slate-800`}
+        >
+          {inner}
+        </button>
+      ) : (
+        <div className={base}>{inner}</div>
       )}
     </li>
   );

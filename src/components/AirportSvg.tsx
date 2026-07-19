@@ -16,9 +16,13 @@ const STRIP_PAIRS: [RunwayEnd, RunwayEnd][] = [
 function AirportSvgImpl({
   aircraft,
   counts,
+  selectedHex,
+  onSelect,
 }: {
   aircraft: AircraftWithAssignment[];
   counts: Record<string, number>;
+  selectedHex?: string | null;
+  onSelect?: (hex: string) => void;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const { viewBox, zoom, zoomIn, zoomOut, reset, isDragging, bind } =
@@ -74,7 +78,12 @@ function AirportSvgImpl({
       <PoiLayer />
 
       {aircraft.map((item) => (
-        <Plane key={item.ac.hex} item={item} />
+        <Plane
+          key={item.ac.hex}
+          item={item}
+          selected={item.ac.hex === selectedHex}
+          onSelect={onSelect}
+        />
       ))}
       </svg>
 

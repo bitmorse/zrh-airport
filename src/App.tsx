@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { AirportSvg } from "./components/AirportSvg";
 import { ArrivalsBoard } from "./components/ArrivalsBoard";
+import { FlightDetails } from "./components/FlightDetails";
 import { Legend } from "./components/Legend";
 import { PoiManager } from "./components/PoiManager";
 import { SettingsModal } from "./components/SettingsModal";
@@ -12,7 +13,17 @@ export default function App() {
   const [settings] = useSettings();
   const traffic = useLiveTraffic(settings);
   const [showSettings, setShowSettings] = useState(false);
+  const [selectedHex, setSelectedHex] = useState<string | null>(null);
   const now = useNow(1000);
+
+  const handleSelect = useCallback((hex: string) => {
+    setSelectedHex((cur) => (cur === hex ? null : hex));
+  }, []);
+
+  const selectedAircraft = useMemo(
+    () => traffic.aircraft.find((a) => a.ac.hex === selectedHex) ?? null,
+    [traffic.aircraft, selectedHex],
+  );
 
   const ageSec =
     traffic.lastUpdated != null
@@ -45,11 +56,23 @@ export default function App() {
       </header>
 
       <main className="flex flex-1 flex-col gap-4 p-4 lg:flex-row">
-        <section className="relative min-h-[60vh] flex-1 overflow-hidden rounded-xl border border-slate-800 bg-slate-900/40">
-          <AirportSvg aircraft={traffic.aircraft} counts={traffic.counts} />
+        <section className="relative aspect-[980/882] w-full overflow-hidden rounded-xl border border-slate-800 bg-slate-900/40 lg:aspect-auto lg:min-h-[60vh] lg:flex-1">
+          <AirportSvg
+            aircraft={traffic.aircraft}
+            counts={traffic.counts}
+            selectedHex={selectedHex}
+            onSelect={handleSelect}
+          />
         </section>
 
         <aside className="flex w-full flex-col gap-4 lg:w-72">
+          <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+            <FlightDetails
+              item={selectedAircraft}
+              onClear={() => setSelectedHex(null)}
+            />
+          </div>
+
           <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
             <StatusBar
               ageSec={ageSec}
@@ -65,6 +88,8 @@ export default function App() {
               aircraft={traffic.aircraft}
               lastUpdated={traffic.lastUpdated}
               now={now}
+              selectedHex={selectedHex}
+              onSelect={handleSelect}
             />
           </div>
 

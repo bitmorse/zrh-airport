@@ -9,9 +9,18 @@ const PHASE_COLOR: Record<string, string> = {
 
 /**
  * A single aircraft, drawn as a small plane glyph pointing along its track.
- * Aircraft attributed to a runway are tinted by flight phase; others are dim.
+ * Tappable to select (with a generous invisible hit area); the selected aircraft
+ * gets a ring and always shows its label.
  */
-export function Plane({ item }: { item: AircraftWithAssignment }) {
+export function Plane({
+  item,
+  selected,
+  onSelect,
+}: {
+  item: AircraftWithAssignment;
+  selected?: boolean;
+  onSelect?: (hex: string) => void;
+}) {
   const { ac, assignment } = item;
   const pt = projectToSvg({ lat: ac.lat, lon: ac.lon });
   if (!inViewport(pt, 20)) return null;
@@ -19,13 +28,28 @@ export function Plane({ item }: { item: AircraftWithAssignment }) {
   const heading = ac.track ?? 0;
   const color = assignment ? PHASE_COLOR[assignment.phase] : "#64748b";
   const active = assignment !== null;
+  const show = active || selected;
   const label = ac.flight ?? ac.hex.toUpperCase();
 
   return (
     <g
       transform={`translate(${pt.x.toFixed(1)} ${pt.y.toFixed(1)})`}
-      opacity={active ? 1 : 0.5}
+      opacity={show ? 1 : 0.5}
+      style={{ cursor: onSelect ? "pointer" : undefined }}
+      onPointerDown={
+        onSelect
+          ? (e) => {
+              e.stopPropagation(); // don't start a map drag
+              onSelect(ac.hex);
+            }
+          : undefined
+      }
     >
+      {/* Generous, invisible tap target. */}
+      <circle r={10} fill="transparent" />
+      {selected && (
+        <circle r={9} fill="none" stroke="#38bdf8" strokeWidth={1.4} />
+      )}
       <g transform={`rotate(${heading.toFixed(0)})`}>
         {/* Plane glyph pointing "up" = north = track 0. */}
         <path
@@ -35,12 +59,12 @@ export function Plane({ item }: { item: AircraftWithAssignment }) {
           strokeWidth={0.4}
         />
       </g>
-      {active && (
+      {show && (
         <text
           x={6}
           y={3}
           fontSize={7}
-          fill={color}
+          fill={selected ? "#e5e7eb" : color}
           className="select-none"
           style={{ fontFamily: "ui-monospace, monospace" }}
         >
