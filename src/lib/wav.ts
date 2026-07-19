@@ -1,18 +1,35 @@
 /**
- * Convert a recorded audio blob (webm/opus, mp4/aac, …) to a 16-bit PCM WAV blob,
- * fully in-browser. WAV plays everywhere, unlike the native MediaRecorder formats.
+ * Decode a recorded audio blob (webm/opus, mp4/aac, …) to 16-bit PCM, fully
+ * in-browser. Used to produce universally-playable WAV downloads and RawAudio for
+ * the MCAP export.
  */
+
+/** Interleave an AudioBuffer's channels to little-endian int16 PCM bytes. */
+function interleaveInt16(buffer: AudioBuffer): Uint8Array<ArrayBuffer> {
+  const numCh = buffer.numberOfChannels;
+  const n = buffer.length;
+  const bytes = new Uint8Array(new ArrayBuffer(n * numCh * 2));
+  const pcm = new Int16Array(bytes.buffer); // little-endian on all target platforms
+  const channels: Float32Array[] = [];
+  for (let c = 0; c < numCh; c++) channels.push(buffer.getChannelData(c));
+  let o = 0;
+  for (let i = 0; i < n; i++) {
+    for (let c = 0; c < numCh; c++) {
+      const s = Math.max(-1, Math.min(1, channels[c][i]));
+      pcm[o++] = s < 0 ? s * 0x8000 : s * 0x7fff;
+    }
+  }
+  return bytes;
+}
 
 function audioBufferToWav(buffer: AudioBuffer): Blob {
   const numCh = buffer.numberOfChannels;
   const sampleRate = buffer.sampleRate;
-  const numFrames = buffer.length;
-  const bytesPerSample = 2; // 16-bit PCM
-  const blockAlign = numCh * bytesPerSample;
-  const dataSize = numFrames * blockAlign;
+  const pcm = interleaveInt16(buffer);
+  const blockAlign = numCh * 2;
 
-  const out = new ArrayBuffer(44 + dataSize);
-  const view = new DataView(out);
+  const header = new ArrayBuffer(44);
+  const view = new DataView(header);
   let o = 0;
   const str = (s: string) => {
     for (let i = 0; i < s.length; i++) view.setUint8(o++, s.charCodeAt(i));
@@ -27,39 +44,49 @@ function audioBufferToWav(buffer: AudioBuffer): Blob {
   };
 
   str("RIFF");
-  u32(36 + dataSize);
+  u32(36 + pcm.byteLength);
   str("WAVE");
   str("fmt ");
-  u32(16); // PCM chunk size
-  u16(1); // PCM format
+  u32(16);
+  u16(1); // PCM
   u16(numCh);
   u32(sampleRate);
   u32(sampleRate * blockAlign);
   u16(blockAlign);
-  u16(16); // bits per sample
+  u16(16);
   str("data");
-  u32(dataSize);
+  u32(pcm.byteLength);
 
-  const channels: Float32Array[] = [];
-  for (let c = 0; c < numCh; c++) channels.push(buffer.getChannelData(c));
-  for (let i = 0; i < numFrames; i++) {
-    for (let c = 0; c < numCh; c++) {
-      const s = Math.max(-1, Math.min(1, channels[c][i]));
-      view.setInt16(o, s < 0 ? s * 0x8000 : s * 0x7fff, true);
-      o += 2;
-    }
-  }
-  return new Blob([out], { type: "audio/wav" });
+  return new Blob([header, pcm], { type: "audio/wav" });
 }
 
 let decodeCtx: AudioContext | null = null;
 
-export async function blobToWav(blob: Blob): Promise<Blob> {
+async function decode(blob: Blob): Promise<AudioBuffer> {
   const Ctor =
     window.AudioContext ??
     (window as unknown as { webkitAudioContext: typeof AudioContext })
       .webkitAudioContext;
   decodeCtx ??= new Ctor();
-  const audioBuffer = await decodeCtx.decodeAudioData(await blob.arrayBuffer());
-  return audioBufferToWav(audioBuffer);
+  return decodeCtx.decodeAudioData(await blob.arrayBuffer());
+}
+
+export async function blobToWav(blob: Blob): Promise<Blob> {
+  return audioBufferToWav(await decode(blob));
+}
+
+export interface Pcm16 {
+  data: Uint8Array;
+  sampleRate: number;
+  channels: number;
+}
+
+/** Decode a clip to interleaved 16-bit PCM (for RawAudio in the MCAP export). */
+export async function blobToPcm16(blob: Blob): Promise<Pcm16> {
+  const buffer = await decode(blob);
+  return {
+    data: interleaveInt16(buffer),
+    sampleRate: buffer.sampleRate,
+    channels: buffer.numberOfChannels,
+  };
 }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { relLoudness, type NoiseEvent } from "../data/noiseStore";
 import { useNoiseEvents } from "../hooks/useNoiseEvents";
+import { buildNoiseMcap } from "../lib/mcap";
 import { blobToWav } from "../lib/wav";
 
 function hhmm(ts: number): string {
@@ -71,8 +72,19 @@ function audioExt(type: string): string {
 export function NoiseTable() {
   const { events, remove, getAudio } = useNoiseEvents();
   const [playingId, setPlayingId] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const urlRef = useRef<string | null>(null);
+
+  async function exportMcap() {
+    setExporting(true);
+    try {
+      const blob = await buildNoiseMcap(events, getAudio);
+      downloadBlob(blob, `zrh-noise-${Date.now()}.mcap`);
+    } finally {
+      setExporting(false);
+    }
+  }
 
   useEffect(() => {
     return () => {
@@ -130,16 +142,26 @@ export function NoiseTable() {
 
   return (
     <div className="text-sm">
-      <div className="mb-2 flex items-center justify-between">
+      <div className="mb-2 flex items-center justify-between gap-2">
         <h2 className="font-semibold text-slate-200">
           Measurements <span className="text-xs text-slate-500">({events.length})</span>
         </h2>
-        <button
-          onClick={() => exportCsv(events)}
-          className="rounded border border-slate-700 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-800"
-        >
-          ⭳ Export CSV
-        </button>
+        <div className="flex gap-1">
+          <button
+            onClick={() => exportCsv(events)}
+            className="rounded border border-slate-700 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-800"
+          >
+            ⭳ CSV
+          </button>
+          <button
+            onClick={exportMcap}
+            disabled={exporting}
+            className="rounded border border-slate-700 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-800 disabled:opacity-50"
+            title="Foxglove MCAP: audio + GPS + measurement on one timeline"
+          >
+            {exporting ? "building…" : "⭳ MCAP"}
+          </button>
+        </div>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-left text-xs">
