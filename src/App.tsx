@@ -3,7 +3,7 @@ import { AirportSvg } from "./components/AirportSvg";
 import { ArrivalsBoard } from "./components/ArrivalsBoard";
 import { FlightDetails } from "./components/FlightDetails";
 import { Legend } from "./components/Legend";
-import { NextLandingBar } from "./components/NextLandingBar";
+import { TrafficBar } from "./components/TrafficBar";
 import { NoiseRecorder } from "./components/NoiseRecorder";
 import { NoiseTable } from "./components/NoiseTable";
 import { PoiManager } from "./components/PoiManager";
@@ -116,10 +116,11 @@ export default function App() {
         </button>
       </header>
 
-      {/* Mobile-only quick glance above the map. */}
+      {/* Mobile-only quick glance above the map: next landing + departures. */}
       <div className="px-4 pt-4 lg:hidden">
-        <NextLandingBar
+        <TrafficBar
           arrivals={arrivals}
+          departures={traffic.departures}
           now={now}
           lastUpdated={traffic.lastUpdated}
           stale={stale}
