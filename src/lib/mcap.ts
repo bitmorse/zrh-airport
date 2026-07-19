@@ -1,11 +1,12 @@
 import { McapWriter, TempBuffer } from "@mcap/core";
 import { relLoudness, type NoiseEvent } from "../data/noiseStore";
-import { blobToPcm16 } from "./wav";
+import { blobToMonoPcm16 } from "./wav";
 
 /**
  * Export landing-noise measurements as a single MCAP file, fully in-browser.
  * Three timestamped channels share one timeline, openable in Foxglove Studio:
- *   /audio       → foxglove.RawAudio    (decoded PCM per clip; Audio panel)
+ *   /audio       → foxglove.RawAudio    (mono PCM, streamed in ~200 ms blocks
+ *                                        so the Audio panel can play it back)
  *   /gps         → foxglove.LocationFix (where it was measured)
  *   /measurement → zrh.NoiseMeasurement (aircraft, runway, loudness, duration)
  *
@@ -68,6 +69,22 @@ const toTime = (ms: number) => ({
   nsec: Math.round((ms % 1000) * 1e6),
 });
 const round1 = (v: number) => Math.round(v * 10) / 10;
+
+/**
+ * Foxglove's Audio panel treats each RawAudio message as one "block of an audio
+ * bitstream" and plays consecutive blocks against the timeline clock. A whole
+ * clip in a single block draws a waveform but won't play, so we slice each clip
+ * into short contiguous blocks (~200 ms) whose timestamps advance with the audio.
+ */
+const AUDIO_BLOCK_MS = 200;
+
+/** Copy mono int16 samples to little-endian bytes for a RawAudio block. */
+function int16ToLeBytes(samples: Int16Array): Uint8Array {
+  const bytes = new Uint8Array(new ArrayBuffer(samples.length * 2));
+  const view = new DataView(bytes.buffer);
+  for (let i = 0; i < samples.length; i++) view.setInt16(i * 2, samples[i], true);
+  return bytes;
+}
 
 /** Base64-encode bytes in chunks (avoids call-stack limits on big buffers). */
 function bytesToBase64(bytes: Uint8Array): string {
@@ -155,14 +172,19 @@ export async function buildNoiseMcap(
       const blob = await loadAudio(e.id);
       if (blob) {
         try {
-          const pcm = await blobToPcm16(blob);
-          await add(audioCh, logTime, {
-            timestamp: t,
-            data: bytesToBase64(pcm.data),
-            format: "pcm-s16",
-            sample_rate: pcm.sampleRate,
-            number_of_channels: pcm.channels,
-          });
+          const { samples, sampleRate } = await blobToMonoPcm16(blob);
+          const perBlock = Math.max(1, Math.round((sampleRate * AUDIO_BLOCK_MS) / 1000));
+          for (let off = 0; off < samples.length; off += perBlock) {
+            const block = samples.subarray(off, off + perBlock);
+            const blockMs = e.startedAt + (off / sampleRate) * 1000;
+            await add(audioCh, nsBig(blockMs), {
+              timestamp: toTime(blockMs),
+              data: bytesToBase64(int16ToLeBytes(block)),
+              format: "pcm-s16",
+              sample_rate: sampleRate,
+              number_of_channels: 1,
+            });
+          }
         } catch {
           /* undecodable clip — skip audio, keep the measurement */
         }

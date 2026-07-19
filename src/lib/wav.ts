@@ -75,18 +75,34 @@ export async function blobToWav(blob: Blob): Promise<Blob> {
   return audioBufferToWav(await decode(blob));
 }
 
-export interface Pcm16 {
-  data: Uint8Array;
+export interface MonoPcm16 {
+  /** Mono 16-bit PCM samples (host byte order; write little-endian on export). */
+  samples: Int16Array;
   sampleRate: number;
-  channels: number;
 }
 
-/** Decode a clip to interleaved 16-bit PCM (for RawAudio in the MCAP export). */
-export async function blobToPcm16(blob: Blob): Promise<Pcm16> {
+/** Down-mix an AudioBuffer's channels to a single mono int16 track. */
+function downmixMonoInt16(buffer: AudioBuffer): Int16Array {
+  const numCh = buffer.numberOfChannels;
+  const n = buffer.length;
+  const out = new Int16Array(n);
+  const channels: Float32Array[] = [];
+  for (let c = 0; c < numCh; c++) channels.push(buffer.getChannelData(c));
+  for (let i = 0; i < n; i++) {
+    let s = 0;
+    for (let c = 0; c < numCh; c++) s += channels[c][i];
+    s = Math.max(-1, Math.min(1, s / numCh));
+    out[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+  }
+  return out;
+}
+
+/**
+ * Decode a clip to a single mono 16-bit PCM track for MCAP `foxglove.RawAudio`.
+ * Foxglove's Audio panel plays mono; the caller slices this into small
+ * timestamped "blocks" so the panel sees a continuous bitstream it can play.
+ */
+export async function blobToMonoPcm16(blob: Blob): Promise<MonoPcm16> {
   const buffer = await decode(blob);
-  return {
-    data: interleaveInt16(buffer),
-    sampleRate: buffer.sampleRate,
-    channels: buffer.numberOfChannels,
-  };
+  return { samples: downmixMonoInt16(buffer), sampleRate: buffer.sampleRate };
 }
