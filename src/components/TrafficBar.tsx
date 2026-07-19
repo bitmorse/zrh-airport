@@ -4,31 +4,82 @@ import { useFlightRoute } from "../hooks/useFlightRoute";
 import { useSettings } from "../hooks/useSettings";
 import { formatDistance, formatDuration, formatEta, routeText } from "../lib/format";
 
-const DEP_CLS: Record<DeparturePhase, string> = {
-  holding: "bg-amber-500/15 text-amber-300 ring-amber-500/30",
-  roll: "bg-emerald-500/20 text-emerald-300 ring-emerald-500/40",
-  climb: "bg-slate-700/40 text-slate-300 ring-slate-600/30",
-};
 const DEP_ORDER: Record<DeparturePhase, number> = { roll: 0, holding: 1, climb: 2 };
+const MAX_DEP_ROWS = 3;
 
-/** Compact per-departure timer: live wait while holding, frozen hold at roll. */
-function depTimer(d: DepartureEvent, now: number): string {
+/** One traffic row — identical layout for arrivals and departures. */
+function TrafficRow({
+  icon,
+  end,
+  callsign,
+  secondary,
+  time,
+  timeClass = "text-slate-100",
+  muted,
+  onClick,
+}: {
+  icon: string;
+  end?: string;
+  callsign?: string;
+  secondary?: string | null;
+  time?: string;
+  timeClass?: string;
+  muted?: string;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!onClick}
+      className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-slate-800/50 disabled:cursor-default disabled:hover:bg-transparent"
+    >
+      <span aria-hidden>{icon}</span>
+      {muted ? (
+        <span className="flex-1 text-xs text-slate-500">{muted}</span>
+      ) : (
+        <span className="min-w-0 flex-1 truncate text-xs">
+          <span className="font-semibold text-sky-300">{end}</span>
+          <span className="font-semibold text-slate-100"> {callsign}</span>
+          {secondary && <span className="text-slate-500"> · {secondary}</span>}
+        </span>
+      )}
+      {time != null && (
+        <span className={`shrink-0 font-mono text-sm font-semibold tabular-nums ${timeClass}`}>
+          {time}
+        </span>
+      )}
+    </button>
+  );
+}
+
+/** Per-phase secondary label, right-aligned timer and its colour. */
+function depRow(d: DepartureEvent, now: number): {
+  secondary: string;
+  time: string;
+  timeClass: string;
+} {
   if (d.phase === "holding") {
-    return d.holdingSinceMs != null
-      ? `⏳ ${formatDuration((now - d.holdingSinceMs) / 1000)}`
-      : "⏳";
+    return {
+      secondary: "waiting",
+      time: d.holdingSinceMs != null ? formatDuration((now - d.holdingSinceMs) / 1000) : "—",
+      timeClass: "text-amber-300",
+    };
   }
   if (d.phase === "roll") {
-    return d.waitedMs != null ? `🛫 ${formatDuration(d.waitedMs / 1000)}` : "🛫";
+    return {
+      secondary: "cleared",
+      time: d.waitedMs != null ? formatDuration(d.waitedMs / 1000) : "now",
+      timeClass: "text-emerald-300",
+    };
   }
-  return "↑";
+  return { secondary: "climbing", time: "↑", timeClass: "text-slate-400" };
 }
 
 /**
- * Dense traffic strip shown above the map on mobile: the soonest arrival on one
- * line (RWY · callsign · distance · route + live countdown) and, when present, a
- * scrollable row of departures with their waiting-for-takeoff timers. Both are
- * tappable to select the aircraft.
+ * Compact traffic strip shown above the map on mobile: the soonest arrival plus the
+ * most-imminent departures, all as one unified list of identical rows (runway ·
+ * callsign · state, with a right-aligned timer). Rows are tappable to select.
  */
 export function TrafficBar({
   arrivals,
@@ -52,59 +103,47 @@ export function TrafficBar({
   const ageSec = lastUpdated != null ? (now - lastUpdated) / 1000 : 0;
   const remaining = soonest ? Math.max(0, soonest.etaSeconds - ageSec) : null;
   const soon = remaining != null && remaining <= 60 && !stale;
+
   const deps = [...departures].sort((a, b) => DEP_ORDER[a.phase] - DEP_ORDER[b.phase]);
+  const shown = deps.slice(0, MAX_DEP_ROWS);
+  const extra = deps.length - shown.length;
 
   return (
-    <div className="w-full overflow-hidden rounded-xl border border-slate-800 bg-slate-900/70">
-      <button
-        type="button"
-        onClick={() => soonest && onSelect?.(soonest.hex)}
-        disabled={!soonest}
-        className="flex w-full items-center gap-2 px-3 py-1.5 text-left disabled:cursor-default hover:bg-slate-800/50"
-      >
-        <span aria-hidden>🛬</span>
-        {soonest ? (
-          <>
-            <span className="min-w-0 flex-1 truncate text-xs">
-              <span className="font-semibold text-sky-300">{soonest.end}</span>
-              <span className="font-semibold text-slate-100"> {soonest.callsign}</span>
-              <span className="text-slate-500">
-                {" · "}
-                {formatDistance(soonest.distanceNm, units)}
-                {routeLabel ? ` · ${routeLabel}` : ""}
-              </span>
-            </span>
-            <span
-              className={`shrink-0 font-mono text-sm font-semibold tabular-nums ${
-                stale ? "text-slate-500" : soon ? "text-emerald-300" : "text-slate-100"
-              }`}
-            >
-              {stale ? "—" : formatEta(remaining!)}
-            </span>
-          </>
-        ) : (
-          <span className="text-xs text-slate-500">No inbound traffic</span>
-        )}
-      </button>
+    <div className="w-full divide-y divide-slate-800 overflow-hidden rounded-xl border border-slate-800 bg-slate-900/70">
+      {soonest ? (
+        <TrafficRow
+          icon="🛬"
+          end={soonest.end}
+          callsign={soonest.callsign}
+          secondary={`${formatDistance(soonest.distanceNm, units)}${
+            routeLabel ? ` · ${routeLabel}` : ""
+          }`}
+          time={stale ? "—" : formatEta(remaining!)}
+          timeClass={stale ? "text-slate-500" : soon ? "text-emerald-300" : "text-slate-100"}
+          onClick={() => onSelect?.(soonest.hex)}
+        />
+      ) : (
+        <TrafficRow icon="🛬" muted="No inbound traffic" />
+      )}
 
-      {deps.length > 0 && (
-        <div className="flex items-center gap-1.5 overflow-x-auto border-t border-slate-800 px-3 py-1.5">
-          <span aria-hidden className="shrink-0 text-xs">
-            🛫
-          </span>
-          {deps.map((d) => (
-            <button
-              key={d.hex}
-              type="button"
-              onClick={() => onSelect?.(d.hex)}
-              title={`runway ${d.end}`}
-              className={`shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] ring-1 ${DEP_CLS[d.phase]}`}
-            >
-              <span className="font-semibold">{d.end}</span> {d.callsign}{" "}
-              {depTimer(d, now)}
-            </button>
-          ))}
-        </div>
+      {shown.map((d) => {
+        const { secondary, time, timeClass } = depRow(d, now);
+        return (
+          <TrafficRow
+            key={d.hex}
+            icon="🛫"
+            end={d.end}
+            callsign={d.callsign}
+            secondary={secondary}
+            time={time}
+            timeClass={timeClass}
+            onClick={() => onSelect?.(d.hex)}
+          />
+        );
+      })}
+
+      {extra > 0 && (
+        <div className="px-3 py-1 text-[11px] text-slate-500">+{extra} more departing</div>
       )}
     </div>
   );
