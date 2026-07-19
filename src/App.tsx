@@ -49,6 +49,7 @@ export default function App() {
         callsign: meta?.callsign ?? null,
         runwayEnd: meta?.end ?? null,
         kind: meta?.kind ?? null,
+        heldSeconds: meta?.heldMs != null ? Math.round(meta.heldMs / 1000) : null,
         lat: loc?.lat ?? null,
         lon: loc?.lon ?? null,
         peakDbfs: rec.peakDbfs,

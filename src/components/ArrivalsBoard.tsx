@@ -3,14 +3,28 @@ import type { DepartureEvent, DeparturePhase } from "../domain/departures";
 import { nextArrivalByStrip, type Arrival } from "../domain/predictions";
 import { useFlightRoute } from "../hooks/useFlightRoute";
 import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
-import { formatEta, routeText } from "../lib/format";
+import { formatDuration, formatEta, routeText } from "../lib/format";
 
-const DEP_STYLE: Record<DeparturePhase, { label: string; cls: string }> = {
-  holding: { label: "holding", cls: "bg-slate-700/40 text-slate-300" },
-  roll: { label: "🛫 rolling", cls: "bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-500/40" },
-  climb: { label: "↑ climb", cls: "bg-amber-500/15 text-amber-300" },
+const DEP_CLS: Record<DeparturePhase, string> = {
+  holding: "bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30",
+  roll: "bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-500/40",
+  climb: "bg-slate-700/40 text-slate-300",
 };
 const DEP_ORDER: Record<DeparturePhase, number> = { roll: 0, holding: 1, climb: 2 };
+
+function depLabel(d: DepartureEvent, now: number): string {
+  if (d.phase === "holding") {
+    const w =
+      d.holdingSinceMs != null ? ` ${formatDuration((now - d.holdingSinceMs) / 1000)}` : "";
+    return `⏳ waiting${w}`;
+  }
+  if (d.phase === "roll") {
+    const held =
+      d.waitedMs != null ? ` · held ${formatDuration(d.waitedMs / 1000)}` : "";
+    return `🛫 cleared${held}`;
+  }
+  return "↑ climb";
+}
 
 /**
  * Per-runway next-landing board with live countdowns and looked-up airline/route,
@@ -68,13 +82,13 @@ export function ArrivalsBoard({
         ) : (
           <div className="mt-1 flex flex-wrap gap-1">
             {deps.map((d) => {
-              const s = DEP_STYLE[d.phase];
+              const label = depLabel(d, now);
               const chip = (
                 <span
-                  className={`rounded px-1.5 py-0.5 text-[11px] ${s.cls}`}
-                  title={`runway ${d.end} — ${s.label}`}
+                  className={`rounded px-1.5 py-0.5 text-[11px] ${DEP_CLS[d.phase]}`}
+                  title={`runway ${d.end} — ${label}`}
                 >
-                  {d.callsign} · {d.end} {s.label}
+                  {d.callsign} · {d.end} {label}
                 </span>
               );
               return onSelect ? (

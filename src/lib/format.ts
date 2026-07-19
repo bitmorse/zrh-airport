@@ -1,5 +1,13 @@
 import type { FlightRoute } from "../data/flightInfo";
 
+/** Seconds → plain "m:ss" (for elapsed/wait timers). */
+export function formatDuration(seconds: number): string {
+  const total = Math.max(0, Math.round(seconds));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
 /** Seconds → "m:ss" countdown, or "landing" when essentially at the threshold. */
 export function formatEta(seconds: number): string {
   const total = Math.max(0, Math.round(seconds));

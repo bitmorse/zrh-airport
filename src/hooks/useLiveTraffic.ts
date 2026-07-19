@@ -5,6 +5,7 @@ import { assignRunway, type RunwayAssignment } from "../domain/assignRunway";
 import {
   detectDepartures,
   gsSnapshot,
+  trackHolding,
   type DepartureEvent,
 } from "../domain/departures";
 import {
@@ -46,6 +47,7 @@ export interface LiveTraffic {
 export function useLiveTraffic(settings: Settings): LiveTraffic {
   const [counts, setCounts] = useState<Record<string, number>>({});
   const prevGs = useRef(new Map<string, number>());
+  const holdingSince = useRef(new Map<string, number>());
 
   // Seed counts from any persisted window on mount so the map isn't blank after
   // a reload within the 15-minute window.
@@ -76,7 +78,12 @@ export function useLiveTraffic(settings: Settings): LiveTraffic {
       const { counts: fresh } = await recordSnapshot(assignments, snap.fetchedAt);
 
       const arrivals = predictArrivals(withAssignment);
-      const departures = detectDepartures(snap.aircraft, prevGs.current);
+      const departures = trackHolding(
+        detectDepartures(snap.aircraft, prevGs.current),
+        new Set(snap.aircraft.map((a) => a.hex)),
+        holdingSince.current,
+        snap.fetchedAt,
+      );
       prevGs.current = gsSnapshot(snap.aircraft);
 
       const needsFastPoll =

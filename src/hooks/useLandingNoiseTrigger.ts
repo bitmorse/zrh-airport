@@ -14,6 +14,8 @@ export interface NoiseMeta {
   callsign: string;
   end: string;
   kind: "arrival" | "departure";
+  /** For departures: how long it waited at the threshold before the roll (ms). */
+  heldMs?: number;
 }
 
 /**
@@ -86,7 +88,13 @@ export function useLandingNoiseTrigger(opts: {
     );
     if (roll) {
       start(
-        { hex: roll.hex, callsign: roll.callsign, end: roll.end, kind: "departure" },
+        {
+          hex: roll.hex,
+          callsign: roll.callsign,
+          end: roll.end,
+          kind: "departure",
+          heldMs: roll.waitedMs,
+        },
         DEP_REC_MS,
       );
       return;

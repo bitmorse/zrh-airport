@@ -10,6 +10,8 @@ export interface NoiseEvent {
   callsign: string | null;
   runwayEnd: string | null;
   kind: "arrival" | "departure" | null;
+  /** For departures: seconds held at the threshold before the takeoff roll. */
+  heldSeconds: number | null;
   lat: number | null;
   lon: number | null;
   /** Peak / average loudness in dBFS (≤ 0; higher = louder). Uncalibrated. */

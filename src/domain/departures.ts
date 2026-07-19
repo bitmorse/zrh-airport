@@ -29,6 +29,10 @@ export interface DepartureEvent {
   callsign: string;
   phase: DeparturePhase;
   gsKt: number | null;
+  /** For "holding": epoch ms when the aircraft started waiting at the threshold. */
+  holdingSinceMs?: number;
+  /** For "roll": how long it waited before the roll began (≈ clearance). */
+  waitedMs?: number;
 }
 
 const HALF_WIDTH_M = 220; // lateral tolerance around the runway centreline (ground)
@@ -50,6 +54,36 @@ const ENDS_LOCAL = RUNWAY_ENDS.map((e) => ({
 }));
 
 const label = (ac: Aircraft) => ac.flight ?? ac.hex.toUpperCase();
+
+/**
+ * Track how long each aircraft has been holding at a threshold and when its roll
+ * begins. Mutates `holdingSince` (a persistent map across polls): records the
+ * start time on the first "holding" poll, and on "roll" reports the waited
+ * duration and clears it. Also prunes aircraft that have left the feed.
+ */
+export function trackHolding(
+  departures: DepartureEvent[],
+  presentHexes: Set<string>,
+  holdingSince: Map<string, number>,
+  nowMs: number,
+): DepartureEvent[] {
+  for (const d of departures) {
+    if (d.phase === "holding") {
+      if (!holdingSince.has(d.hex)) holdingSince.set(d.hex, nowMs);
+      d.holdingSinceMs = holdingSince.get(d.hex);
+    } else if (d.phase === "roll") {
+      const since = holdingSince.get(d.hex);
+      if (since != null) {
+        d.waitedMs = nowMs - since;
+        holdingSince.delete(d.hex);
+      }
+    }
+  }
+  for (const hex of [...holdingSince.keys()]) {
+    if (!presentHexes.has(hex)) holdingSince.delete(hex);
+  }
+  return departures;
+}
 
 /** Snapshot of each aircraft's groundspeed, to compare against next poll. */
 export function gsSnapshot(aircraft: Aircraft[]): Map<string, number> {

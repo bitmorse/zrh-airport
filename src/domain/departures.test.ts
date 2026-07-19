@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 import type { Aircraft } from "../data/adsb";
 import { destinationPoint } from "../lib/geo";
 import { RUNWAY_END_BY_ID } from "./runways";
-import { detectDepartures, gsSnapshot } from "./departures";
+import {
+  detectDepartures,
+  gsSnapshot,
+  trackHolding,
+  type DepartureEvent,
+} from "./departures";
 
 function base(overrides: Partial<Aircraft>): Aircraft {
   return {
@@ -71,5 +76,40 @@ describe("detectDepartures", () => {
     const snap = gsSnapshot([base({ hex: "a", gs: 42 }), base({ hex: "b", gs: null })]);
     expect(snap.get("a")).toBe(42);
     expect(snap.has("b")).toBe(false);
+  });
+});
+
+describe("trackHolding", () => {
+  const dep = (phase: DepartureEvent["phase"], hex = "d1"): DepartureEvent => ({
+    end: "32",
+    strip: "14/32",
+    hex,
+    callsign: "SWR40L",
+    phase,
+    gsKt: 0,
+  });
+
+  it("stamps holding start, then reports the waited duration on roll", () => {
+    const holdingSince = new Map<string, number>();
+    const p1 = trackHolding([dep("holding")], new Set(["d1"]), holdingSince, 1000);
+    expect(p1[0].holdingSinceMs).toBe(1000);
+
+    // 90 s later the aircraft starts its roll.
+    const p2 = trackHolding([dep("roll")], new Set(["d1"]), holdingSince, 91000);
+    expect(p2[0].waitedMs).toBe(90000);
+    expect(holdingSince.has("d1")).toBe(false); // cleared after roll
+  });
+
+  it("prunes aircraft that have left the feed", () => {
+    const holdingSince = new Map<string, number>([["gone", 500]]);
+    trackHolding([], new Set(["other"]), holdingSince, 2000);
+    expect(holdingSince.has("gone")).toBe(false);
+  });
+
+  it("keeps counting from the first holding poll", () => {
+    const holdingSince = new Map<string, number>();
+    trackHolding([dep("holding")], new Set(["d1"]), holdingSince, 1000);
+    const again = trackHolding([dep("holding")], new Set(["d1"]), holdingSince, 5000);
+    expect(again[0].holdingSinceMs).toBe(1000); // unchanged start
   });
 });
