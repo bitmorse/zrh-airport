@@ -43,6 +43,12 @@ describe("predictArrivals", () => {
     expect(arrivals[0].distanceNm).toBeCloseTo(1.62, 1);
   });
 
+  it("detects a long (12 NM) final", () => {
+    const arr = predictArrivals([onApproach("28", 22224)]); // 12 NM
+    expect(arr).toHaveLength(1);
+    expect(arr[0].distanceNm).toBeCloseTo(12, 0);
+  });
+
   it("sorts soonest-first", () => {
     const arrivals = predictArrivals([
       onApproach("28", 6000, { hex: "far" }),

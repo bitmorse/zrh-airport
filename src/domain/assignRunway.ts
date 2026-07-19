@@ -9,10 +9,10 @@ import { RUNWAY_ENDS, ZRH_ARP } from "./runways";
 
 // Tuning constants for the corridor around each runway end.
 const HALF_WIDTH_M = 1500; // max perpendicular distance from centreline
-const APPROACH_M = 9000; // corridor length before the threshold (~5 NM final)
-const DEPARTURE_M = 6000; // corridor length past the far end (initial climb)
+const APPROACH_M = 28000; // corridor length before the threshold (~15 NM final)
+const DEPARTURE_M = 8000; // corridor length past the far end (initial climb)
 const TRACK_TOL_DEG = 40; // how closely track must match the runway bearing
-const MAX_ALT_FT = 6000; // ignore aircraft crossing above the approach/climb band
+const MAX_ALT_FT = 7000; // ignore aircraft crossing above the approach/climb band
 const MIN_ACTIVE_GS_KT = 40; // below this an aircraft is taxiing/holding, not using the runway
 const ZRH_FIELD_ELEV_FT = 1416;
 

@@ -22,7 +22,7 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  pollSeconds: 45,
+  pollSeconds: 15,
   radiusNm: 25,
   provider: null,
   apiToken: null,
@@ -37,7 +37,11 @@ function read(): Settings {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return DEFAULT_SETTINGS;
-    return { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<Settings>) };
+    const parsed = JSON.parse(raw) as Partial<Settings>;
+    const merged = { ...DEFAULT_SETTINGS, ...parsed };
+    // Migrate the old 45 s default (too slow) to the faster default.
+    if (parsed.pollSeconds === 45) merged.pollSeconds = DEFAULT_SETTINGS.pollSeconds;
+    return merged;
   } catch {
     return DEFAULT_SETTINGS;
   }

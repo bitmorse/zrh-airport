@@ -61,7 +61,7 @@ export function useLiveTraffic(settings: Settings): LiveTraffic {
       const { counts: fresh } = await recordSnapshot(assignments, snap.fetchedAt);
       return { snap, withAssignment, counts: fresh };
     },
-    refetchInterval: Math.max(15, settings.pollSeconds) * 1000,
+    refetchInterval: Math.max(10, settings.pollSeconds) * 1000,
     refetchOnWindowFocus: false,
     staleTime: 10_000,
     retry: 1,

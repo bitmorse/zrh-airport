@@ -22,7 +22,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
 
   function save() {
     update({
-      pollSeconds: clamp(Number(pollSeconds) || DEFAULT_SETTINGS.pollSeconds, 15, 600),
+      pollSeconds: clamp(Number(pollSeconds) || DEFAULT_SETTINGS.pollSeconds, 10, 600),
       radiusNm: clamp(Number(radiusNm) || DEFAULT_SETTINGS.radiusNm, 5, 250),
       provider: provider || null,
       apiToken: apiToken.trim() || null,
@@ -45,10 +45,10 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         <h2 className="mb-4 text-lg font-semibold text-slate-100">Settings</h2>
 
         <div className="flex flex-col gap-4 text-sm">
-          <Field label="Refresh interval (seconds)" hint="15–600">
+          <Field label="Refresh interval (seconds)" hint="10–600">
             <input
               type="number"
-              min={15}
+              min={10}
               max={600}
               value={pollSeconds}
               onChange={(e) => setPollSeconds(e.target.value)}
