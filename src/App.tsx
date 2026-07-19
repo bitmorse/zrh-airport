@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { AirportSvg } from "./components/AirportSvg";
 import { ArrivalsBoard } from "./components/ArrivalsBoard";
 import { Legend } from "./components/Legend";
+import { PoiManager } from "./components/PoiManager";
 import { SettingsModal } from "./components/SettingsModal";
 import { useLiveTraffic } from "./hooks/useLiveTraffic";
 import { useNow } from "./hooks/useNow";
@@ -65,6 +66,10 @@ export default function App() {
               lastUpdated={traffic.lastUpdated}
               now={now}
             />
+          </div>
+
+          <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+            <PoiManager />
           </div>
 
           <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">

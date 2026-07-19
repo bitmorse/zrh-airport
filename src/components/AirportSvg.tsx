@@ -4,6 +4,7 @@ import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
 import { useViewport } from "../hooks/useViewport";
 import { SVG_W, SVG_H } from "../lib/projection";
 import { Plane } from "./Plane";
+import { PoiLayer } from "./PoiLayer";
 import { RunwayHeat } from "./RunwayHeat";
 
 const STRIP_PAIRS: [RunwayEnd, RunwayEnd][] = [
@@ -69,6 +70,8 @@ function AirportSvgImpl({
       {STRIP_PAIRS.map((pair) => (
         <RunwayHeat key={pair[0].strip} ends={pair} counts={counts} />
       ))}
+
+      <PoiLayer />
 
       {aircraft.map((item) => (
         <Plane key={item.ac.hex} item={item} />
