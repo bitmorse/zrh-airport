@@ -41,6 +41,20 @@ function onRunway(endId: string, distM: number, overrides: Partial<Aircraft>): A
   return base({ lat: pos.lat, lon: pos.lon, track: end.bearingDeg, ...overrides });
 }
 
+// As `onRunway`, but also offset `offsetM` metres perpendicular to the centreline (right
+// of travel). offsetM=0 ⇒ on the centreline; large offsets model an apron/hangar/taxiway.
+function offRunway(
+  endId: string,
+  distM: number,
+  offsetM: number,
+  overrides: Partial<Aircraft>,
+): Aircraft {
+  const end = AP.endById[endId];
+  const on = distM === 0 ? end.threshold : destinationPoint(end.threshold, end.bearingDeg, distM);
+  const pos = offsetM === 0 ? on : destinationPoint(on, end.bearingDeg + 90, offsetM);
+  return base({ lat: pos.lat, lon: pos.lon, track: end.bearingDeg, ...overrides });
+}
+
 describe("detectDepartures", () => {
   it("flags a stationary aircraft at the threshold as holding", () => {
     const ac = onRunway("32", 0, { onGround: true, gs: 0 });
@@ -48,6 +62,28 @@ describe("detectDepartures", () => {
     expect(d).toHaveLength(1);
     expect(d[0].phase).toBe("holding");
     expect(d[0].end).toBe("32");
+  });
+
+  it("does NOT flag a stationary aircraft parked off the runway (apron/hangar) as holding", () => {
+    const ac = offRunway("28", 0, 150, { onGround: true, gs: 0 }); // 150 m off the centreline
+    const d = detectDepartures(AP, [ac], new Map());
+    expect(d.filter((e) => e.phase === "holding")).toHaveLength(0);
+  });
+
+  it("keeps a lined-up aircraft with GPS scatter (40 m off) as holding", () => {
+    const ac = offRunway("28", 0, 40, { onGround: true, gs: 0 });
+    expect(detectDepartures(AP, [ac], new Map())[0]?.phase).toBe("holding");
+  });
+
+  it("excludes a stationary aircraft 90 m off the centreline from holding", () => {
+    const ac = offRunway("28", 0, 90, { onGround: true, gs: 0 });
+    expect(detectDepartures(AP, [ac], new Map()).filter((e) => e.phase === "holding")).toHaveLength(0);
+  });
+
+  it("does NOT flag an aligned accelerating aircraft on a parallel taxiway as roll", () => {
+    const ac = offRunway("28", 600, 150, { onGround: true, gs: 60 }); // aligned, 150 m off
+    const d = detectDepartures(AP, [ac], new Map([["dep1", 30]])); // 30 → 60, accelerating
+    expect(d.filter((e) => e.phase === "roll")).toHaveLength(0);
   });
 
   it("flags an accelerating aircraft on the runway as roll", () => {

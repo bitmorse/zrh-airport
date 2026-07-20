@@ -39,6 +39,10 @@ export interface DepartureEvent {
 }
 
 const HALF_WIDTH_M = 220; // lateral tolerance around the runway centreline (ground)
+// Tighter band for the on-ground phases: a plane lined up / rolling for departure is on
+// the paved runway (~30 m half-width + shoulders + ~15-30 m ADS-B ground error). This
+// keeps aprons/hangars and parallel taxiways (both >100 m off) from reading as "waiting".
+const ON_RUNWAY_HALF_WIDTH_M = 60;
 const BEFORE_M = 300; // just short of the threshold
 const HOLD_AFTER_M = 500; // just onto the runway
 const CLIMB_AFTER_M = 8000; // initial climb past the far end
@@ -167,6 +171,7 @@ export function detectDepartures(
         if (
           ac.gs != null &&
           ac.gs <= HOLD_GS &&
+          crossTrack <= ON_RUNWAY_HALF_WIDTH_M && // on the runway, not a parked apron/hangar
           alongTrack >= -BEFORE_M &&
           alongTrack <= HOLD_AFTER_M
         ) {
@@ -175,6 +180,7 @@ export function detectDepartures(
           ac.gs != null &&
           ac.gs > HOLD_GS &&
           ac.gs <= ROLL_MAX_GS &&
+          crossTrack <= ON_RUNWAY_HALF_WIDTH_M && // on the runway, not a parallel taxiway
           ac.track != null &&
           angleDelta(ac.track, end.bearingDeg) <= TRACK_TOL_DEG &&
           alongTrack >= -BEFORE_M &&
