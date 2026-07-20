@@ -35,8 +35,18 @@ describe("reckonPosition", () => {
 
   it("caps extrapolation so a stalled feed doesn't fling the aircraft away", () => {
     const capped = reckonPosition(ac(), 0, 10 * 60 * 1000); // 10 min stall
-    const far = 140 * KT_TO_MS * 60; // capped at 60 s
+    const far = 140 * KT_TO_MS * 90; // capped at MAX_EXTRAPOLATE_S (90 s)
     expect(haversineMeters({ lat: 47.4, lon: 8.5 }, capped)).toBeCloseTo(far, -1);
+  });
+
+  it("keeps gliding through a 30 s polling outage (does not freeze)", () => {
+    const start = ac({ gs: 150 });
+    const at5 = reckonPosition(start, 1000, 1000 + 5_000);
+    const at30 = reckonPosition(start, 1000, 1000 + 30_000); // still well under the cap
+    // Position keeps advancing along track across the outage — no freeze.
+    expect(haversineMeters({ lat: 47.4, lon: 8.5 }, at30)).toBeGreaterThan(
+      haversineMeters({ lat: 47.4, lon: 8.5 }, at5),
+    );
   });
 });
 

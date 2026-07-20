@@ -8,7 +8,10 @@ import { destinationPoint, type LatLon } from "./geo";
 
 const KT_TO_MS = 0.514444;
 const M_TO_NM = 1 / 1852;
-const MAX_EXTRAPOLATE_S = 60; // stop dead-reckoning if the feed stalls
+// Keep dead-reckoning through a realistic polling outage (rate-limit 429 backoff can
+// drop the feed for ~30 s) so a moving aircraft keeps gliding instead of freezing until
+// the next refresh; still bounded so a truly dead feed can't fling a glyph off forever.
+const MAX_EXTRAPOLATE_S = 90;
 // Above this groundspeed a plane on the ground is rolling (takeoff/landing), not
 // taxiing — reckon it so a departure glides down the runway instead of freezing.
 // Below it we hold position: slow taxi tracks are noisy and would jitter.

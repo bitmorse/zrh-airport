@@ -1,161 +1,112 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as gpwsAudio from "./gpwsAudio";
 
-// --- Minimal fake Web Audio + fetch, injected via globals -------------------
+// --- Fake HTMLAudioElement, injected via globalThis.Audio -------------------
 
-const BUF_DUR = 1.2;
+let instances: FakeAudio[] = [];
 
-class FakeBufferSource {
-  buffer: unknown = null;
-  onended: (() => void) | null = null;
-  startedAt: number | null = null;
-  stopped = false;
-  connect = vi.fn();
-  start = vi.fn((t: number) => {
-    this.startedAt = t;
-  });
-  stop = vi.fn(() => {
-    if (this.stopped) throw new Error("already stopped");
-    this.stopped = true;
-  });
-}
-
-class FakeAudioContext extends EventTarget {
-  state: "suspended" | "running" | "interrupted" = "suspended";
+class FakeAudio {
+  src: string;
+  preload = "";
   currentTime = 0;
-  destination = {};
-  sources: FakeBufferSource[] = [];
-  resume = vi.fn(async () => {
-    this.state = "running";
-    this.dispatchEvent(new Event("statechange"));
+  duration = 1.2;
+  private listeners: Record<string, Array<() => void>> = {};
+  play = vi.fn(() => Promise.resolve());
+  pause = vi.fn();
+  addEventListener = vi.fn((ev: string, cb: () => void) => {
+    (this.listeners[ev] ??= []).push(cb);
   });
-  createGain = vi.fn(() => ({ connect: vi.fn(), gain: { value: 1 } }));
-  createBuffer = vi.fn(() => ({ duration: 0 }));
-  createBufferSource = vi.fn(() => {
-    const s = new FakeBufferSource();
-    this.sources.push(s);
-    return s;
+  removeEventListener = vi.fn((ev: string, cb: () => void) => {
+    this.listeners[ev] = (this.listeners[ev] ?? []).filter((f) => f !== cb);
   });
-  decodeAudioData = vi.fn(async () => ({ duration: BUF_DUR }) as unknown as AudioBuffer);
-  setState(s: "suspended" | "running" | "interrupted") {
-    this.state = s;
-    this.dispatchEvent(new Event("statechange"));
+  constructor(src: string) {
+    this.src = src;
+    instances.push(this);
+  }
+  emit(ev: string) {
+    for (const cb of this.listeners[ev] ?? []) cb();
   }
 }
 
-let fakeCtx: FakeAudioContext;
-
 beforeEach(() => {
-  fakeCtx = new FakeAudioContext();
-  // Return the same instance so the singleton and the test share one context.
-  (globalThis as Record<string, unknown>).AudioContext = vi.fn(() => fakeCtx);
-  (globalThis as Record<string, unknown>).fetch = vi.fn(async () => ({
-    arrayBuffer: async () => new ArrayBuffer(8),
-  })) as unknown as typeof fetch;
+  instances = [];
+  (globalThis as Record<string, unknown>).Audio = FakeAudio as unknown;
   gpwsAudio.__resetForTest();
 });
 
 afterEach(() => {
-  delete (globalThis as Record<string, unknown>).AudioContext;
-  delete (globalThis as Record<string, unknown>).fetch;
+  delete (globalThis as Record<string, unknown>).Audio;
 });
 
-/** Decode every queued load so buffers are ready (drains the fetch→decode microtasks). */
-async function flushLoads() {
-  await new Promise((r) => setTimeout(r, 0));
-}
-
 describe("gpwsAudio", () => {
-  it("load() decodes each url once and dedups concurrent loads", async () => {
+  it("load() creates one preloaded element per url and dedups", () => {
     gpwsAudio.load(["a.wav", "b.wav"]);
-    gpwsAudio.load(["a.wav"]); // already loading → no extra fetch
-    await flushLoads();
-    expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(2);
-    expect(fakeCtx.decodeAudioData).toHaveBeenCalledTimes(2);
+    gpwsAudio.load(["a.wav"]); // already loaded → no new element
+    expect(instances.length).toBe(2);
+    expect(instances.every((a) => a.preload === "auto")).toBe(true);
   });
 
-  it("unlock() resumes the context and plays a priming buffer", () => {
-    gpwsAudio.unlock();
-    expect(fakeCtx.resume).toHaveBeenCalled();
-    expect(fakeCtx.state).toBe("running");
-    expect(fakeCtx.sources.length).toBe(1); // the 1-frame silent buffer
-  });
-
-  it("play() while not running schedules nothing but kicks a resume", () => {
-    // suspended by default
-    expect(gpwsAudio.play("a.wav")).toBe(false);
-    expect(fakeCtx.resume).toHaveBeenCalled();
-  });
-
-  it("play() with no buffer returns false and kicks a load", () => {
-    gpwsAudio.unlock(); // running now
-    const before = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.length;
-    expect(gpwsAudio.play("missing.wav")).toBe(false);
-    expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(before + 1);
-  });
-
-  it("serialises callouts on the context clock across ticks", async () => {
-    gpwsAudio.unlock(); // running
-    gpwsAudio.load(["a.wav", "b.wav", "c.wav"]);
-    await flushLoads();
-
-    // Three cues, played across separate ticks — each starts after the previous ends.
-    expect(gpwsAudio.play("a.wav")).toBe(true);
-    expect(gpwsAudio.play("b.wav")).toBe(true);
-    expect(gpwsAudio.play("c.wav")).toBe(true);
-
-    const starts = fakeCtx.sources
-      .filter((s) => s.buffer && (s.buffer as { duration: number }).duration === BUF_DUR)
-      .map((s) => s.startedAt);
-    expect(starts).toEqual([0, BUF_DUR, 2 * BUF_DUR]);
-  });
-
-  it("collapses a stale nextAt against the live clock", async () => {
-    gpwsAudio.unlock();
-    gpwsAudio.load(["a.wav"]);
-    await flushLoads();
-    gpwsAudio.play("a.wav"); // nextAt → BUF_DUR
-    fakeCtx.currentTime = 100; // long real gap
-    gpwsAudio.play("a.wav");
-    const last = fakeCtx.sources.at(-1)!;
-    expect(last.startedAt).toBe(100); // max(currentTime, nextAt)
-  });
-
-  it("stopAll() stops every scheduled source and resets the clock", async () => {
-    gpwsAudio.unlock();
-    fakeCtx.currentTime = 5;
+  it("plays callouts serially, advancing on ended", () => {
     gpwsAudio.load(["a.wav", "b.wav"]);
-    await flushLoads();
     gpwsAudio.play("a.wav");
     gpwsAudio.play("b.wav");
-    const played = fakeCtx.sources.filter((s) => (s.buffer as { duration: number })?.duration === BUF_DUR);
-    gpwsAudio.stopAll();
-    for (const s of played) expect(s.stop).toHaveBeenCalled();
-    // Next callout starts from currentTime again, not the old accumulated nextAt.
+    const [a, b] = instances;
+    expect(a.play).toHaveBeenCalled();
+    expect(b.play).not.toHaveBeenCalled(); // waits for a to end
+    a.emit("ended");
+    expect(b.play).toHaveBeenCalled();
+  });
+
+  it("watchdog advances the queue if a clip never fires ended (interrupted)", () => {
+    vi.useFakeTimers();
+    gpwsAudio.load(["a.wav", "b.wav"]);
     gpwsAudio.play("a.wav");
-    expect(fakeCtx.sources.at(-1)!.startedAt).toBe(5);
+    gpwsAudio.play("b.wav");
+    const [a, b] = instances;
+    expect(a.play).toHaveBeenCalled();
+    expect(b.play).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1.2 * 1000 + 800 + 10); // past the watchdog cap
+    expect(b.play).toHaveBeenCalled();
+    vi.useRealTimers();
   });
 
-  it("resumes when the tab becomes visible after being interrupted", () => {
-    gpwsAudio.unlock(); // running, binds lifecycle listeners
-    fakeCtx.resume.mockClear();
-    fakeCtx.setState("interrupted"); // e.g. phone locked
-    Object.defineProperty(document, "visibilityState", {
-      configurable: true,
-      get: () => "visible",
-    });
-    document.dispatchEvent(new Event("visibilitychange"));
-    expect(fakeCtx.resume).toHaveBeenCalled();
+  it("stopAll() pauses the current clip and clears the queue", () => {
+    gpwsAudio.load(["a.wav", "b.wav"]);
+    gpwsAudio.play("a.wav");
+    gpwsAudio.play("b.wav");
+    const [a, b] = instances;
+    gpwsAudio.stopAll();
+    expect(a.pause).toHaveBeenCalled();
+    // Queue cleared → a fresh play starts immediately, the stale "b" was dropped.
+    gpwsAudio.play("a.wav");
+    expect(a.play).toHaveBeenCalledTimes(2);
+    expect(b.play).not.toHaveBeenCalled();
   });
 
-  it("is a safe no-op when Web Audio is unavailable", () => {
-    delete (globalThis as Record<string, unknown>).AudioContext;
+  it("unlock() primes every element (play → pause) inside the gesture", () => {
+    gpwsAudio.load(["a.wav", "b.wav"]);
+    gpwsAudio.unlock();
+    for (const a of instances) {
+      expect(a.play).toHaveBeenCalled();
+      expect(a.pause).toHaveBeenCalled();
+    }
+  });
+
+  it("primes on the first pointer gesture anywhere, without a speaker tap", () => {
+    gpwsAudio.load(["a.wav"]);
+    expect(instances[0].play).not.toHaveBeenCalled();
+    document.dispatchEvent(new Event("pointerdown"));
+    expect(instances[0].play).toHaveBeenCalled();
+  });
+
+  it("is a safe no-op when Audio is unavailable", () => {
+    delete (globalThis as Record<string, unknown>).Audio;
     gpwsAudio.__resetForTest();
     expect(() => {
       gpwsAudio.load(["a.wav"]);
       gpwsAudio.unlock();
+      gpwsAudio.play("a.wav");
       gpwsAudio.stopAll();
     }).not.toThrow();
-    expect(gpwsAudio.play("a.wav")).toBe(false);
   });
 });
