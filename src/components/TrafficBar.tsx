@@ -1,9 +1,13 @@
 import type { DepartureEvent, DeparturePhase } from "../domain/departures";
 import type { Arrival } from "../domain/predictions";
+import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
 import { useFlightRoute } from "../hooks/useFlightRoute";
-import { useSettings } from "../hooks/useSettings";
-import { formatDistance, formatDuration, formatEta, routeText } from "../lib/format";
-import { elapsedSec, reckonDistanceNm } from "../lib/reckon";
+import { formatDuration, formatEta, routePairText } from "../lib/format";
+import { elapsedSec } from "../lib/reckon";
+
+/** Join short glanceable tokens with a middot, dropping empties. */
+const secondaryOf = (...parts: (string | null | undefined)[]) =>
+  parts.filter(Boolean).join(" · ") || undefined;
 
 const DEP_ORDER: Record<DeparturePhase, number> = { roll: 0, holding: 1, climb: 2 };
 const MAX_DEP_ROWS = 3;
@@ -100,6 +104,7 @@ function depRow(d: DepartureEvent, now: number): {
 export function TrafficBar({
   arrivals,
   departures,
+  aircraft = [],
   now,
   lastUpdated,
   stale,
@@ -108,6 +113,7 @@ export function TrafficBar({
 }: {
   arrivals: Arrival[];
   departures: DepartureEvent[];
+  aircraft?: AircraftWithAssignment[];
   now: number;
   lastUpdated: number | null;
   stale?: boolean;
@@ -115,9 +121,9 @@ export function TrafficBar({
   onSelect?: (hex: string) => void;
 }) {
   const soonest = arrivals[0];
-  const [{ units }] = useSettings();
+  const typeByHex = new Map(aircraft.map((w) => [w.ac.hex, w.ac.type]));
   const route = useFlightRoute(soonest?.callsign ?? null);
-  const routeLabel = routeText(route.data);
+  const routePair = routePairText(route.data);
   const ageSec = elapsedSec(lastUpdated, now);
   const remaining = soonest ? Math.max(0, soonest.etaSeconds - ageSec) : null;
   const soon = remaining != null && remaining <= 60 && !stale;
@@ -125,7 +131,6 @@ export function TrafficBar({
     soonest?.flash != null && now - soonest.flash.atMs <= FLASH_SHOW_MS
       ? soonest.flash.label
       : null;
-  const distNm = soonest ? reckonDistanceNm(soonest.distanceNm, soonest.gsKt, ageSec) : 0;
 
   const deps = [...departures].sort((a, b) => DEP_ORDER[a.phase] - DEP_ORDER[b.phase]);
   const shown = deps.slice(0, MAX_DEP_ROWS);
@@ -147,7 +152,7 @@ export function TrafficBar({
                 ◈ {flash}
               </span>
             ) : (
-              `${formatDistance(distNm, units)}${routeLabel ? ` · ${routeLabel}` : ""}`
+              secondaryOf(typeByHex.get(soonest.hex), routePair)
             )
           }
           time={stale ? "—" : formatEta(remaining!)}
@@ -176,7 +181,7 @@ export function TrafficBar({
             icon="🛫"
             end={d.end}
             callsign={d.callsign}
-            secondary={secondary}
+            secondary={secondaryOf(typeByHex.get(d.hex), secondary)}
             time={time}
             timeClass={timeClass}
             selected={d.hex === selectedHex}

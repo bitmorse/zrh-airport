@@ -1,12 +1,15 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Aircraft } from "../data/adsb";
 import type { DepartureEvent } from "../domain/departures";
 import type { Arrival } from "../domain/predictions";
+import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
 import { TrafficBar } from "./TrafficBar";
 
-// Route lookup hits the network and needs react-query; stub it for a pure UI test.
+// Route lookup hits the network and needs react-query; stub it (mutable) for pure UI tests.
+const h = vi.hoisted(() => ({ route: null as unknown }));
 vi.mock("../hooks/useFlightRoute", () => ({
-  useFlightRoute: () => ({ data: null, isLoading: false, isError: false }),
+  useFlightRoute: () => ({ data: h.route, isLoading: false, isError: false }),
 }));
 
 const NOW = 1_000_000;
@@ -25,7 +28,15 @@ function holding(hex: string, callsign: string, sinceMs: number): DepartureEvent
   return { end: "28", strip: "10/28", hex, callsign, phase: "holding", gsKt: 0, holdingSinceMs: sinceMs };
 }
 
-beforeEach(() => localStorage.clear());
+/** Minimal aircraft-with-assignment carrying just the hex + type the bar reads. */
+function acItem(hex: string, type: string | null): AircraftWithAssignment {
+  return { ac: { hex, type } as unknown as Aircraft, assignment: null };
+}
+
+beforeEach(() => {
+  localStorage.clear();
+  h.route = null;
+});
 afterEach(cleanup);
 
 describe("TrafficBar", () => {
@@ -51,6 +62,29 @@ describe("TrafficBar", () => {
 
     fireEvent.click(screen.getByText("THA936"));
     expect(onSelect).toHaveBeenCalledWith("d1");
+  });
+
+  it("shows the aircraft type and a compact origin→dest route, not the airline name", () => {
+    h.route = {
+      airlineName: "Air Canada",
+      flightIata: "AC880",
+      origin: { iata: "YYZ" },
+      destination: { iata: "ZRH" },
+    };
+    render(
+      <TrafficBar
+        arrivals={[arrival]}
+        departures={[holding("d1", "EJU69MT", NOW - 13_000)]}
+        aircraft={[acItem("arr1", "B77L"), acItem("d1", "A320")]}
+        now={NOW}
+        lastUpdated={NOW}
+      />,
+    );
+    // Arrival row: compact "type · origin→dest"; the airline name is gone.
+    expect(screen.getByText(/B77L · YYZ→ZRH/)).toBeInTheDocument();
+    expect(screen.queryByText(/Air Canada/)).toBeNull();
+    // Departure row: "type · phase".
+    expect(screen.getByText(/A320 · waiting/)).toBeInTheDocument();
   });
 
   it("flashes an approach gate while the crossing is recent, then stops", () => {

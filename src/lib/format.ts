@@ -64,3 +64,12 @@ export function routeText(r: FlightRoute | null | undefined): string | null {
   const airline = [r.airlineName, r.flightIata].filter(Boolean).join(" ");
   return [airline, `${orig}→${dest}`].filter(Boolean).join(" · ");
 }
+
+/** Just the endpoints, "LHR→ZRH" — the compact route for a glanceable row. */
+export function routePairText(r: FlightRoute | null | undefined): string | null {
+  if (!r) return null;
+  const orig = r.origin?.iata ?? r.origin?.icao;
+  const dest = r.destination?.iata ?? r.destination?.icao;
+  if (!orig && !dest) return null;
+  return `${orig ?? "?"}→${dest ?? "?"}`;
+}

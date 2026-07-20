@@ -226,6 +226,7 @@ export default function App() {
         <TrafficBar
           arrivals={arrivals}
           departures={traffic.departures}
+          aircraft={traffic.aircraft}
           now={now}
           lastUpdated={traffic.lastUpdated}
           stale={stale}
