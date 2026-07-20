@@ -2,12 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AirportSvg } from "./components/AirportSvg";
 import { FlightDetails } from "./components/FlightDetails";
 import { Legend } from "./components/Legend";
-import { MovementsByHour } from "./components/MovementsByHour";
+import { MovementsByHour, WEEKDAYS } from "./components/MovementsByHour";
 import { TrafficBar } from "./components/TrafficBar";
 import { RecorderModal } from "./components/RecorderModal";
 import { StatsModal } from "./components/StatsModal";
 import { SettingsModal } from "./components/SettingsModal";
 import { snapshotAircraft, type AircraftSnapshot } from "./data/adsb";
+import { recentCountsByEnd } from "./data/airportStats";
 import { AIRPORTS, airportConfigByIcao } from "./data/airports";
 import {
   addNoiseEvent,
@@ -30,8 +31,15 @@ import {
 } from "./domain/autoSelect";
 import { flightStatusLabel } from "./domain/flightStatus";
 import { heightAglFt } from "./domain/gpws";
-import { byRunway, hasActivity, recentActivityByEnd, summarize } from "./domain/movementStats";
+import {
+  byRunway,
+  hasActivity,
+  localWeekday,
+  recentActivityByEnd,
+  summarize,
+} from "./domain/movementStats";
 import * as gpwsAudio from "./lib/gpwsAudio";
+import { useAirportRecent } from "./hooks/useAirportRecent";
 import { useAirportStats } from "./hooks/useAirportStats";
 import { AirportContext } from "./hooks/useAirport";
 import { useWatchedFlights } from "./hooks/useWatchedFlights";
@@ -407,8 +415,15 @@ export default function App() {
   //  • "usual" (days=60) = the ~2-month average by hour — the card's comparison tab;
   //    fetched lazily (only once the user opens it).
   const [statView, setStatView] = useState<"today" | "usual">("today");
+  // Which local weekday the "usual" tab averages (default: today's weekday).
+  const [usualDow, setUsualDow] = useState<number>(() => localWeekday(Date.now(), airport.config.timeZone));
   const todayStats = useAirportStats(airport.config.icao, 1, { refetchInterval: 3 * 60_000 });
-  const usualStats = useAirportStats(airport.config.icao, 60, { enabled: statView === "usual" });
+  const usualStats = useAirportStats(airport.config.icao, 60, {
+    enabled: statView === "usual",
+    dow: usualDow,
+  });
+  // Rolling recent window drives the heatmap directly (smooth "now"); polled ~60 s.
+  const recentStats = useAirportRecent(airport.config.icao);
 
   const localRunways = useMemo(() => byRunway(traffic.movementLog), [traffic.movementLog]);
   const localSummary = useMemo(() => summarize(traffic.movementLog), [traffic.movementLog]);
@@ -418,7 +433,7 @@ export default function App() {
   const statSummary = activeStats.data ? activeStats.data.summary : localSummary;
   const statSourceNote = activeStats.data
     ? statView === "usual"
-      ? `server · ${activeStats.data.windowDays}-day average`
+      ? `server · ${activeStats.data.windowDays}-day average · ${WEEKDAYS[usualDow]}`
       : "server · last 24 h"
     : activeStats.isError
       ? "device history · server unavailable"
@@ -426,14 +441,19 @@ export default function App() {
         ? "device history"
         : undefined;
 
-  // Map heatmap: real movements per runway end in the recent window (from the "today"
-  // data), falling back to this device's own live counts when the server has nothing.
+  // Map heatmap: real movements per runway end. Prefer the rolling recent endpoint;
+  // fall back to the "today" (days=1) current-hour derivation until it's deployed, then
+  // to this device's own live counts — so the map is always meaningful.
   const heatCounts = useMemo(() => {
-    const server = todayStats.data
+    if (recentStats.data) {
+      const c = recentCountsByEnd(recentStats.data);
+      if (hasActivity(c)) return c;
+    }
+    const today = todayStats.data
       ? recentActivityByEnd(todayStats.data.runways, now, airport.config.timeZone)
       : {};
-    return hasActivity(server) ? server : traffic.counts;
-  }, [todayStats.data, now, airport.config.timeZone, traffic.counts]);
+    return hasActivity(today) ? today : traffic.counts;
+  }, [recentStats.data, todayStats.data, now, airport.config.timeZone, traffic.counts]);
 
   const switchAirport = useCallback(
     (icao: string) => {
@@ -648,6 +668,8 @@ export default function App() {
               now={now}
               view={statView}
               onViewChange={setStatView}
+              dow={usualDow}
+              onDowChange={setUsualDow}
               loading={activeStats.isLoading && !activeStats.data}
               sourceNote={statSourceNote}
             />

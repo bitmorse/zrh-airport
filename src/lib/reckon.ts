@@ -4,7 +4,7 @@
  * live instead of jumping each poll. On the next poll they snap back to the truth.
  */
 import type { Aircraft } from "../data/adsb";
-import { destinationPoint, type LatLon } from "./geo";
+import { destinationPoint, haversineMeters, toLocalMeters, type LatLon } from "./geo";
 
 const KT_TO_MS = 0.514444;
 const M_TO_NM = 1 / 1852;
@@ -46,6 +46,29 @@ export function reckonPosition(
   );
   if (ageSec <= 0) return pos;
   return destinationPoint(pos, ac.track, ac.gs * KT_TO_MS * ageSec);
+}
+
+/**
+ * Bearing (degrees, 0..360, 0 = north) of an aircraft's actual travel from its trail —
+ * the direction the newest fix moved relative to the most recent earlier fix at least
+ * `minMoveM` metres back. Used to orient the glyph on the ground, where the feed's
+ * `track` is unreliable/absent. Returns null when the aircraft hasn't moved enough to
+ * trust a direction (noise guard), so the caller can fall back to `track` / last-known.
+ */
+export function headingFromTrail(
+  points: readonly LatLon[],
+  minMoveM = 20,
+): number | null {
+  if (points.length < 2) return null;
+  const to = points[points.length - 1];
+  for (let i = points.length - 2; i >= 0; i--) {
+    const from = points[i];
+    if (haversineMeters(from, to) >= minMoveM) {
+      const v = toLocalMeters(from, to); // x = east, y = north
+      return (((Math.atan2(v.x, v.y) * 180) / Math.PI) + 360) % 360;
+    }
+  }
+  return null;
 }
 
 /** Seconds since the last poll, clamped to ≥ 0. */

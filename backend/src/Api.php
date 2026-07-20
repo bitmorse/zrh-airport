@@ -11,9 +11,10 @@ namespace Zrh;
  *
  * Routes are matched by their trailing path segments, so the API works mounted
  * at any base path — /airports-api, /api/v1, or the doc root:
- *   GET …/health                 → liveness
- *   GET …/{icao}/movements[?days] → per-runway-end histogram
- *   GET …/{icao}/summary[?days]   → headline stats
+ *   GET …/health                      → liveness
+ *   GET …/{icao}/movements[?days,dow] → per-runway-end histogram (opt. weekday filter)
+ *   GET …/{icao}/summary[?days]       → headline stats
+ *   GET …/{icao}/recent[?minutes]     → per-runway-end movements in a recent window
  *
  * The window is measured in whole days back from opts['nowMs'] and clamped to
  * the retention window; responses are public, cacheable, and ETagged (the
@@ -57,14 +58,27 @@ final class Api
 
         switch ($resource) {
             case 'movements':
-                $data = $store->histogram($icao, $sinceMs);
+                $dow = self::dow($query);
+                $data = $store->histogram($icao, $sinceMs, $dow);
                 $data['windowDays'] = $windowDays;
+                $data['dow'] = $dow; // echo the effective weekday filter (null = all days)
                 // ETag fingerprints the data only (not the wall clock), so an
                 // unchanged dataset keeps returning the same tag → cheap 304s.
                 $seed = $data;
                 unset($seed['sinceMs']); // derived from nowMs — would perturb the tag
                 $data['generatedAt'] = (int) $opts['nowMs'];
                 return self::json(200, $data, $seed);
+
+            case 'recent':
+                $minutes = self::recentMinutes($query);
+                $sinceRecent = (int) $opts['nowMs'] - $minutes * 60_000;
+                $data = $store->recentByEnd($icao, $sinceRecent);
+                $data['minutes'] = $minutes;
+                $seed = $data;
+                unset($seed['sinceMs']); // wall-clock derived — keep it out of the tag
+                $data['generatedAt'] = (int) $opts['nowMs'];
+                // Moves with the collector; short cache so "now" stays fresh.
+                return self::json(200, $data, $seed, true, 60);
 
             case 'summary':
                 $data = $store->summary($icao, $sinceMs);
@@ -96,11 +110,28 @@ final class Api
         }
         if ($n >= 2) {
             $resource = strtolower($parts[$n - 1]);
-            if ($resource === 'movements' || $resource === 'summary') {
+            if ($resource === 'movements' || $resource === 'summary' || $resource === 'recent') {
                 return [$parts[$n - 2], $resource];
             }
         }
         return null;
+    }
+
+    /** Optional day-of-week filter (0=Sunday..6=Saturday); null when absent/invalid. */
+    private static function dow(array $query): ?int
+    {
+        if (!isset($query['dow']) || !is_numeric($query['dow'])) {
+            return null;
+        }
+        $d = (int) $query['dow'];
+        return ($d >= 0 && $d <= 6) ? $d : null;
+    }
+
+    /** Recent-window length in minutes, default 60, clamped to [5, 360]. */
+    private static function recentMinutes(array $query): int
+    {
+        $m = isset($query['minutes']) && is_numeric($query['minutes']) ? (int) $query['minutes'] : 60;
+        return max(5, min(360, $m));
     }
 
     private static function windowDays(array $query, array $opts): int
@@ -117,7 +148,7 @@ final class Api
      *                             perturb the tag); defaults to the body.
      * @return array{status:int,headers:array<string,string>,body:string}
      */
-    private static function json(int $status, array $data, ?array $etagSeed = null, bool $cacheable = true): array
+    private static function json(int $status, array $data, ?array $etagSeed = null, bool $cacheable = true, int $maxAge = 300): array
     {
         $body = json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         if ($body === false) {
@@ -130,7 +161,7 @@ final class Api
         ];
         if ($cacheable) {
             $seed = $etagSeed === null ? $body : (json_encode($etagSeed, JSON_UNESCAPED_SLASHES) ?: $body);
-            $headers['Cache-Control'] = 'public, max-age=300';
+            $headers['Cache-Control'] = 'public, max-age=' . $maxAge;
             $headers['ETag'] = '"' . substr(hash('sha256', $seed), 0, 16) . '"';
         } else {
             $headers['Cache-Control'] = 'no-store';

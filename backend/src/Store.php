@@ -210,16 +210,23 @@ final class Store
 
     /**
      * Per-runway-end 24-hour histogram since $sinceMs, busiest end first. Mirrors
-     * the frontend's RunwayHistogram shape (src/domain/movementStats.ts).
+     * the frontend's RunwayHistogram shape (src/domain/movementStats.ts). When $dow
+     * (0=Sunday..6=Saturday) is given, only movements on that local weekday count —
+     * the "what it's usually like on a <weekday>" view.
      */
-    public function histogram(string $icao, int $sinceMs): array
+    public function histogram(string $icao, int $sinceMs, ?int $dow = null): array
     {
-        $stmt = $this->pdo->prepare(
-            'SELECT rwy_end, local_hour, kind, local_date, COUNT(*) AS c
-             FROM movements WHERE icao = ? AND ts_utc >= ?
-             GROUP BY rwy_end, local_hour, kind, local_date'
-        );
-        $stmt->execute([$icao, $sinceMs]);
+        // local_date is the airport-local Y-m-d, so strftime('%w', …) is the local weekday.
+        $sql = 'SELECT rwy_end, local_hour, kind, local_date, COUNT(*) AS c
+                FROM movements WHERE icao = ? AND ts_utc >= ?';
+        $args = [$icao, $sinceMs];
+        if ($dow !== null) {
+            $sql .= " AND strftime('%w', local_date) = ?";
+            $args[] = (string) $dow;
+        }
+        $sql .= ' GROUP BY rwy_end, local_hour, kind, local_date';
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($args);
 
         $ends = [];
         $totalDays = [];
@@ -281,6 +288,41 @@ final class Store
             'ends' => $out,
             'totals' => ['landings' => $totL, 'takeoffs' => $totT, 'days' => count($totalDays)],
         ];
+    }
+
+    /**
+     * Per-runway-end movement counts in a recent wall-clock window (since $sinceMs),
+     * busiest end first — "which runway is hot right now". Powers the live map heatmap.
+     * @return array{icao:string,sinceMs:int,ends:array<int,array{end:string,movements:int,landings:int,takeoffs:int}>}
+     */
+    public function recentByEnd(string $icao, int $sinceMs): array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT rwy_end, kind, COUNT(*) AS c
+             FROM movements WHERE icao = ? AND ts_utc >= ?
+             GROUP BY rwy_end, kind'
+        );
+        $stmt->execute([$icao, $sinceMs]);
+
+        $ends = [];
+        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
+            $end = (string) $r['rwy_end'];
+            $cnt = (int) $r['c'];
+            if (!isset($ends[$end])) {
+                $ends[$end] = ['end' => $end, 'movements' => 0, 'landings' => 0, 'takeoffs' => 0];
+            }
+            if ($r['kind'] === 'landing') {
+                $ends[$end]['landings'] += $cnt;
+            } else {
+                $ends[$end]['takeoffs'] += $cnt;
+            }
+            $ends[$end]['movements'] += $cnt;
+        }
+
+        $out = array_values($ends);
+        usort($out, static fn ($a, $b) => $b['movements'] <=> $a['movements'] ?: strcmp($a['end'], $b['end']));
+
+        return ['icao' => $icao, 'sinceMs' => $sinceMs, 'ends' => $out];
     }
 
     /** Headline stats for the card: totals, distinct days, busiest local hour, last movement. */

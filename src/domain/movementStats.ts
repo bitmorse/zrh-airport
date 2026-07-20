@@ -63,6 +63,12 @@ export function localHour(ts: number, timeZone?: string): { date: string; hour: 
   return { date: `${val("year")}-${val("month")}-${val("day")}`, hour };
 }
 
+/** Local day-of-week (0=Sunday..6=Saturday) at the airport, matching the API's `dow`. */
+export function localWeekday(ts: number, timeZone?: string): number {
+  // The calendar date's weekday is timezone-independent, so read it as a UTC date.
+  return new Date(`${localHour(ts, timeZone).date}T00:00:00Z`).getUTCDay();
+}
+
 function bucketKey(ts: number, timeZone?: string): string {
   const { date, hour } = localHour(ts, timeZone);
   return `${date}T${String(hour).padStart(2, "0")}`;

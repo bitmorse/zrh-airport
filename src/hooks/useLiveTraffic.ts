@@ -32,11 +32,15 @@ import {
   type Arrival,
   type GateCrossings,
 } from "../domain/predictions";
+import { headingFromTrail } from "../lib/reckon";
 import type { Settings } from "./useSettings";
 
 export interface AircraftWithAssignment {
   ac: Aircraft;
   assignment: RunwayAssignment | null;
+  /** Glyph heading (deg, 0=N): the feed's `track` in the air, else the trail's actual
+   *  direction of travel on the ground (where `track` is unreliable), else last-known. */
+  heading?: number;
 }
 
 // Adaptive polling: burst when a departure/arrival is imminent near a threshold.
@@ -88,6 +92,7 @@ export function useLiveTraffic(settings: Settings, airport: Airport): LiveTraffi
   const gateCrossings = useRef<GateCrossings>(new Map());
   const landingMemory: { current: Parameters<typeof trackLandings>[2] } = useRef(new Map());
   const trails = useRef(new Map<string, Trail>());
+  const headingMemory = useRef(new Map<string, number>()); // last good glyph heading per hex
   const [movementLog, setMovementLog] = useState<MovementLog>({});
   const countedMovements = useRef(new Map<string, number>());
 
@@ -212,7 +217,28 @@ export function useLiveTraffic(settings: Settings, airport: Airport): LiveTraffi
         trails.current.set(ac.hex, t);
       }
       for (const [hex, t] of trails.current) {
-        if (snap.fetchedAt - t.lastSeen > TRAIL_TTL_MS) trails.current.delete(hex);
+        if (snap.fetchedAt - t.lastSeen > TRAIL_TTL_MS) {
+          trails.current.delete(hex);
+          headingMemory.current.delete(hex);
+        }
+      }
+
+      // Orient each glyph: trust the feed's `track` in the air; on the ground derive the
+      // heading from the trail's real direction of travel (track is unreliable at slow
+      // taxi speed), and keep the last-known heading when a plane is stationary — so a
+      // taxiing plane points along its path and a stopped one never snaps to north.
+      for (const w of withAssignment) {
+        const { ac } = w;
+        const heading =
+          !ac.onGround && ac.track != null
+            ? ac.track
+            : (headingFromTrail(trails.current.get(ac.hex)?.points ?? []) ??
+              ac.track ??
+              headingMemory.current.get(ac.hex));
+        if (heading != null) {
+          headingMemory.current.set(ac.hex, heading);
+          w.heading = heading;
+        }
       }
 
       const needsFastPoll =

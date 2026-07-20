@@ -43,7 +43,9 @@ export function Plane({
   const pt = projectToSvg(arp, pos ?? { lat: ac.lat, lon: ac.lon });
   if (!inViewport(pt, 20)) return null;
 
-  const heading = ac.track ?? 0;
+  // Prefer the computed display heading (trail-derived on the ground, where `track` is
+  // unreliable); fall back to the raw track, then north.
+  const heading = item.heading ?? ac.track ?? 0;
   const onRunway = assignment?.phase === "runway";
   const color = assignment ? PHASE_COLOR[assignment.phase] : INACTIVE_COLOR;
   const halo = onRunway ? HALO_DARK : HALO_LIGHT;

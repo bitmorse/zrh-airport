@@ -9,6 +9,9 @@ import {
 export type StatView = "today" | "usual";
 type Mode = "avg" | "total";
 
+/** Weekday labels indexed 0=Sunday..6=Saturday (matches the API's `dow`). */
+export const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+
 // Mini-chart geometry (SVG user units; scales responsively via viewBox).
 const CH_W = 240;
 const CH_H = 74;
@@ -50,6 +53,8 @@ export function MovementsByHour({
   now,
   view,
   onViewChange,
+  dow,
+  onDowChange,
   loading,
   sourceNote,
 }: {
@@ -60,6 +65,9 @@ export function MovementsByHour({
   /** Real last-24 h ("today") vs. the ~2-month average ("usual"). */
   view: StatView;
   onViewChange: (v: StatView) => void;
+  /** Weekday the "usual" view averages (0=Sun..6=Sat), and its setter. */
+  dow: number;
+  onDowChange: (d: number) => void;
   /** True while the first server fetch is in flight and there's nothing to show yet. */
   loading?: boolean;
   /** Short provenance note appended to the footer (e.g. "server · 60-day history"). */
@@ -111,6 +119,29 @@ export function MovementsByHour({
           ))}
         </div>
       </div>
+
+      {view === "usual" && (
+        <div className="flex items-center gap-2 text-[11px]">
+          <span className="uppercase tracking-wide text-muted">Weekday</span>
+          <div className="flex flex-wrap overflow-hidden border border-border">
+            {WEEKDAYS.map((label, d) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => onDowChange(d)}
+                aria-pressed={dow === d}
+                className={`px-1.5 py-0.5 ${
+                  dow === d
+                    ? "bg-primary text-on-primary"
+                    : "text-on-surface-variant hover:bg-surface-container"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {empty ? (
         loading ? (

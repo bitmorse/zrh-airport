@@ -15,12 +15,13 @@ import {
 export function useAirportStats(
   icao: string,
   days = STATS_MAX_DAYS,
-  opts: { refetchInterval?: number | false; enabled?: boolean } = {},
+  opts: { refetchInterval?: number | false; enabled?: boolean; dow?: number | null } = {},
 ) {
   const refetchInterval = opts.refetchInterval ?? false;
+  const dow = opts.dow ?? null;
   return useQuery<AirportMovements>({
-    queryKey: ["airportStats", icao, days],
-    queryFn: ({ signal }) => fetchAirportMovements(icao, days, signal),
+    queryKey: ["airportStats", icao, days, dow],
+    queryFn: ({ signal }) => fetchAirportMovements(icao, days, signal, dow),
     enabled: !!icao && (opts.enabled ?? true),
     // Keep staleTime under the poll interval so the live window actually refreshes.
     staleTime: refetchInterval ? Math.min(5 * 60_000, refetchInterval) : 5 * 60_000,

@@ -84,6 +84,53 @@ return [
         Assert::same($a['headers']['ETag'], $b['headers']['ETag'], 'etag stable across wall-clock');
     },
 
+    'movements: dow param filters by local weekday' => function (): void {
+        // apiStore seeds both movements on 2026-07-17, a Friday (dow 5).
+        $fri = Api::handle(apiStore(), '/api/v1/LSZH/movements', ['dow' => '5'], apiOpts());
+        $fbody = json_decode($fri['body'], true);
+        Assert::same(5, $fbody['dow'], 'echoes the weekday filter');
+        Assert::same(1, $fbody['totals']['landings'], 'Friday landing kept');
+        Assert::same(1, $fbody['totals']['takeoffs'], 'Friday takeoff kept');
+
+        // A different weekday filters everything out.
+        $mon = Api::handle(apiStore(), '/api/v1/LSZH/movements', ['dow' => '1'], apiOpts());
+        $mbody = json_decode($mon['body'], true);
+        Assert::same(0, $mbody['totals']['landings'] + $mbody['totals']['takeoffs'], 'no Monday movements');
+
+        // No dow → unfiltered; the response echoes null.
+        $all = Api::handle(apiStore(), '/api/v1/LSZH/movements', [], apiOpts());
+        Assert::true(json_decode($all['body'], true)['dow'] === null, 'dow null when absent');
+    },
+
+    'recent: per-end movements in the window, busiest first' => function (): void {
+        $store = apiStore();
+        $opts = apiOpts();
+        $now = $opts['nowMs'];
+        $store->insertMovements('LSZH', [
+            ['kind' => 'landing', 'hex' => 'x', 'end' => '28', 'ts' => $now - 10 * 60_000],
+            ['kind' => 'takeoff', 'hex' => 'y', 'end' => '28', 'ts' => $now - 20 * 60_000],
+            ['kind' => 'landing', 'hex' => 'z', 'end' => '16', 'ts' => $now - 5 * 60_000],
+        ], 'Europe/Zurich');
+        $r = Api::handle($store, '/api/v1/LSZH/recent', ['minutes' => '90'], $opts);
+        Assert::same(200, $r['status']);
+        $body = json_decode($r['body'], true);
+        Assert::same(90, $body['minutes'], 'echoes the window');
+        Assert::same('28', $body['ends'][0]['end'], 'busiest end first');
+        Assert::same(2, $body['ends'][0]['movements'], '28 has 2 recent');
+    },
+
+    'recent: minutes clamped to [5, 360]' => function (): void {
+        $r = Api::handle(apiStore(), '/api/v1/LSZH/recent', ['minutes' => '99999'], apiOpts());
+        Assert::same(360, json_decode($r['body'], true)['minutes'], 'clamped to 360');
+        $r2 = Api::handle(apiStore(), '/api/v1/LSZH/recent', ['minutes' => '1'], apiOpts());
+        Assert::same(5, json_decode($r2['body'], true)['minutes'], 'clamped to 5');
+    },
+
+    'recent: unknown airport 404' => function (): void {
+        $r = Api::handle(apiStore(), '/api/v1/EGLL/recent', [], apiOpts());
+        Assert::same(404, $r['status']);
+    },
+
     'summary: returns headline stats' => function (): void {
         $r = Api::handle(apiStore(), '/api/v1/LSZH/summary', [], apiOpts());
         Assert::same(200, $r['status']);

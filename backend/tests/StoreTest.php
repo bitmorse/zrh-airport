@@ -82,6 +82,37 @@ return [
         Assert::same(1, $h['totals']['landings'], 'only movements after cutoff');
     },
 
+    'histogram: dow filters to one local weekday' => function (): void {
+        $s = memStore();
+        // 2026-07-17 is a Friday (dow 5); 2026-07-18 a Saturday (dow 6).
+        $s->insertMovements('LSZH', [
+            mv('landing', 'a', '14', tsAt('2026-07-17 14:00:00', TZ)), // Fri
+            mv('landing', 'b', '14', tsAt('2026-07-18 14:00:00', TZ)), // Sat
+        ], TZ);
+        Assert::same(1, $s->histogram('LSZH', 0, 5)['totals']['landings'], 'only Friday');
+        Assert::same(1, $s->histogram('LSZH', 0, 6)['totals']['landings'], 'only Saturday');
+        Assert::same(2, $s->histogram('LSZH', 0, null)['totals']['landings'], 'all days');
+        Assert::same(0, $s->histogram('LSZH', 0, 1)['totals']['landings'], 'no Mondays');
+    },
+
+    'recentByEnd: counts per end in the window, busiest first' => function (): void {
+        $s = memStore();
+        $now = tsAt('2026-07-20 12:00:00', TZ);
+        $s->insertMovements('LSZH', [
+            mv('landing', 'a', '28', $now - 10 * 60_000),
+            mv('landing', 'b', '28', $now - 20 * 60_000),
+            mv('takeoff', 'c', '28', $now - 30 * 60_000),
+            mv('landing', 'd', '16', $now - 5 * 60_000),
+            mv('landing', 'e', '16', tsAt('2026-07-20 09:00:00', TZ)), // outside a 90-min window
+        ], TZ);
+        $r = $s->recentByEnd('LSZH', $now - 90 * 60_000);
+        Assert::same('28', $r['ends'][0]['end'], 'busiest end first');
+        Assert::same(3, $r['ends'][0]['movements'], '28 has 3 recent');
+        Assert::same(2, $r['ends'][0]['landings'], '28 landings');
+        Assert::same(1, $r['ends'][0]['takeoffs'], '28 takeoffs');
+        Assert::same(1, $r['ends'][1]['movements'], '16 has 1 recent (old one excluded)');
+    },
+
     'tracker: round-trips state and replaces on save' => function (): void {
         $s = memStore();
         $s->saveTracker('LSZH', [

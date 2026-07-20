@@ -16,6 +16,11 @@ per runway) collected around the clock by the backend collector.
   (Bangkok Suvarnabhumi). Unknown codes return `404`.
 - **`days`** query parameter selects the look-back window in whole days, counted
   back from now. Default `60`, clamped to `[1, 60]` (the retention window).
+- **`dow`** (movements only) optionally restricts to a single **local weekday**
+  `0–6` (0 = Sunday). Invalid/absent → all days. Use it for "what it's usually
+  like on a Tuesday". The response echoes the effective `dow` (`null` when absent).
+- **`minutes`** (recent only) selects a recent wall-clock window. Default `60`,
+  clamped to `[5, 360]`.
 - **Timestamps** (`generatedAt`, `sinceMs`, `lastMovementMs`) are **epoch
   milliseconds, UTC**.
 - **Hour buckets** (`hour`, `busiestHour`) are the airport's **local** hour
@@ -138,6 +143,44 @@ GET /airports-api/LSZH/movements?days=60
 
 > An empty airport (nothing collected yet, or outside the window) returns
 > `"ends": []` and zeroed `totals` — still `200`.
+
+---
+
+## `GET /{icao}/recent`
+
+Per-runway-end movement counts in a recent wall-clock window — "which runway is
+hot **right now**", for the live map heatmap. Ends sorted busiest first. Cached
+briefly (`max-age=60`) since it moves with the collector.
+
+```
+GET /airports-api/LSZH/recent?minutes=60
+```
+
+**200**
+
+```json
+{
+  "icao": "LSZH",
+  "sinceMs": 1784546586140,
+  "ends": [
+    { "end": "28", "movements": 17, "landings": 12, "takeoffs": 5 },
+    { "end": "16", "movements": 6,  "landings": 0,  "takeoffs": 6 }
+  ],
+  "minutes": 60,
+  "generatedAt": 1784550186140
+}
+```
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `sinceMs` | int | Lower bound of the window, epoch ms UTC |
+| `ends[].end` | string | Runway-end id |
+| `ends[].movements` | int | Landings + takeoffs on this end in the window |
+| `ends[].landings` / `ends[].takeoffs` | int | Split of the above |
+| `minutes` | int | Effective window after clamping to `[5, 360]` |
+| `generatedAt` | int | Server time, epoch ms UTC |
+
+> A quiet window returns `"ends": []` — still `200`.
 
 ---
 

@@ -28,6 +28,8 @@ function renderMbh(view: StatView, onViewChange: (v: StatView) => void = () => {
       now={NOW}
       view={view}
       onViewChange={onViewChange}
+      dow={2}
+      onDowChange={() => {}}
     />,
   );
 }
@@ -42,6 +44,8 @@ describe("MovementsByHour", () => {
         now={NOW}
         view="today"
         onViewChange={() => {}}
+        dow={2}
+        onDowChange={() => {}}
       />,
     );
     expect(screen.getByText("Traffic by hour")).toBeInTheDocument();
@@ -73,5 +77,37 @@ describe("MovementsByHour", () => {
     // Controlled toggle: clicking "Usual" asks the parent to switch.
     fireEvent.click(screen.getByRole("button", { name: "Usual" }));
     expect(onViewChange).toHaveBeenCalledWith("usual");
+  });
+
+  it("shows a weekday picker only in the Usual view and reports changes", () => {
+    const onDowChange = vi.fn();
+    const { rerender } = render(
+      <MovementsByHour
+        runways={runways}
+        summary={summary}
+        timeZone="UTC"
+        now={NOW}
+        view="today"
+        onViewChange={() => {}}
+        dow={2}
+        onDowChange={onDowChange}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Fri" })).toBeNull(); // hidden in Today
+
+    rerender(
+      <MovementsByHour
+        runways={runways}
+        summary={summary}
+        timeZone="UTC"
+        now={NOW}
+        view="usual"
+        onViewChange={() => {}}
+        dow={2}
+        onDowChange={onDowChange}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Fri" }));
+    expect(onDowChange).toHaveBeenCalledWith(5); // Fri = index 5
   });
 });

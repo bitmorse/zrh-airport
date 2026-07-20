@@ -64,14 +64,18 @@ function parseHours(raw: RawHour[] | undefined): HourStat[] {
 
 /**
  * Fetch the per-runway 24-hour histogram for an airport over the last `days`
- * (clamped server-side to [1, 60]). ICAO is case-insensitive. Throws on non-2xx.
+ * (clamped server-side to [1, 60]). Pass `dow` (0=Sunday..6=Saturday) to restrict
+ * to one local weekday ("what it's usually like on a Tuesday"). ICAO is
+ * case-insensitive. Throws on non-2xx.
  */
 export async function fetchAirportMovements(
   icao: string,
   days = STATS_MAX_DAYS,
   signal?: AbortSignal,
+  dow?: number | null,
 ): Promise<AirportMovements> {
-  const url = `${STATS_BASE_URL}/${encodeURIComponent(icao)}/movements?days=${days}`;
+  const dowParam = dow == null ? "" : `&dow=${dow}`;
+  const url = `${STATS_BASE_URL}/${encodeURIComponent(icao)}/movements?days=${days}${dowParam}`;
   const res = await fetch(url, { signal, headers: { Accept: "application/json" } });
   if (!res.ok) throw new Error(`airport stats ${res.status}`);
   const data = (await res.json()) as RawMovements;
@@ -90,4 +94,55 @@ export async function fetchAirportMovements(
     windowDays: int(data.windowDays) || days,
     generatedAt: int(data.generatedAt),
   };
+}
+
+/** One runway end's movement count in the recent window (from GET /{icao}/recent). */
+export interface RecentEnd {
+  end: string;
+  movements: number;
+  landings: number;
+  takeoffs: number;
+}
+
+export interface AirportRecent {
+  ends: RecentEnd[];
+  minutes: number;
+  generatedAt: number;
+}
+
+interface RawRecentEnd {
+  end?: string;
+  movements?: number;
+  landings?: number;
+  takeoffs?: number;
+}
+
+/**
+ * Per-runway-end movements in a recent wall-clock window — "which runway is hot right
+ * now" for the live heatmap. `minutes` is clamped server-side to [5, 360]. Throws on
+ * non-2xx. Parsed defensively.
+ */
+export async function fetchAirportRecent(
+  icao: string,
+  minutes = 90,
+  signal?: AbortSignal,
+): Promise<AirportRecent> {
+  const url = `${STATS_BASE_URL}/${encodeURIComponent(icao)}/recent?minutes=${minutes}`;
+  const res = await fetch(url, { signal, headers: { Accept: "application/json" } });
+  if (!res.ok) throw new Error(`airport recent ${res.status}`);
+  const data = (await res.json()) as { ends?: RawRecentEnd[]; minutes?: number; generatedAt?: number };
+  const ends: RecentEnd[] = (data.ends ?? []).map((e) => ({
+    end: String(e.end ?? "?"),
+    movements: int(e.movements),
+    landings: int(e.landings),
+    takeoffs: int(e.takeoffs),
+  }));
+  return { ends, minutes: int(data.minutes) || minutes, generatedAt: int(data.generatedAt) };
+}
+
+/** Fold a recent-activity response into the heatmap's `Record<endId, movements>`. */
+export function recentCountsByEnd(recent: AirportRecent): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const e of recent.ends) out[e.end] = e.movements;
+  return out;
 }
