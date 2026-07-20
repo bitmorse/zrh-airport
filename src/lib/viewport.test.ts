@@ -9,6 +9,7 @@ import {
   fitPoints,
   isPointVisible,
   panBy,
+  REVEAL_MAX_ZOOM,
   zoomAtPoint,
 } from "./viewport";
 
@@ -99,5 +100,16 @@ describe("fitPoints", () => {
   it("zooms out to fit a far-apart pair", () => {
     const v = fitPoints([{ x: 0, y: 0 }, { x: SVG_W, y: SVG_H }], MAX_ZOOM);
     expect(v.zoom).toBeCloseTo(MIN_ZOOM, 5);
+  });
+
+  it("adapts IN toward REVEAL_MAX_ZOOM for a near-field target (the reveal fix)", () => {
+    // Plane close to the field centre: a reveal should zoom IN to a tight frame,
+    // not stay at the wide default. Bounded by REVEAL_MAX_ZOOM.
+    const v = fitPoints(
+      [{ x: SVG_W / 2, y: SVG_H / 2 }, { x: SVG_W * 0.55, y: SVG_H / 2 }],
+      REVEAL_MAX_ZOOM,
+    );
+    expect(v.zoom).toBeGreaterThan(3);
+    expect(v.zoom).toBeLessThanOrEqual(REVEAL_MAX_ZOOM);
   });
 });

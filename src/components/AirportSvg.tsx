@@ -23,6 +23,7 @@ function AirportSvgImpl({
   recording,
   locateNonce,
   onLocate,
+  onInteract,
   onSelect,
 }: {
   aircraft: AircraftWithAssignment[];
@@ -36,12 +37,14 @@ function AirportSvgImpl({
   recording?: boolean;
   locateNonce?: number;
   onLocate?: () => void;
+  /** Fired when the user directly manipulates the map (pan/zoom), to mark activity. */
+  onInteract?: () => void;
   onSelect?: (hex: string) => void;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const airport = useAirport();
-  const { viewBox, zoom, zoomIn, zoomOut, reset, focusOn, centerOn, isDragging, bind } =
-    useViewport(svgRef);
+  const { viewBox, zoom, zoomIn, zoomOut, reset, focusOn, centerOn, isTargetVisible, isDragging, bind } =
+    useViewport(svgRef, onInteract);
 
   // Recenter on the user each time the locate button is tapped — once a fix exists.
   // The nonce (bumped per tap) also handles the case where GPS wasn't ready at tap.
@@ -52,21 +55,26 @@ function AirportSvgImpl({
     centerOn(projectToSvg(airport.config.arp, userPosition));
   }, [locateNonce, userPosition, airport, centerOn]);
 
-  // When a flight is selected (e.g. tapped in a board), reveal it on the map if it
-  // isn't already in view — once per selection, framed with the field.
+  // When a flight is selected (tapped on the map or in a board), reveal it once —
+  // adaptively zooming in or out to frame it with the field. Afterwards leave the view
+  // put; only snap back if the plane drifts off-screen (no continuous follow).
   const focusedHex = useRef<string | null>(null);
   useEffect(() => {
     if (!selectedHex) {
       focusedHex.current = null;
       return;
     }
-    if (focusedHex.current === selectedHex) return;
     const sel = aircraft.find((a) => a.ac.hex === selectedHex);
     if (!sel) return; // not in this poll yet — retry on the next
-    focusedHex.current = selectedHex;
     const target = projectToSvg(airport.config.arp, { lat: sel.ac.lat, lon: sel.ac.lon });
-    focusOn(target, { x: SVG_W / 2, y: SVG_H / 2 });
-  }, [selectedHex, aircraft, airport, focusOn]);
+    const fieldCenter = { x: SVG_W / 2, y: SVG_H / 2 };
+    if (focusedHex.current !== selectedHex) {
+      focusedHex.current = selectedHex; // new selection → reveal
+      focusOn(target, fieldCenter);
+    } else if (!isTargetVisible(target)) {
+      focusOn(target, fieldCenter); // drifted off-screen → snap back once
+    }
+  }, [selectedHex, aircraft, airport, focusOn, isTargetVisible]);
 
   return (
     <div className="relative h-full w-full">

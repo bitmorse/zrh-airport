@@ -10,6 +10,13 @@ export const MIN_ZOOM = 1; // full world (~56 km across) — long finals visible
 export const MAX_ZOOM = 32; // close runway detail
 /** Default zoom: frames the runways (~14 km view) like the original map. */
 export const DEFAULT_ZOOM = 4;
+/**
+ * Ceiling for an automatic reveal (selecting/tracking a plane): frame the target
+ * comfortably without pixel-peeping. Passing this to `fitPoints` (instead of the
+ * current zoom) lets a reveal adapt in *both* directions — zoom in on a near-field
+ * target, out on a distant one.
+ */
+export const REVEAL_MAX_ZOOM = 12;
 
 export interface ViewState {
   zoom: number;
@@ -99,8 +106,9 @@ export function isPointVisible(
 }
 
 /**
- * A view that frames the given SVG points with margin, never zooming in past
- * `maxZoom` (pass the current zoom to only ever zoom out / pan to reveal them).
+ * A view that frames the given SVG points with margin, clamped at `maxZoom`. Pass
+ * `REVEAL_MAX_ZOOM` to adapt in *or* out toward a comfortable framing, or the current
+ * zoom to only ever zoom out / pan.
  */
 export function fitPoints(
   points: { x: number; y: number }[],

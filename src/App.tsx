@@ -22,7 +22,13 @@ import {
   CAPTURE_RADIUS_M,
   type AttributionAircraft,
 } from "./domain/attribution";
-import { AUTO_IDLE_MS, pickInteresting, shouldRelease } from "./domain/autoSelect";
+import {
+  AUTO_IDLE_MS,
+  pickInteresting,
+  RELEASE_AGL_FT,
+  shouldRelease,
+} from "./domain/autoSelect";
+import { heightAglFt } from "./domain/gpws";
 import { byRunway, summarize } from "./domain/movementStats";
 import { useAirportStats } from "./hooks/useAirportStats";
 import { AirportContext } from "./hooks/useAirport";
@@ -38,8 +44,7 @@ import { useLiveTraffic } from "./hooks/useLiveTraffic";
 import { useNoiseRecorder, type Recording } from "./hooks/useNoiseRecorder";
 import { useNow } from "./hooks/useNow";
 import { useSettings } from "./hooks/useSettings";
-import { projectToSvg } from "./lib/projection";
-import { DEFAULT_ZOOM, isPointVisible, normalizeView } from "./lib/viewport";
+import { DEFAULT_ZOOM } from "./lib/viewport";
 import {
   ChevronDownIcon,
   MicOnIcon,
@@ -84,6 +89,12 @@ export default function App() {
     setSelectedHex(null);
   }, []);
 
+  // Manually panning/zooming the map counts as activity, so idle auto-select won't
+  // hijack a hand-set view (and won't churn while the user is examining a held target).
+  const markUserActivity = useCallback(() => {
+    lastUserAtRef.current = Date.now();
+  }, []);
+
   // Gamification scores only flights the *user* actively watched, not auto-picks.
   const userSelectedHex = selSourceRef.current === "user" ? selectedHex : null;
   const { watched } = useWatchedFlights();
@@ -102,22 +113,21 @@ export default function App() {
 
   // Auto-select an interesting flight when the user has left the selection empty for
   // a while; hand off to the next once the tracked one lands & stops, leaves the feed,
-  // or (airborne) flies out of the visible map.
+  // or has climbed clear of the field. Release is altitude-based (not viewport-based),
+  // so following the tracked plane doesn't cause it to be dropped and re-picked.
   const fieldElevationFt = airport.config.fieldElevationFt;
   const geoidFt = airport.config.geoidFt ?? 0;
   useEffect(() => {
     if (selSourceRef.current === "user" && selectedHexRef.current) return; // user wins
     if (Date.now() - lastUserAtRef.current < AUTO_IDLE_MS) return; // wait out the idle gap
 
-    const view = normalizeView({ zoom: settings.zoom, cx: settings.cx, cy: settings.cy });
     const curAuto = selSourceRef.current === "auto" ? selectedHexRef.current : null;
     if (curAuto) {
       const ac = traffic.aircraft.find((w) => w.ac.hex === curAuto)?.ac;
-      const visible = ac
-        ? isPointVisible(view, projectToSvg(airport.config.arp, { lat: ac.lat, lon: ac.lon }))
-        : false;
       const climbing = !!ac && !ac.onGround && (ac.verticalRateFpm ?? 0) > 100;
-      if (!shouldRelease(ac, visible, climbing)) return; // keep tracking the current one
+      const climbedOut =
+        !!ac && climbing && heightAglFt(ac, fieldElevationFt, geoidFt) > RELEASE_AGL_FT;
+      if (!shouldRelease(ac, climbedOut)) return; // keep tracking the current one
     }
     const next = pickInteresting(
       traffic.arrivals,
@@ -138,9 +148,6 @@ export default function App() {
     traffic.arrivals,
     traffic.departures,
     traffic.aircraft,
-    settings.zoom,
-    settings.cx,
-    settings.cy,
     airport,
     fieldElevationFt,
     geoidFt,
@@ -559,6 +566,7 @@ export default function App() {
             recording={recorder.isRecording}
             locateNonce={locateNonce}
             onLocate={onLocate}
+            onInteract={markUserActivity}
             onSelect={handleSelect}
           />
         </section>

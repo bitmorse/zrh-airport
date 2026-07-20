@@ -60,19 +60,21 @@ export function pickInteresting(
   return state.best?.hex ?? null;
 }
 
+/** A climbing departure this far above the field has left the interesting near-field phase. */
+export const RELEASE_AGL_FT = 3000;
+
 /**
  * Should the auto-tracker drop its current target and pick the next one? True once
- * the aircraft has left the feed, landed and come to a near-stop, or — while
- * climbing out — moved out of the visible map. (Out-of-view only counts for a
- * climbing aircraft, so an arrival the user merely panned away from isn't dropped.)
+ * the aircraft has left the feed, landed and come to a near-stop, or — while climbing
+ * out — climbed clear of the near-field phase (`climbedOut`). Release is decoupled from
+ * the viewport, so following the target doesn't cause it to be dropped and re-picked.
  */
 export function shouldRelease(
   ac: Pick<Aircraft, "onGround" | "gs"> | undefined,
-  visible: boolean,
-  climbing: boolean,
+  climbedOut: boolean,
 ): boolean {
   if (!ac) return true; // disappeared from the feed
   if (ac.onGround && (ac.gs ?? 0) < STOP_KT) return true; // landed & stopped
-  if (!ac.onGround && climbing && !visible) return true; // climbed out of the viewport
+  if (!ac.onGround && climbedOut) return true; // climbed clear of the field
   return false;
 }

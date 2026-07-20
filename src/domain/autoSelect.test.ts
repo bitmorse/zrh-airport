@@ -96,13 +96,11 @@ describe("pickInteresting", () => {
 });
 
 describe("shouldRelease", () => {
-  it("releases on disappearance, near-stop on ground, or a climber leaving the viewport", () => {
-    expect(shouldRelease(undefined, true, false)).toBe(true); // gone from feed
-    expect(shouldRelease({ onGround: true, gs: 5 }, true, false)).toBe(true); // stopped
-    expect(shouldRelease({ onGround: true, gs: 50 }, true, false)).toBe(false); // still rolling out
-    expect(shouldRelease({ onGround: false, gs: 150 }, true, true)).toBe(false); // climbing, in view
-    expect(shouldRelease({ onGround: false, gs: 150 }, false, true)).toBe(true); // climbed out of view
-    // A descending arrival panned out of view is NOT dropped (only climbers are).
-    expect(shouldRelease({ onGround: false, gs: 150 }, false, false)).toBe(false);
+  it("releases on disappearance, near-stop on ground, or a climber that has climbed out", () => {
+    expect(shouldRelease(undefined, false)).toBe(true); // gone from feed
+    expect(shouldRelease({ onGround: true, gs: 5 }, false)).toBe(true); // landed & stopped
+    expect(shouldRelease({ onGround: true, gs: 50 }, false)).toBe(false); // still rolling out
+    expect(shouldRelease({ onGround: false, gs: 150 }, false)).toBe(false); // climbing, still near field
+    expect(shouldRelease({ onGround: false, gs: 150 }, true)).toBe(true); // climbed clear of the field
   });
 });

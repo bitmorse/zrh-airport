@@ -4,6 +4,7 @@ import {
   isPointVisible,
   normalizeView,
   panBy,
+  REVEAL_MAX_ZOOM,
   viewBoxString,
   zoomAtPoint,
   type ViewState,
@@ -20,10 +21,16 @@ interface Viewport {
   zoomIn: () => void;
   zoomOut: () => void;
   reset: () => void;
-  /** Reveal `target` if it's off-screen, framing it with `context` (e.g. the field). */
+  /**
+   * Reveal `target`, framing it with `context` (e.g. the field), adapting the zoom in
+   * *or* out toward a comfortable framing and animating there. Always reframes — the
+   * caller decides when to call it (on selection / on drift off-screen).
+   */
   focusOn: (target: Pt, context?: Pt) => void;
-  /** Recenter on `target` at the current zoom, even if it's already visible. */
+  /** Recenter (and adaptively zoom) on `target`, animated. */
   centerOn: (target: Pt) => void;
+  /** Is `target` comfortably within the live view right now? */
+  isTargetVisible: (target: Pt) => boolean;
   isDragging: boolean;
   bind: {
     onPointerDown: (e: React.PointerEvent) => void;
@@ -44,7 +51,10 @@ interface Pt {
  * and written back (throttled) so zoom + pan survive reloads. `svgRef` maps screen
  * coordinates into the viewport.
  */
-export function useViewport(svgRef: React.RefObject<SVGSVGElement | null>): Viewport {
+export function useViewport(
+  svgRef: React.RefObject<SVGSVGElement | null>,
+  onInteract?: () => void,
+): Viewport {
   const [settings, update] = useSettings();
   const [view, setView] = useState<ViewState>(() =>
     normalizeView({ zoom: settings.zoom, cx: settings.cx, cy: settings.cy }),
@@ -57,7 +67,11 @@ export function useViewport(svgRef: React.RefObject<SVGSVGElement | null>): View
   const pinchDist = useRef<number | null>(null);
   // Bounding rect captured at gesture start, reused per move (avoids layout reads).
   const dragRect = useRef<DOMRect | null>(null);
+  const tween = useRef<number | null>(null); // rAF id of an in-flight reveal animation
   const [isDragging, setIsDragging] = useState(false);
+  // Kept in a ref so callbacks stay stable; fired on any direct user manipulation.
+  const onInteractRef = useRef(onInteract);
+  onInteractRef.current = onInteract;
 
   const schedulePersist = useCallback(
     (v: ViewState) => {
@@ -81,14 +95,63 @@ export function useViewport(svgRef: React.RefObject<SVGSVGElement | null>): View
     [svgRef, schedulePersist],
   );
 
-  // Commit to React state too — for discrete ops (wheel, buttons, focus/center) and at
-  // gesture end, where a single render is fine and keeps `zoom` (button state) in sync.
+  // Commit to React state too — for discrete ops (wheel, buttons) and at gesture end,
+  // where a single render is fine and keeps `zoom` (button state) in sync.
   const apply = useCallback(
     (next: ViewState) => {
       applyDom(next);
       setView(next);
     },
     [applyDom],
+  );
+
+  const cancelTween = useCallback(() => {
+    if (tween.current != null) {
+      cancelAnimationFrame(tween.current);
+      tween.current = null;
+    }
+  }, []);
+
+  // Animate the view to `target` (used by reveals). Writes the viewBox imperatively
+  // each frame via `applyDom` (no React render), committing state once at the end.
+  // Geometric-lerp the zoom (so it feels linear in scale), linear-lerp the centre.
+  const animateTo = useCallback(
+    (target: ViewState, ms = 380) => {
+      cancelTween();
+      const to = normalizeView(target);
+      const from = viewRef.current;
+      const noRaf =
+        typeof requestAnimationFrame !== "function" || typeof performance === "undefined";
+      const trivial =
+        Math.abs(from.zoom - to.zoom) < 1e-3 &&
+        Math.abs(from.cx - to.cx) < 1e-4 &&
+        Math.abs(from.cy - to.cy) < 1e-4;
+      if (noRaf || trivial) {
+        apply(to);
+        return;
+      }
+      const start = performance.now();
+      const ease = (t: number) => 1 - Math.pow(1 - t, 3); // ease-out cubic
+      const step = (nowT: number) => {
+        const t = Math.min(1, (nowT - start) / ms);
+        const k = ease(t);
+        applyDom(
+          normalizeView({
+            zoom: from.zoom * Math.pow(to.zoom / from.zoom, k),
+            cx: from.cx + (to.cx - from.cx) * k,
+            cy: from.cy + (to.cy - from.cy) * k,
+          }),
+        );
+        if (t < 1) {
+          tween.current = requestAnimationFrame(step);
+        } else {
+          tween.current = null;
+          setView(to); // commit final state (keeps `zoom` in sync)
+        }
+      };
+      tween.current = requestAnimationFrame(step);
+    },
+    [apply, applyDom, cancelTween],
   );
 
   // Keep the DOM viewBox pinned to the live ref after every render, so a stray
@@ -98,10 +161,11 @@ export function useViewport(svgRef: React.RefObject<SVGSVGElement | null>): View
     svgRef.current?.setAttribute("viewBox", viewBoxString(viewRef.current));
   });
 
-  // Clear any pending persist on unmount so it can't fire after teardown.
+  // Clear any pending persist / animation on unmount so nothing fires after teardown.
   useEffect(
     () => () => {
       if (persistTimer.current) clearTimeout(persistTimer.current);
+      if (tween.current != null) cancelAnimationFrame(tween.current);
     },
     [],
   );
@@ -112,6 +176,8 @@ export function useViewport(svgRef: React.RefObject<SVGSVGElement | null>): View
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
+      cancelTween();
+      onInteractRef.current?.();
       const rect = el.getBoundingClientRect();
       const fx = (e.clientX - rect.left) / rect.width;
       const fy = (e.clientY - rect.top) / rect.height;
@@ -120,10 +186,12 @@ export function useViewport(svgRef: React.RefObject<SVGSVGElement | null>): View
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, [svgRef, apply]);
+  }, [svgRef, apply, cancelTween]);
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     const el = svgRef.current;
+    cancelTween(); // grabbing the map interrupts any reveal animation
+    onInteractRef.current?.();
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     dragRect.current = el?.getBoundingClientRect() ?? null; // reused for the whole gesture
     try {
@@ -140,7 +208,7 @@ export function useViewport(svgRef: React.RefObject<SVGSVGElement | null>): View
       const [a, b] = [...pointers.current.values()];
       pinchDist.current = Math.hypot(b.x - a.x, b.y - a.y);
     }
-  }, [svgRef]);
+  }, [svgRef, cancelTween]);
 
   const onPointerMove = useCallback(
     (e: React.PointerEvent) => {
@@ -197,31 +265,37 @@ export function useViewport(svgRef: React.RefObject<SVGSVGElement | null>): View
     }
   }, []);
 
-  const zoomIn = useCallback(
-    () => apply(zoomAtPoint(viewRef.current, BUTTON_STEP, 0.5, 0.5)),
-    [apply],
-  );
-  const zoomOut = useCallback(
-    () => apply(zoomAtPoint(viewRef.current, 1 / BUTTON_STEP, 0.5, 0.5)),
-    [apply],
-  );
-  const reset = useCallback(
-    () => apply(normalizeView({ zoom: 1, cx: 0.5, cy: 0.5 })),
-    [apply],
-  );
+  // Manual zoom controls stay instant (snappy); only automatic reveals animate.
+  const zoomIn = useCallback(() => {
+    cancelTween();
+    onInteractRef.current?.();
+    apply(zoomAtPoint(viewRef.current, BUTTON_STEP, 0.5, 0.5));
+  }, [apply, cancelTween]);
+  const zoomOut = useCallback(() => {
+    cancelTween();
+    onInteractRef.current?.();
+    apply(zoomAtPoint(viewRef.current, 1 / BUTTON_STEP, 0.5, 0.5));
+  }, [apply, cancelTween]);
+  const reset = useCallback(() => {
+    cancelTween();
+    onInteractRef.current?.();
+    apply(normalizeView({ zoom: 1, cx: 0.5, cy: 0.5 }));
+  }, [apply, cancelTween]);
+
+  // A reveal frames the target (+ optional context, e.g. the field), adapting the
+  // zoom in or out toward a comfortable level and animating there.
   const focusOn = useCallback(
     (target: Pt, context?: Pt) => {
-      // Only adjust the view when the target isn't already comfortably on screen.
-      if (isPointVisible(viewRef.current, target)) return;
       const pts = context ? [target, context] : [target];
-      apply(fitPoints(pts, viewRef.current.zoom));
+      animateTo(fitPoints(pts, REVEAL_MAX_ZOOM));
     },
-    [apply],
+    [animateTo],
   );
   const centerOn = useCallback(
-    (target: Pt) => apply(fitPoints([target], viewRef.current.zoom)),
-    [apply],
+    (target: Pt) => animateTo(fitPoints([target], REVEAL_MAX_ZOOM)),
+    [animateTo],
   );
+  const isTargetVisible = useCallback((target: Pt) => isPointVisible(viewRef.current, target), []);
 
   return {
     viewBox: viewBoxString(view),
@@ -231,6 +305,7 @@ export function useViewport(svgRef: React.RefObject<SVGSVGElement | null>): View
     reset,
     focusOn,
     centerOn,
+    isTargetVisible,
     isDragging,
     bind: {
       onPointerDown,
