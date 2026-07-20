@@ -1,5 +1,8 @@
 # Route every request that isn't a real file through the API front controller.
+# RewriteBase must match the URL path this folder is mounted at. It's set for the
+# bitmorse.com/airports-api mount; change it if you mount the folder elsewhere.
 RewriteEngine On
+RewriteBase /airports-api/
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^ index.php [QSA,L]

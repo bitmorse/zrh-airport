@@ -3,14 +3,35 @@
 declare(strict_types=1);
 
 /**
- * Web entry point for the read-only stats API. Point the site's document root
- * here (backend/public) so nothing else in backend/ is web-reachable, or copy
- * this file + .htaccess into the docroot and set ZRH_BACKEND_ROOT to the
- * backend/ directory. All routing lives in Zrh\Api::handle (see src/Api.php).
+ * Web entry point for the read-only stats API. This folder is meant to be the
+ * web-facing one (e.g. mounted at bitmorse.com/airports-api). The backend root
+ * that holds src/, config/ and data/ is located by, in order:
+ *   1. the ZRH_BACKEND_ROOT env / SetEnv value, if it points at a src/bootstrap.php;
+ *   2. walking up from this file until a src/bootstrap.php is found.
+ * All routing lives in Zrh\Api::handle (see src/Api.php).
  */
 
-$root = getenv('ZRH_BACKEND_ROOT') ?: dirname(__DIR__);
+$root = zrh_backend_root(__DIR__);
 require $root . '/src/bootstrap.php';
+
+function zrh_backend_root(string $start): string
+{
+    $env = getenv('ZRH_BACKEND_ROOT') ?: (string) ($_SERVER['ZRH_BACKEND_ROOT'] ?? '');
+    if ($env !== '' && is_file($env . '/src/bootstrap.php')) {
+        return $env;
+    }
+    $dir = $start;
+    for ($i = 0; $i < 6; $i++) {
+        if (is_file($dir . '/src/bootstrap.php')) {
+            return $dir;
+        }
+        $dir = dirname($dir);
+    }
+    http_response_code(500);
+    header('Content-Type: application/json');
+    echo '{"error":"backend root not found — set ZRH_BACKEND_ROOT to the backend/ directory"}';
+    exit;
+}
 
 use Zrh\Api;
 use Zrh\Store;

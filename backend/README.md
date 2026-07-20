@@ -40,12 +40,12 @@ Browser Stats card ── GET /api/v1/LSZH/movements ──▶ Zrh\Api::handle �
 
 ```
 backend/
-  src/         Geo, Airport, Adsb, Detector, Store, Collector, Api  (namespace Zrh\)
-  config/      airports.json (ported from src/data/airports.ts), app.php
-  bin/         collect.php   — cron entry point
-  public/      index.php + .htaccess  — API front controller (web docroot)
-  data/        stats.db at runtime (gitignored; keep OUTSIDE the docroot on NFS)
-  tests/       zero-dependency test runner + suites
+  src/          Geo, Airport, Adsb, Detector, Store, Collector, Api  (namespace Zrh\)
+  config/       airports.json (ported from src/data/airports.ts), app.php
+  bin/          collect.php   — cron entry point
+  airports-api/ index.php + .htaccess  — web-facing API front controller
+  data/         stats.db at runtime (gitignored; keep OUTSIDE the docroot on NFS)
+  tests/        zero-dependency test runner + suites
 ```
 
 ## Running the tests
@@ -72,11 +72,14 @@ appear when aircraft actually land/take off during a poll.
 
 ## REST API
 
+Mounted at `bitmorse.com/airports-api`. Routes are matched by their trailing
+segments, so the same code works under any base path.
+
 | Method | Path | Notes |
 |--------|------|-------|
-| GET | `/api/v1/health` | liveness |
-| GET | `/api/v1/{icao}/movements?days=60` | per-runway-end 24h histogram |
-| GET | `/api/v1/{icao}/summary?days=60` | totals, distinct days, busiest hour |
+| GET | `/airports-api/health` | liveness |
+| GET | `/airports-api/{icao}/movements?days=60` | per-runway-end 24h histogram |
+| GET | `/airports-api/{icao}/summary?days=60` | totals, distinct days, busiest hour |
 
 `{icao}` is case-insensitive and must be a configured airport (`LSZH`, `VTBS`).
 `days` is clamped to the 60-day retention window. Responses are gzip-friendly
@@ -88,24 +91,39 @@ The `movements` payload mirrors the frontend's `RunwayHistogram` shape
 
 ## Deploying on NearlyFreeSpeech
 
-1. **Upload** the `backend/` folder somewhere non-public, e.g. `/home/protected/backend`.
-2. **Document root → the API.** Point the site's docroot at
-   `/home/protected/backend/public` (Site Info → *Document Root*). That keeps
-   `src/`, `config/`, `data/` unreachable over the web. Alternatively, copy
-   `public/index.php` + `.htaccess` into `/home/public` and set
-   `ZRH_BACKEND_ROOT=/home/protected/backend`.
-3. **Database outside the docroot.** Set `ZRH_DB=/home/protected/backend/data/stats.db`
-   (or any `/home/private` path). The DB and its `-wal`/`-shm` sidecars must never
-   be web-served; `data/.htaccess` denies access as a backstop.
+This backend is served as a subfolder of the existing `bitmorse.com` site, at
+`bitmorse.com/airports-api`. Recommended layout keeps the code and DB out of the
+web docroot and exposes only the front controller:
+
+1. **Upload** the whole `backend/` folder somewhere non-public, e.g.
+   `/home/protected/backend`.
+2. **Mount the front controller.** In the existing docroot (`/home/public`),
+   the `airports-api/` folder holds `index.php` + `.htaccess`. Point it at the
+   code by adding one line to `airports-api/.htaccess`:
+   ```
+   SetEnv ZRH_BACKEND_ROOT /home/protected/backend
+   ```
+   (`index.php` also auto-discovers the backend root by walking up from itself,
+   which is enough if `airports-api/` sits *inside* `backend/`; the `SetEnv` is
+   needed only for the split layout where the code lives elsewhere.)
+   Keep `RewriteBase /airports-api/` in that `.htaccess` matching the URL path.
+3. **Database outside the docroot.** Add to the same `.htaccess`:
+   ```
+   SetEnv ZRH_DB /home/protected/backend/data/stats.db
+   ```
+   The DB and its `-wal`/`-shm` sidecars must never be web-served. If `src/`,
+   `config/` or `data/` do end up under the docroot, deny them (`data/.htaccess`
+   already does this).
 4. **Scheduled Task** (Site → *Manage Scheduled Tasks*):
-   - Command: `php /home/protected/backend/bin/collect.php LSZH`
+   - Command: `ZRH_DB=/home/protected/backend/data/stats.db php /home/protected/backend/bin/collect.php LSZH`
    - Tag: `collect`, run **every minute** (confirm the panel's minimum interval;
      if it's coarser than 60s, accept the lower resolution — hour-bucket counts
-     tolerate it).
-   - Set `ZRH_DB` (and optionally `ZRH_HEALTHCHECK_URL`) in the task environment.
+     tolerate it). The collector and the API must point at the **same** `ZRH_DB`.
 5. **Dead-man's switch (optional).** Set `ZRH_HEALTHCHECK_URL` to a
-   healthchecks.io ping URL; the collector pings it after a successful sweep so
-   you're alerted if collection silently stops.
+   healthchecks.io ping URL in the task command; the collector pings it after a
+   successful sweep so you're alerted if collection silently stops.
+
+Then check `https://bitmorse.com/airports-api/health` returns `{"ok":true}`.
 
 ## Bandwidth & storage
 

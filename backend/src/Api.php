@@ -9,10 +9,11 @@ namespace Zrh;
  * without a web server: public/index.php wires the real request into handle()
  * and emits the returned status/headers/body.
  *
- * Routes (all under /api/v1):
- *   GET /health                 → liveness
- *   GET /{icao}/movements[?days]→ per-runway-end histogram
- *   GET /{icao}/summary[?days]  → headline stats
+ * Routes are matched by their trailing path segments, so the API works mounted
+ * at any base path — /airports-api, /api/v1, or the doc root:
+ *   GET …/health                 → liveness
+ *   GET …/{icao}/movements[?days] → per-runway-end histogram
+ *   GET …/{icao}/summary[?days]   → headline stats
  *
  * The window is measured in whole days back from opts['nowMs'] and clamped to
  * the retention window; responses are public, cacheable, and ETagged (the
@@ -28,21 +29,15 @@ final class Api
      */
     public static function handle(Store $store, string $path, array $query, array $opts): array
     {
-        $segments = self::segments($path);
-        if ($segments === null) {
+        $route = self::route($path);
+        if ($route === null) {
             return self::json(404, ['error' => 'not found']);
         }
-
-        // /api/v1/health
-        if (count($segments) === 1 && $segments[0] === 'health') {
+        if ($route === ['health']) {
             return self::json(200, ['ok' => true]);
         }
 
-        if (count($segments) !== 2) {
-            return self::json(404, ['error' => 'not found']);
-        }
-
-        [$rawIcao, $resource] = $segments;
+        [$rawIcao, $resource] = $route;
         $icao = strtoupper($rawIcao);
         if (!in_array($icao, $opts['airports'], true)) {
             return self::json(404, ['error' => 'unknown airport']);
@@ -74,26 +69,29 @@ final class Api
         }
     }
 
-    /** Path segments after `/api/v1/`, or null if the prefix is absent. */
-    private static function segments(string $path): ?array
+    /**
+     * Resolve a request path to a route by its trailing segments, ignoring any
+     * mount prefix (/airports-api, /api/v1, …):
+     *   [...,'health']              → ['health']
+     *   [...,'{icao}','movements']  → ['{icao}','movements']
+     *   [...,'{icao}','summary']    → ['{icao}','summary']
+     * Returns null when nothing matches.
+     */
+    private static function route(string $path): ?array
     {
         $path = parse_url($path, PHP_URL_PATH) ?? $path;
-        $marker = '/api/v1/';
-        $pos = strpos($path, $marker);
-        if ($pos === false) {
-            // Allow the API to be mounted at the doc root without the prefix too.
-            $marker2 = '/api/v1';
-            if (rtrim($path, '/') === rtrim($marker2, '/')) {
-                return [];
+        $parts = array_values(array_filter(explode('/', $path), static fn ($s) => $s !== ''));
+        $n = count($parts);
+        if ($n >= 1 && strtolower($parts[$n - 1]) === 'health') {
+            return ['health'];
+        }
+        if ($n >= 2) {
+            $resource = strtolower($parts[$n - 1]);
+            if ($resource === 'movements' || $resource === 'summary') {
+                return [$parts[$n - 2], $resource];
             }
-            return null;
         }
-        $rest = substr($path, $pos + strlen($marker));
-        $rest = trim($rest, '/');
-        if ($rest === '') {
-            return [];
-        }
-        return array_values(array_filter(explode('/', $rest), static fn ($s) => $s !== ''));
+        return null;
     }
 
     private static function windowDays(array $query, array $opts): int

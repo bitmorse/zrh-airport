@@ -82,6 +82,19 @@ return [
         Assert::same('LSZH', json_decode($r['body'], true)['icao']);
     },
 
+    'mount-agnostic: works under the /airports-api base path' => function (): void {
+        $store = apiStore();
+        $h = Api::handle($store, '/airports-api/LSZH/movements', [], apiOpts());
+        Assert::same(200, $h['status'], 'movements under /airports-api');
+        Assert::same('LSZH', json_decode($h['body'], true)['icao']);
+
+        $s = Api::handle($store, '/airports-api/LSZH/summary', [], apiOpts());
+        Assert::same(200, $s['status'], 'summary under /airports-api');
+
+        $health = Api::handle($store, '/airports-api/health', [], apiOpts());
+        Assert::same(200, $health['status'], 'health under /airports-api');
+    },
+
     'unknown airport: 404' => function (): void {
         $r = Api::handle(apiStore(), '/api/v1/EGLL/summary', [], apiOpts());
         Assert::same(404, $r['status']);
