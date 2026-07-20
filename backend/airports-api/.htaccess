@@ -1,0 +1,14 @@
+# Route every request that isn't a real file through the API front controller.
+# RewriteBase must match the URL path this folder is mounted at. It's set for the
+# bitmorse.com/airports-api mount; change it if you mount the folder elsewhere.
+RewriteEngine On
+RewriteBase /airports-api/
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.php [QSA,L]
+
+# Deployment-specific: tell index.php where the backend code + DB live (they sit
+# outside the web docroot). index.php also falls back to /home/protected/backend
+# on its own, so these are belt-and-suspenders — adjust the paths if you move it.
+SetEnv ZRH_BACKEND_ROOT /home/protected/backend
+SetEnv ZRH_DB /home/protected/backend/data/stats.db

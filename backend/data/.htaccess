@@ -1,0 +1,4 @@
+# Defense-in-depth: never serve the database over the web, even if this folder
+# somehow ends up under the document root. The proper fix is to keep the DB
+# outside the docroot entirely (set ZRH_DB to a /home/private path on NFS).
+Require all denied
