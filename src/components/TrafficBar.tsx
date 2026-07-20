@@ -1,4 +1,5 @@
 import type { DepartureEvent, DeparturePhase } from "../domain/departures";
+import type { FlightStatus } from "../domain/flightStatus";
 import type { Arrival } from "../domain/predictions";
 import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
 import { useFlightRoute } from "../hooks/useFlightRoute";
@@ -15,12 +16,6 @@ const secondaryOf = (...parts: (string | null | undefined)[]) =>
 const DEP_ORDER: Record<DeparturePhase, number> = { roll: 0, climb: 1, holding: 2 };
 const MAX_DEP_ROWS = 3;
 const FLASH_SHOW_MS = 6000; // flash an approach gate for ~6 s after the crossing
-
-const PHASE_LABEL: Record<string, string> = {
-  approach: "on approach",
-  runway: "on the runway",
-  departure: "departing",
-};
 
 /** One traffic row — identical layout for arrivals and departures. */
 function TrafficRow({
@@ -166,6 +161,7 @@ export function TrafficBar({
   lastUpdated,
   stale,
   selectedHex,
+  selectedStatus,
   onSelect,
 }: {
   arrivals: Arrival[];
@@ -175,6 +171,8 @@ export function TrafficBar({
   lastUpdated: number | null;
   stale?: boolean;
   selectedHex?: string | null;
+  /** Meaningful phase phrase for the selected aircraft, for its orphan board row. */
+  selectedStatus?: FlightStatus | null;
   onSelect?: (hex: string) => void;
 }) {
   const soonest = arrivals[0];
@@ -260,13 +258,11 @@ export function TrafficBar({
       {orphanSelected && (
         <TrafficRow
           icon={<PlaneIcon size={16} />}
-          end={orphanSelected.assignment?.end}
+          end={orphanSelected.assignment?.end ?? selectedStatus?.rwy}
           callsign={orphanSelected.ac.flight ?? orphanSelected.ac.hex.toUpperCase()}
-          secondary={
-            orphanSelected.assignment
-              ? PHASE_LABEL[orphanSelected.assignment.phase]
-              : "tracking · in range"
-          }
+          // Meaningful phase (e.g. "just landed" / "taxiing"); omitted for an unrelated
+          // airborne aircraft rather than showing a vague "tracking · in range".
+          secondary={selectedStatus?.label ?? undefined}
           selected
           onClick={() => onSelect?.(orphanSelected.ac.hex)}
         />

@@ -1,6 +1,6 @@
 import type { Aircraft } from "../data/adsb";
 import { type Airport } from "../data/flightInfo";
-import type { RunwayAssignment } from "../domain/assignRunway";
+import type { FlightStatus } from "../domain/flightStatus";
 import { fieldRelation, routeConflict } from "../domain/routeCheck";
 import { useAirport } from "../hooks/useAirport";
 import { useFlightRoute } from "../hooks/useFlightRoute";
@@ -13,12 +13,6 @@ import { formatAltitude, formatSpeed } from "../lib/format";
 import { elapsedSec, reckonAltFt } from "../lib/reckon";
 import { CloseIcon } from "./icons";
 
-const PHASE_LABEL: Record<string, string> = {
-  approach: "on approach",
-  runway: "on the runway",
-  departure: "departing",
-};
-
 /**
  * The phase / altitude / speed line, dead-reckoned and refreshed at ~10 Hz so it
  * reads live. Shows both heights above field, labelled to disambiguate: GNSS
@@ -27,14 +21,14 @@ const PHASE_LABEL: Record<string, string> = {
  */
 function MotionReadout({
   ac,
-  assignment,
+  status,
   lastUpdated,
   fieldElevationFt,
   geoidFt,
   units,
 }: {
   ac: Aircraft;
-  assignment: RunwayAssignment | null;
+  status: FlightStatus | null;
   lastUpdated: number | null;
   fieldElevationFt: number;
   geoidFt: number;
@@ -57,10 +51,15 @@ function MotionReadout({
     altText = parts.length ? parts.join(" · ") : "—";
   }
 
+  const phase = status?.label
+    ? status.rwy
+      ? `${status.label} · RWY ${status.rwy}`
+      : status.label
+    : null;
+
   return (
     <p className="text-[11px] text-muted">
-      {assignment ? `${PHASE_LABEL[assignment.phase]} · RWY ${assignment.end}` : "in range"}
-      {" · "}
+      {phase && `${phase} · `}
       {altText}
       {" · "}
       {ac.gs != null ? formatSpeed(ac.gs, units) : "—"}
@@ -75,12 +74,15 @@ function MotionReadout({
  */
 export function FlightDetails({
   item,
+  status,
   lastUpdated,
   cockpitActive,
   cockpitAudio,
   onClear,
 }: {
   item: AircraftWithAssignment | null;
+  /** Meaningful phase phrase for the selected aircraft (e.g. "just landed"). */
+  status: FlightStatus | null;
   lastUpdated: number | null;
   /** Cockpit sim is enabled — run the GPWS state machine + show the callout readout. */
   cockpitActive: boolean;
@@ -122,7 +124,7 @@ export function FlightDetails({
           </h2>
           <MotionReadout
             ac={ac}
-            assignment={assignment}
+            status={status}
             lastUpdated={lastUpdated}
             fieldElevationFt={fieldElevationFt}
             geoidFt={geoidFt ?? 0}

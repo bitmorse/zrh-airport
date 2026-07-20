@@ -28,6 +28,7 @@ import {
   RELEASE_AGL_FT,
   shouldRelease,
 } from "./domain/autoSelect";
+import { flightStatusLabel } from "./domain/flightStatus";
 import { heightAglFt } from "./domain/gpws";
 import { byRunway, summarize } from "./domain/movementStats";
 import * as gpwsAudio from "./lib/gpwsAudio";
@@ -111,6 +112,18 @@ export default function App() {
     () => traffic.aircraft.find((a) => a.ac.hex === selectedHex) ?? null,
     [traffic.aircraft, selectedHex],
   );
+
+  // A meaningful phase phrase for the selected aircraft (e.g. "just landed"), from its
+  // live arrival/departure record + ground state — shared by the detail panel and board.
+  const selectedStatus = useMemo(() => {
+    if (!selectedAircraft) return null;
+    return flightStatusLabel({
+      ac: selectedAircraft.ac,
+      assignment: selectedAircraft.assignment,
+      arrival: traffic.arrivals.find((a) => a.hex === selectedHex),
+      departure: traffic.departures.find((d) => d.hex === selectedHex),
+    });
+  }, [selectedAircraft, traffic.arrivals, traffic.departures, selectedHex]);
 
   // Auto-select an interesting flight when the user has left the selection empty for
   // a while; hand off to the next once the tracked one lands & stops, leaves the feed,
@@ -323,7 +336,10 @@ export default function App() {
     traffic.lastUpdated != null
       ? Math.max(0, Math.round((now - traffic.lastUpdated) / 1000))
       : null;
-  const stale = ageSec != null && ageSec > Math.max(90, settings.pollSeconds * 2);
+  // Stale when the data is too old to trust, OR when every provider was behind this poll
+  // (positions delayed even though the fetch timestamp keeps advancing).
+  const stale =
+    (ageSec != null && ageSec > Math.max(90, settings.pollSeconds * 2)) || traffic.stale;
 
   // Cockpit sim runs the GPWS state machine + on-screen callout readout; audio only
   // plays when not muted and not recording (the OS mutes/reroutes playback then), so
@@ -553,6 +569,7 @@ export default function App() {
           lastUpdated={traffic.lastUpdated}
           stale={stale}
           selectedHex={selectedHex}
+          selectedStatus={selectedStatus}
           onSelect={handleSelect}
         />
       </div>
@@ -588,6 +605,7 @@ export default function App() {
               lastUpdated={traffic.lastUpdated}
               stale={stale}
               selectedHex={selectedHex}
+              selectedStatus={selectedStatus}
               onSelect={handleSelect}
             />
           </div>
@@ -595,6 +613,7 @@ export default function App() {
           <div className="border border-border bg-surface-container-low p-4">
             <FlightDetails
               item={selectedAircraft}
+              status={selectedStatus}
               lastUpdated={traffic.lastUpdated}
               cockpitActive={cockpitActive}
               cockpitAudio={cockpitAudio}

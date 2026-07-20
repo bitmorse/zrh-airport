@@ -172,7 +172,7 @@ describe("TrafficBar", () => {
     expect(screen.getByText("+1 more departing")).toBeInTheDocument();
   });
 
-  it("shows a selected in-range aircraft with no movement row", () => {
+  it("shows a selected orphan aircraft with its meaningful status, not 'in range'", () => {
     render(
       <TrafficBar
         arrivals={[arrival]}
@@ -181,12 +181,14 @@ describe("TrafficBar", () => {
         now={NOW}
         lastUpdated={NOW}
         selectedHex="wander"
+        selectedStatus={{ label: "taxiing" }}
         onSelect={() => {}}
       />,
     );
     const row = screen.getByRole("button", { pressed: true });
     expect(row).toHaveTextContent("WANDER");
-    expect(row).toHaveTextContent(/in range/);
+    expect(row).toHaveTextContent(/taxiing/);
+    expect(row).not.toHaveTextContent(/in range/);
   });
 
   it("caps the list at 3 departures and shows a '+N more' line", () => {

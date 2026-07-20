@@ -50,6 +50,7 @@ function renderCard(it: AircraftWithAssignment) {
     <AirportContext.Provider value={AP}>
       <FlightDetails
         item={it}
+        status={{ label: null }}
         lastUpdated={1_000_000}
         cockpitActive={false}
         cockpitAudio={false}

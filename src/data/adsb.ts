@@ -34,6 +34,8 @@ export interface TrafficSnapshot {
   aircraft: Aircraft[];
   provider: string;
   fetchedAt: number;
+  /** True when every provider was stale/empty and this is the freshest we could get. */
+  stale?: boolean;
 }
 
 /** Point-in-time aircraft state captured with a noise measurement. */
@@ -100,6 +102,33 @@ const PROVIDERS: { name: string; url: (c: LatLon, distNm: number) => string }[] 
 const PROVIDER_TIMEOUT_MS = 8000;
 
 /**
+ * A feed whose freshest aircraft is older than this (seconds) is treated as stale and
+ * we fail over. Near a busy airport the freshest `seenPos` is 0–5 s; only a stuck or
+ * fading feed climbs past ~60 s, which clears the sparse-but-live edge case comfortably.
+ */
+const STALE_SEEN_S = 60;
+
+/**
+ * Freshness score for a provider response: the *minimum* `seenPos` across the feed
+ * ("how fresh is the freshest aircraft"), lower = better. An empty feed scores Infinity
+ * (worst, but still a valid last-resort candidate); a non-empty feed that carries no
+ * `seenPos` signal at all scores 0 (treated as fresh, so a provider that omits the field
+ * isn't needlessly abandoned).
+ */
+export function minSeen(aircraft: Aircraft[]): number {
+  if (aircraft.length === 0) return Infinity;
+  let min = Infinity;
+  let sawSignal = false;
+  for (const a of aircraft) {
+    if (a.seenPos != null) {
+      sawSignal = true;
+      if (a.seenPos < min) min = a.seenPos;
+    }
+  }
+  return sawSignal ? min : 0;
+}
+
+/**
  * Combine the caller's abort signal (unmount/refetch) with a timeout so a stalled
  * provider aborts and the loop advances. Falls back gracefully on older engines
  * that lack `AbortSignal.timeout` / `AbortSignal.any`.
@@ -163,6 +192,11 @@ export async function fetchAircraftNear(
     : PROVIDERS;
 
   const errors: string[] = [];
+  // The least-stale response so far, kept in case no provider is fresh (a 200 with empty
+  // or stale data is NOT accepted as success — that's what stranded auto mode before).
+  let best: TrafficSnapshot | null = null;
+  let bestScore = Infinity;
+
   for (const provider of ordered) {
     try {
       const res = await fetch(provider.url(center, distNm), {
@@ -178,11 +212,32 @@ export async function fetchAircraftNear(
       const aircraft = list
         .map(normalise)
         .filter((a): a is Aircraft => a !== null);
-      return { aircraft, provider: provider.name, fetchedAt: Date.now() };
+      const snap: TrafficSnapshot = { aircraft, provider: provider.name, fetchedAt: Date.now() };
+      const score = minSeen(aircraft);
+
+      // Fresh and non-empty → use it immediately (honours preferred order, no wasted requests).
+      if (aircraft.length > 0 && score <= STALE_SEEN_S) return snap;
+
+      // Stale/empty: remember the freshest candidate and try the next provider. The
+      // `best === null` guard lets an empty feed (score Infinity) still become a candidate.
+      if (best === null || score < bestScore) {
+        best = snap;
+        bestScore = score;
+      }
+      errors.push(
+        `${provider.name}: ${aircraft.length === 0 ? "empty" : `stale (min seen ${score}s)`}`,
+      );
     } catch (err) {
       if (signal?.aborted) throw err;
       errors.push(`${provider.name}: ${(err as Error).message}`);
     }
+  }
+
+  // No fresh provider — return the freshest we saw (flagged stale when it's non-empty but
+  // behind), so the map keeps advancing and the UI can badge it rather than erroring.
+  if (best) {
+    if (bestScore > STALE_SEEN_S && best.aircraft.length > 0) best.stale = true;
+    return best;
   }
   throw new Error(`All ADS-B providers failed — ${errors.join("; ")}`);
 }

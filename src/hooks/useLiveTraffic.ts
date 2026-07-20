@@ -66,6 +66,8 @@ export interface LiveTraffic {
   counts: Record<string, number>;
   provider: string | null;
   lastUpdated: number | null;
+  /** Every provider was behind this poll — positions are delayed (lastUpdated still advances). */
+  stale: boolean;
   isError: boolean;
   error: Error | null;
   isFetching: boolean;
@@ -258,6 +260,8 @@ export function useLiveTraffic(settings: Settings, airport: Airport): LiveTraffi
     counts,
     provider: query.data?.snap.provider ?? null,
     lastUpdated: query.data?.snap.fetchedAt ?? null,
+    /** Every provider was behind — positions are delayed even though lastUpdated advances. */
+    stale: query.data?.snap.stale ?? false,
     isError: query.isError,
     error: (query.error as Error) ?? null,
     isFetching: query.isFetching,
