@@ -14,10 +14,13 @@ import type { Airport, RunwayEnd } from "./airport";
  *             takeoff"; the closest observable proxy — ADS-B carries no clearance)
  *   climb   — airborne past the threshold, climbing out
  *
- * "roll" requires the groundspeed to be *increasing* vs the previous poll, which
- * distinguishes a takeoff roll from a landing roll-out (decelerating). Ground
- * coverage from community receivers is imperfect, so some surface movement may be
- * missing.
+ * A takeoff "roll" is told apart from a landing roll-out (both on the ground,
+ * aligned to the same runway) by one of two signals: the groundspeed is *increasing*
+ * vs the previous poll, OR the aircraft was **holding** at the threshold just before
+ * (a departure waits; a landing never does). The holding signal makes `roll` fire on
+ * the first moving poll even with no prior groundspeed sample or a jittery feed.
+ * Ground coverage from community receivers is imperfect, so some surface movement may
+ * be missing.
  */
 
 export type DeparturePhase = "holding" | "roll" | "climb";
@@ -41,7 +44,6 @@ const HOLD_AFTER_M = 500; // just onto the runway
 const CLIMB_AFTER_M = 8000; // initial climb past the far end
 const TRACK_TOL_DEG = 45;
 const HOLD_GS = 12; // ~stationary
-const ROLL_MIN_GS = 25;
 const ROLL_MAX_GS = 175;
 const ACCEL_MIN_KT = 3; // gs increase between polls to count as accelerating
 const CLIMB_MIN_FPM = 200;
@@ -147,6 +149,9 @@ export function detectDepartures(
   airport: Airport,
   aircraft: Aircraft[],
   prevGs: Map<string, number>,
+  /** Hexes that were holding at a threshold as of the previous poll — a departure
+   *  signal that lets `roll` fire the moment they start moving (see roll branch). */
+  holdingHexes: Set<string> = new Set(),
 ): DepartureEvent[] {
   const out: DepartureEvent[] = [];
   for (const ac of aircraft) {
@@ -168,15 +173,19 @@ export function detectDepartures(
           phase = "holding";
         } else if (
           ac.gs != null &&
-          ac.gs >= ROLL_MIN_GS &&
+          ac.gs > HOLD_GS &&
           ac.gs <= ROLL_MAX_GS &&
           ac.track != null &&
           angleDelta(ac.track, end.bearingDeg) <= TRACK_TOL_DEG &&
           alongTrack >= -BEFORE_M &&
           alongTrack <= len
         ) {
+          // Takeoff roll vs. landing roll-out: accept either an accelerating trend or
+          // a just-held aircraft now moving (a landing never held). The alignment +
+          // runway-box guards above keep a plane taxiing off from qualifying.
           const prev = prevGs.get(ac.hex);
-          if (prev != null && ac.gs - prev >= ACCEL_MIN_KT) phase = "roll";
+          const accelerating = prev != null && ac.gs - prev >= ACCEL_MIN_KT;
+          if (accelerating || holdingHexes.has(ac.hex)) phase = "roll";
         }
       } else if (
         ac.altFt != null &&

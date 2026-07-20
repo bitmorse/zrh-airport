@@ -64,9 +64,51 @@ describe("detectDepartures", () => {
     expect(d.filter((e) => e.phase === "roll")).toHaveLength(0);
   });
 
-  it("waits for a speed trend before calling it a roll (first sighting)", () => {
+  it("waits for a trend or a holding history before roll (first sighting, cold)", () => {
     const ac = onRunway("32", 600, { onGround: true, gs: 70 });
-    expect(detectDepartures(AP, [ac], new Map())).toHaveLength(0); // no prev gs yet
+    // No prev gs AND no holding history → can't yet tell takeoff from landing.
+    expect(detectDepartures(AP, [ac], new Map())).toHaveLength(0);
+  });
+
+  it("flags a just-held aircraft that starts moving as roll (no prev gs)", () => {
+    const ac = onRunway("32", 400, { onGround: true, gs: 30 });
+    // It was holding last poll; now moving → roll, even with no prior groundspeed.
+    const d = detectDepartures(AP, [ac], new Map(), new Set(["dep1"]));
+    expect(d).toHaveLength(1);
+    expect(d[0].phase).toBe("roll");
+  });
+
+  it("keeps a just-held roll through a flat/down jitter poll", () => {
+    const ac = onRunway("32", 400, { onGround: true, gs: 30 });
+    // Groundspeed ticked down (30 < 32) — the accel trend breaks, but holding history holds.
+    const d = detectDepartures(AP, [ac], new Map([["dep1", 32]]), new Set(["dep1"]));
+    expect(d[0]?.phase).toBe("roll");
+  });
+
+  it("catches the early roll in the old 12–25 kt dead zone", () => {
+    const ac = onRunway("32", 200, { onGround: true, gs: 18 });
+    // Via holding history:
+    expect(
+      detectDepartures(AP, [ac], new Map(), new Set(["dep1"]))[0]?.phase,
+    ).toBe("roll");
+    // Via a fresh accel trend (13 → 18), no history:
+    expect(
+      detectDepartures(AP, [ac], new Map([["dep1", 13]]))[0]?.phase,
+    ).toBe("roll");
+  });
+
+  it("does NOT flag a slow decelerating landing roll-out (no holding history)", () => {
+    const ac = onRunway("28", 600, { onGround: true, gs: 18 });
+    const d = detectDepartures(AP, [ac], new Map([["dep1", 70]])); // 70 → 18, never held
+    expect(d.filter((e) => e.phase === "roll")).toHaveLength(0);
+  });
+
+  it("does NOT flag a held aircraft turning off the runway (misaligned) as roll", () => {
+    const bearing = AP.endById["32"].bearingDeg;
+    const ac = onRunway("32", 200, { onGround: true, gs: 20, track: bearing + 90 });
+    // Held, now moving, but 90° off the runway heading → taxiing off, not a roll.
+    const d = detectDepartures(AP, [ac], new Map(), new Set(["dep1"]));
+    expect(d.filter((e) => e.phase === "roll")).toHaveLength(0);
   });
 
   it("flags an airborne climbing aircraft as climb", () => {
@@ -121,6 +163,36 @@ describe("trackHolding", () => {
     trackHolding([dep("holding")], new Set(["d1"]), holdingSince, 1000);
     const again = trackHolding([dep("holding")], new Set(["d1"]), holdingSince, 5000);
     expect(again[0].holdingSinceMs).toBe(1000); // unchanged start
+  });
+});
+
+describe("holding → roll promotion (end-to-end)", () => {
+  it("promotes a held aircraft to roll on first movement and reports the wait", () => {
+    const holdingSince = new Map<string, number>();
+
+    // Poll 1: stationary at the threshold → holding, wait timer starts at t=1000.
+    const held = onRunway("32", 0, { onGround: true, gs: 0 });
+    const p1 = trackHolding(
+      detectDepartures(AP, [held], new Map()),
+      new Set(["dep1"]),
+      holdingSince,
+      1000,
+    );
+    expect(p1[0].phase).toBe("holding");
+    expect(holdingSince.get("dep1")).toBe(1000);
+
+    // Poll 2, 30 s later: moving, no prior groundspeed sample — the holding history
+    // (holdingSince keys from poll 1) still promotes it to roll, and the wait is reported.
+    const moving = onRunway("32", 400, { onGround: true, gs: 30 });
+    const p2 = trackHolding(
+      detectDepartures(AP, [moving], new Map(), new Set(holdingSince.keys())),
+      new Set(["dep1"]),
+      holdingSince,
+      31000,
+    );
+    expect(p2[0].phase).toBe("roll");
+    expect(p2[0].waitedMs).toBe(30000);
+    expect(holdingSince.has("dep1")).toBe(false); // cleared once rolling
   });
 });
 

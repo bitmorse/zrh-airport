@@ -155,7 +155,15 @@ export function useLiveTraffic(settings: Settings, airport: Airport): LiveTraffi
       // Track each departure as one continuous row (wait → roll → climb, until it
       // climbs past 1000 ft AGL), then stamp/track holding on that smoothed set.
       const tracked = trackDepartures(
-        detectDepartures(airport, snap.aircraft, prevGs.current),
+        // Pass the prior poll's holders so a plane that was waiting at the threshold
+        // is called "roll" the instant it starts moving (holdingSince is updated at
+        // the end of the poll, so it still reflects poll N-1 here).
+        detectDepartures(
+          airport,
+          snap.aircraft,
+          prevGs.current,
+          new Set(holdingSince.current.keys()),
+        ),
         snap.aircraft,
         depMemory.current,
         airport.config.fieldElevationFt,

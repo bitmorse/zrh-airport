@@ -186,7 +186,13 @@ export function TrafficBar({
       ? arrivals.find((a) => a.hex === selectedHex)
       : undefined;
 
-  const deps = [...departures].sort((a, b) => DEP_ORDER[a.phase] - DEP_ORDER[b.phase]);
+  const deps = [...departures].sort(
+    (a, b) =>
+      DEP_ORDER[a.phase] - DEP_ORDER[b.phase] ||
+      // Within a phase, the most-advanced (fastest) first — the roll furthest along
+      // leads; nulls sort last.
+      (b.gsKt ?? -1) - (a.gsKt ?? -1),
+  );
   const shownDeps = deps.slice(0, MAX_DEP_ROWS);
   // Ensure a selected departure is visible even if it's beyond the cap.
   if (selectedHex && !shownDeps.some((d) => d.hex === selectedHex)) {

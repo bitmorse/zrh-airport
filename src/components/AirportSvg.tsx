@@ -81,6 +81,7 @@ function AirportSvgImpl({
       <svg
         ref={svgRef}
         viewBox={viewBox}
+        preserveAspectRatio="xMidYMid slice"
         className="h-full w-full select-none"
         style={{ touchAction: "none", cursor: isDragging ? "grabbing" : "grab" }}
         role="img"
