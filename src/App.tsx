@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AirportSvg } from "./components/AirportSvg";
 import { AtcPanel } from "./components/AtcPanel";
 import { FlightDetails } from "./components/FlightDetails";
@@ -14,6 +14,7 @@ import { AIRPORTS, airportConfigByIcao } from "./data/airports";
 import { addNoiseEvent, type NoiseEvent } from "./data/noiseStore";
 import { totalPoints } from "./data/watchStore";
 import { buildAirport } from "./domain/airport";
+import { AUTO_IDLE_MS, pickInteresting, shouldRelease } from "./domain/autoSelect";
 import { AirportContext } from "./hooks/useAirport";
 import { useWatchedFlights } from "./hooks/useWatchedFlights";
 import { useWatchTracker } from "./hooks/useWatchTracker";
@@ -27,7 +28,8 @@ import { useLiveTraffic } from "./hooks/useLiveTraffic";
 import { useNoiseRecorder, type Recording } from "./hooks/useNoiseRecorder";
 import { useNow } from "./hooks/useNow";
 import { useSettings } from "./hooks/useSettings";
-import { DEFAULT_ZOOM } from "./lib/viewport";
+import { projectToSvg } from "./lib/projection";
+import { DEFAULT_ZOOM, isPointVisible, normalizeView } from "./lib/viewport";
 
 export default function App() {
   const [settings, updateSettings] = useSettings();
@@ -43,24 +45,87 @@ export default function App() {
   const [selectedHex, setSelectedHex] = useState<string | null>(null);
   const now = useNow(1000);
 
-  // Gamification: score + award a point when the selected flight completes.
+  // Track whether the current selection is the user's or an auto-pick, and when the
+  // user last acted — so auto-select only steps in after a minute of no user choice.
+  const selectedHexRef = useRef<string | null>(null);
+  selectedHexRef.current = selectedHex;
+  const selSourceRef = useRef<"user" | "auto" | null>(null);
+  const lastUserAtRef = useRef(Date.now());
+
+  const handleSelect = useCallback((hex: string) => {
+    const next = selectedHexRef.current === hex ? null : hex;
+    lastUserAtRef.current = Date.now();
+    selSourceRef.current = next ? "user" : null;
+    setSelectedHex(next);
+  }, []);
+
+  const clearSelection = useCallback(() => {
+    lastUserAtRef.current = Date.now();
+    selSourceRef.current = null;
+    setSelectedHex(null);
+  }, []);
+
+  // Gamification scores only flights the *user* actively watched, not auto-picks.
+  const userSelectedHex = selSourceRef.current === "user" ? selectedHex : null;
   const { watched } = useWatchedFlights();
   const score = totalPoints(watched);
   useWatchTracker({
     newMovements: traffic.newMovements,
-    selectedHex,
+    selectedHex: userSelectedHex,
     aircraft: traffic.aircraft,
     trailFor: traffic.trailFor,
   });
-
-  const handleSelect = useCallback((hex: string) => {
-    setSelectedHex((cur) => (cur === hex ? null : hex));
-  }, []);
 
   const selectedAircraft = useMemo(
     () => traffic.aircraft.find((a) => a.ac.hex === selectedHex) ?? null,
     [traffic.aircraft, selectedHex],
   );
+
+  // Auto-select an interesting flight when the user has left the selection empty for
+  // a while; hand off to the next once the tracked one lands & stops, leaves the feed,
+  // or (airborne) flies out of the visible map.
+  const fieldElevationFt = airport.config.fieldElevationFt;
+  const geoidFt = airport.config.geoidFt ?? 0;
+  useEffect(() => {
+    if (selSourceRef.current === "user" && selectedHexRef.current) return; // user wins
+    if (Date.now() - lastUserAtRef.current < AUTO_IDLE_MS) return; // wait out the idle gap
+
+    const view = normalizeView({ zoom: settings.zoom, cx: settings.cx, cy: settings.cy });
+    const curAuto = selSourceRef.current === "auto" ? selectedHexRef.current : null;
+    if (curAuto) {
+      const ac = traffic.aircraft.find((w) => w.ac.hex === curAuto)?.ac;
+      const visible = ac
+        ? isPointVisible(view, projectToSvg(airport.config.arp, { lat: ac.lat, lon: ac.lon }))
+        : false;
+      const climbing = !!ac && !ac.onGround && (ac.verticalRateFpm ?? 0) > 100;
+      if (!shouldRelease(ac, visible, climbing)) return; // keep tracking the current one
+    }
+    const next = pickInteresting(
+      traffic.arrivals,
+      traffic.departures,
+      traffic.aircraft,
+      fieldElevationFt,
+      geoidFt,
+    );
+    if (next && next !== selectedHexRef.current) {
+      selSourceRef.current = "auto";
+      setSelectedHex(next);
+    } else if (!next && curAuto) {
+      selSourceRef.current = null;
+      setSelectedHex(null);
+    }
+  }, [
+    now,
+    traffic.arrivals,
+    traffic.departures,
+    traffic.aircraft,
+    settings.zoom,
+    settings.cx,
+    settings.cy,
+    airport,
+    fieldElevationFt,
+    geoidFt,
+  ]);
 
   // Aircraft-noise recording + "where am I" location.
   const recorder = useNoiseRecorder();
@@ -161,6 +226,8 @@ export default function App() {
   const switchAirport = useCallback(
     (icao: string) => {
       setAirportMenu(false);
+      lastUserAtRef.current = Date.now();
+      selSourceRef.current = null;
       setSelectedHex(null);
       // New geometry ⇒ reset the framed view to the airport's default.
       updateSettings({ airport: icao, zoom: DEFAULT_ZOOM, cx: 0.5, cy: 0.5 });
@@ -323,7 +390,7 @@ export default function App() {
             <FlightDetails
               item={selectedAircraft}
               lastUpdated={traffic.lastUpdated}
-              onClear={() => setSelectedHex(null)}
+              onClear={clearSelection}
             />
           </div>
 
