@@ -16,6 +16,10 @@ declare(strict_types=1);
  * Poll every configured airport with --all instead of naming them:
  *   php bin/collect.php --loop 540 --every 30 --all
  *
+ * Run as a persistent NFS daemon (no scheduled-task time/frequency limits) —
+ * loops forever, polling every 30s until killed:
+ *   php bin/collect.php --forever --every 30 --all
+ *
  * A non-blocking flock (held for the whole run) prevents overlapping kicks. On a
  * run with at least one successful poll it pings ZRH_HEALTHCHECK_URL, if set, as
  * a dead-man's switch. Safe to be killed mid-run: each poll commits on its own,
@@ -57,6 +61,8 @@ foreach ($icaos as $icao) {
     }
 }
 
+$forever = $args['forever'];
+$looping = $forever || $args['loopSeconds'] > 0;
 $deadline = microtime(true) + $args['loopSeconds'];
 $polls = 0;
 $totalMovements = 0;
@@ -84,7 +90,7 @@ do {
             $okPolls++;
             $totalMovements += $result['movements'];
             // In loop mode, stay quiet unless something actually happened.
-            if ($args['loopSeconds'] === 0 || $result['movements'] > 0) {
+            if (!$looping || $result['movements'] > 0) {
                 fwrite(STDOUT, sprintf(
                     "[%s] %s provider=%s seen=%d movements=%d tracked=%d pruned=%d\n",
                     date('c'),
@@ -105,21 +111,22 @@ do {
     // Heartbeat: one per poll cycle, so /health can report the poll rate.
     $store->recordPoll($nowMs);
 
-    if ($args['loopSeconds'] === 0) {
-        break;
+    if (!$looping) {
+        break; // single poll
     }
-    // Sleep to the next interval, but never past the loop deadline.
+    // Sleep to the next interval. In --forever (daemon) mode there is no
+    // deadline; otherwise stop once the next poll would fall past it.
     $next = $cycleStart + $args['everySeconds'];
-    if ($next >= $deadline) {
+    if (!$forever && $next >= $deadline) {
         break;
     }
     $sleep = $next - microtime(true);
     if ($sleep > 0) {
         usleep((int) ($sleep * 1_000_000));
     }
-} while (microtime(true) < $deadline);
+} while ($forever || microtime(true) < $deadline);
 
-if ($args['loopSeconds'] > 0) {
+if ($looping) {
     fwrite(STDOUT, sprintf(
         "[%s] loop done: polls=%d ok=%d err=%d movements=%d\n",
         date('c'),

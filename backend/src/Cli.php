@@ -21,9 +21,10 @@ final class Cli
     private const MIN_EVERY = 5;
 
     /**
-     * @return array{loopSeconds:int,everySeconds:int,icaos:array<int,string>,all:bool}
-     *   When `all` is true the caller should poll every configured airport and
-     *   ignore `icaos`.
+     * @return array{loopSeconds:int,everySeconds:int,icaos:array<int,string>,all:bool,forever:bool}
+     *   When `all` is true the caller polls every configured airport (ignoring
+     *   `icaos`). When `forever` is true it loops until killed — for running as a
+     *   persistent daemon rather than a time-limited scheduled task.
      */
     public static function parseArgs(array $argv): array
     {
@@ -31,6 +32,7 @@ final class Cli
         $loopSeconds = 0;
         $everySeconds = self::DEFAULT_EVERY;
         $all = false;
+        $forever = false;
         $icaos = [];
 
         for ($i = 0; $i < count($tokens); $i++) {
@@ -45,6 +47,8 @@ final class Cli
                 $everySeconds = (int) substr($t, 8);
             } elseif ($t === '--all') {
                 $all = true;
+            } elseif ($t === '--forever') {
+                $forever = true;
             } elseif ($t !== '' && $t[0] !== '-') {
                 $icaos[] = strtoupper($t);
             }
@@ -59,6 +63,7 @@ final class Cli
             'everySeconds' => max(self::MIN_EVERY, $everySeconds),
             'icaos' => $icaos,
             'all' => $all,
+            'forever' => $forever,
         ];
     }
 }

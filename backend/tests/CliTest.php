@@ -54,4 +54,14 @@ return [
         $a = Cli::parseArgs(['collect.php', 'LSZH']);
         Assert::false($a['all'], 'all=false without the flag');
     },
+
+    '--forever flag (daemon mode)' => function (): void {
+        $a = Cli::parseArgs(['collect.php', '--forever', '--every', '30', '--all']);
+        Assert::true($a['forever'], 'forever=true');
+    },
+
+    'forever defaults to false' => function (): void {
+        $a = Cli::parseArgs(['collect.php', 'LSZH']);
+        Assert::false($a['forever'], 'forever=false without the flag');
+    },
 ];

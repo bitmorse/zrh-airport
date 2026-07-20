@@ -14,8 +14,8 @@ compact aggregates so the history survives and is shared across all users.
 ## Architecture
 
 ```
-NFS Scheduled Task (every 10 min, self-loops @30s)   SQLite (backend/data/stats.db)
-  php bin/collect.php --loop 540 --every 30 LSZH   movements  — one row per event,
+NFS Daemon (polls every 30s, 24/7)                   SQLite (backend/data/stats.db)
+  php bin/collect.php --forever --every 30 --all   movements  — one row per event,
     ├─ Store::loadTracker()   ← detector state                pre-bucketed to local hour
     ├─ Adsb::fetchAircraftNear()  (adsb.lol → .fi → .live)  tracker    — per-aircraft memory
     ├─ Detector::detect()     → landings/takeoffs             between cron runs
@@ -62,27 +62,28 @@ Api) has a suite.
 ## Running the collector locally
 
 ```
-php backend/bin/collect.php LSZH                       # one poll; prints a summary line
-php backend/bin/collect.php --loop 540 --every 30 LSZH # poll every 30s for 9 min
-php backend/bin/collect.php --loop 540 --every 30 --all # every configured airport
-php backend/bin/collect.php LSZH VTBS                   # sweep specific airports
+php backend/bin/collect.php LSZH                        # one poll; prints a summary line
+php backend/bin/collect.php --forever --every 30 --all  # daemon: poll forever, all airports
+php backend/bin/collect.php --loop 540 --every 30 LSZH  # bounded loop (9 min)
+php backend/bin/collect.php LSZH VTBS                    # sweep specific airports
 ZRH_DB=/tmp/stats.db php backend/bin/collect.php LSZH
 ```
 
 Movements only appear when aircraft actually land/take off during a poll, so run
 the looping form for a while, then query the API (below).
 
-### Why the loop
+### Why a daemon (not a scheduled task)
 
-NFS scheduled tasks fire at most about **once every 10 minutes** — far too coarse
-for movement detection (a landing sits on the runway for ~90s, so a 10-min poll
-would miss most of them). `--loop N --every M` makes one cron kick poll every `M`
-seconds for `N` seconds and then exit, so a 10-minute cron gives continuous 30s
-cadence 24/7. Keep `N` a little under the cron period (e.g. `--loop 540` for a
-10-min task) so runs don't overlap; a flock skips a kick if the previous run is
-somehow still going. The process is mostly asleep between polls (low CPU/RAU) and
-is safe to be killed mid-run — each poll commits independently and the next kick
-resumes.
+Movement detection needs frequent polling — a landing sits on the runway for only
+~90s. But NFS scheduled tasks fire at most ~every 10 min **and** are time-limited
+(~3 min per run), so they can't poll continuously; they'd leave multi-minute blind
+gaps. So the collector runs as an NFS **Daemon** with `--forever`, polling every
+30s around the clock. It's mostly asleep between polls (low CPU/RAU), a flock keeps
+a single instance, and each poll commits independently so a restart loses nothing.
+
+`--loop N --every M` (bounded loop, exits after `N` seconds) still exists for the
+scheduled-task fallback and for local testing, but a daemon is preferred — see
+*Deploying* below.
 
 ## REST API
 
@@ -128,21 +129,31 @@ web docroot and exposes only the front controller:
    The DB and its `-wal`/`-shm` sidecars must never be web-served. If `src/`,
    `config/` or `data/` do end up under the docroot, deny them (`data/.htaccess`
    already does this).
-4. **Scheduled Task** (Site → *Manage Scheduled Tasks*):
-   - Command (all configured airports): `php /home/protected/backend/bin/collect.php --loop 540 --every 30 --all`
-     (or name specific airports instead of `--all`, e.g. `... --every 30 LSZH`).
-   - Tag: `collect`, run at the panel's **maximum frequency** (NFS caps this at
-     ~every 10 minutes). The `--loop` makes each kick poll every 30s for 9 minutes,
-     so you get continuous cadence despite the coarse cron. No `ZRH_DB` needed in
-     the command — the default path matches the API's.
-   - If NFS kills long-running tasks, lower `--loop` (e.g. `--loop 240`); it's safe.
-   - Verify a run finished by opening `/airports-api/health` — `polls10m` should
-     be ~18–20 after a full loop.
-5. **Dead-man's switch (optional).** Set `ZRH_HEALTHCHECK_URL` to a
-   healthchecks.io ping URL in the task command; the collector pings it after a
-   successful sweep so you're alerted if collection silently stops.
+4. **Run the collector — as a Daemon (recommended).** NFS scheduled tasks fire
+   at most ~every 10 min *and* are time-limited (~3 min), so they can't poll
+   continuously. A **Daemon** (Site → *Manage Daemons*) has neither limit and is
+   the right fit — it stays running and NFS restarts it if it dies.
+   - Command: `php /home/protected/backend/bin/collect.php --forever --every 30 --all`
+   - `--forever` loops until killed; `--every 30` polls every 30s; `--all` covers
+     every configured airport. No `ZRH_DB` needed — the default path matches the API's.
+   - The process is mostly asleep between polls (low CPU/RAU).
 
-Then check `https://bitmorse.com/airports-api/health` returns `{"ok":true}`.
+   **Alternative — Scheduled Task** (if you'd rather not run a daemon): fire it at
+   the panel's max frequency with a loop that stays under the task time limit:
+   - Command: `php /home/protected/backend/bin/collect.php --loop 150 --every 30 --all`
+   - This polls for ~2.5 min each kick, then idles until the next. It only covers
+     part of each interval, so it **samples** movements (undercounts totals) but
+     still captures the relative busy-hours / per-runway shape. Prefer the daemon
+     for accurate counts.
+5. **Verify:** open `/airports-api/health` — `polls10m` should climb toward ~18–20
+   once the daemon has been running 10 minutes. If it's `0` and `lastPollAgoS`
+   keeps growing, the collector isn't running.
+6. **Dead-man's switch (optional, scheduled-task mode only).** Set
+   `ZRH_HEALTHCHECK_URL` to a healthchecks.io ping URL; the collector pings it
+   after a successful finite run. (In `--forever` mode, monitor via `/health`
+   `polls10m` instead.)
+
+Then check `https://bitmorse.com/airports-api/health` returns `{"ok":true, ...}`.
 
 ## Bandwidth & storage
 
