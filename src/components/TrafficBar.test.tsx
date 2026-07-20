@@ -75,6 +75,24 @@ describe("TrafficBar", () => {
     expect(screen.queryByText(/decision height/)).toBeNull();
   });
 
+  it("marks the selected row (aria-pressed) without using a callout colour", () => {
+    render(
+      <TrafficBar
+        arrivals={[arrival]}
+        departures={[]}
+        now={NOW}
+        lastUpdated={NOW}
+        selectedHex="arr1"
+        onSelect={() => {}}
+      />,
+    );
+    const row = screen.getByRole("button", { pressed: true });
+    expect(row).toHaveTextContent("SWR40L");
+    // Neutral selection tint, not amber/emerald/sky.
+    expect(row.className).toMatch(/bg-slate-200/);
+    expect(row.className).not.toMatch(/bg-(amber|emerald|sky)/);
+  });
+
   it("caps the list at 3 departures and shows a '+N more' line", () => {
     render(
       <TrafficBar

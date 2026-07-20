@@ -229,6 +229,7 @@ export default function App() {
           now={now}
           lastUpdated={traffic.lastUpdated}
           stale={stale}
+          selectedHex={selectedHex}
           onSelect={handleSelect}
         />
       </div>

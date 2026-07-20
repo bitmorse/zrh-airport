@@ -19,6 +19,7 @@ function TrafficRow({
   timeClass = "text-slate-100",
   muted,
   highlight,
+  selected,
   onClick,
 }: {
   icon: string;
@@ -29,6 +30,7 @@ function TrafficRow({
   timeClass?: string;
   muted?: string;
   highlight?: boolean;
+  selected?: boolean;
   onClick?: () => void;
 }) {
   return (
@@ -36,10 +38,18 @@ function TrafficRow({
       type="button"
       onClick={onClick}
       disabled={!onClick}
-      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-slate-800/50 disabled:cursor-default disabled:hover:bg-transparent ${
-        highlight ? "bg-amber-500/10" : ""
+      aria-pressed={onClick ? !!selected : undefined}
+      className={`relative flex w-full items-center gap-2 py-1.5 pr-3 pl-3.5 text-left hover:bg-slate-800/50 disabled:cursor-default disabled:hover:bg-transparent ${
+        selected ? "bg-slate-200/[0.07]" : highlight ? "bg-amber-500/10" : ""
       }`}
     >
+      {/* Selection cue — a neutral white rail, deliberately not a callout colour. */}
+      {selected && (
+        <span
+          aria-hidden
+          className="absolute inset-y-1 left-0 w-[3px] rounded-full bg-slate-100"
+        />
+      )}
       <span aria-hidden>{icon}</span>
       {muted ? (
         <span className="flex-1 text-xs text-slate-500">{muted}</span>
@@ -93,6 +103,7 @@ export function TrafficBar({
   now,
   lastUpdated,
   stale,
+  selectedHex,
   onSelect,
 }: {
   arrivals: Arrival[];
@@ -100,6 +111,7 @@ export function TrafficBar({
   now: number;
   lastUpdated: number | null;
   stale?: boolean;
+  selectedHex?: string | null;
   onSelect?: (hex: string) => void;
 }) {
   const soonest = arrivals[0];
@@ -149,6 +161,7 @@ export function TrafficBar({
                   : "text-slate-100"
           }
           highlight={!!flash}
+          selected={soonest.hex === selectedHex}
           onClick={() => onSelect?.(soonest.hex)}
         />
       ) : (
@@ -166,6 +179,7 @@ export function TrafficBar({
             secondary={secondary}
             time={time}
             timeClass={timeClass}
+            selected={d.hex === selectedHex}
             onClick={() => onSelect?.(d.hex)}
           />
         );
