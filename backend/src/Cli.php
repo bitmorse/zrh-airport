@@ -20,12 +20,17 @@ final class Cli
     private const DEFAULT_EVERY = 30;
     private const MIN_EVERY = 5;
 
-    /** @return array{loopSeconds:int,everySeconds:int,icaos:array<int,string>} */
+    /**
+     * @return array{loopSeconds:int,everySeconds:int,icaos:array<int,string>,all:bool}
+     *   When `all` is true the caller should poll every configured airport and
+     *   ignore `icaos`.
+     */
     public static function parseArgs(array $argv): array
     {
         $tokens = array_slice($argv, 1);
         $loopSeconds = 0;
         $everySeconds = self::DEFAULT_EVERY;
+        $all = false;
         $icaos = [];
 
         for ($i = 0; $i < count($tokens); $i++) {
@@ -38,12 +43,14 @@ final class Cli
                 $everySeconds = (int) ($tokens[++$i] ?? self::DEFAULT_EVERY);
             } elseif (str_starts_with($t, '--every=')) {
                 $everySeconds = (int) substr($t, 8);
+            } elseif ($t === '--all') {
+                $all = true;
             } elseif ($t !== '' && $t[0] !== '-') {
                 $icaos[] = strtoupper($t);
             }
         }
 
-        if ($icaos === []) {
+        if ($icaos === [] && !$all) {
             $icaos = [self::DEFAULT_ICAO];
         }
 
@@ -51,6 +58,7 @@ final class Cli
             'loopSeconds' => max(0, $loopSeconds),
             'everySeconds' => max(self::MIN_EVERY, $everySeconds),
             'icaos' => $icaos,
+            'all' => $all,
         ];
     }
 }

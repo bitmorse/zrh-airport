@@ -66,6 +66,32 @@ final class Store
                 PRIMARY KEY (icao, hex)
             );
         SQL);
+        // Heartbeat log: one row per collector poll cycle, so /health can report
+        // how many polls ran recently (did the cron run its full loop?).
+        $this->pdo->exec('CREATE TABLE IF NOT EXISTS poll_log (ts_utc INTEGER NOT NULL)');
+        $this->pdo->exec('CREATE INDEX IF NOT EXISTS idx_poll_ts ON poll_log(ts_utc)');
+    }
+
+    private const POLL_RETENTION_MS = 2 * 3_600_000; // keep ~2h of heartbeats
+
+    /** Record one poll cycle at $tsMs and prune heartbeats past the retention window. */
+    public function recordPoll(int $tsMs): void
+    {
+        $this->pdo->prepare('INSERT INTO poll_log (ts_utc) VALUES (?)')->execute([$tsMs]);
+        $this->pdo->prepare('DELETE FROM poll_log WHERE ts_utc < ?')
+            ->execute([$tsMs - self::POLL_RETENTION_MS]);
+    }
+
+    /** @return array{count:int,lastMs:?int} polls at or after $sinceMs. */
+    public function pollActivity(int $sinceMs): array
+    {
+        $stmt = $this->pdo->prepare('SELECT COUNT(*) c, MAX(ts_utc) last FROM poll_log WHERE ts_utc >= ?');
+        $stmt->execute([$sinceMs]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC) ?: ['c' => 0, 'last' => null];
+        return [
+            'count' => (int) $row['c'],
+            'lastMs' => $row['last'] === null ? null : (int) $row['last'],
+        ];
     }
 
     /**

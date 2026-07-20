@@ -44,4 +44,14 @@ return [
         $a = Cli::parseArgs(['collect.php', '--loop', '540', 'LSZH']);
         Assert::same(30, $a['everySeconds'], 'default 30s interval');
     },
+
+    '--all flag selects every airport' => function (): void {
+        $a = Cli::parseArgs(['collect.php', '--loop', '540', '--every', '30', '--all']);
+        Assert::true($a['all'], 'all=true');
+    },
+
+    'all defaults to false' => function (): void {
+        $a = Cli::parseArgs(['collect.php', 'LSZH']);
+        Assert::false($a['all'], 'all=false without the flag');
+    },
 ];

@@ -38,7 +38,8 @@ Fetch **on demand** (e.g. when the Stats card opens), not on a poll loop.
 
 ## `GET /health`
 
-Liveness check.
+Liveness **and collector activity** — use it to check the cron actually ran its
+full loop. Never cached (`Cache-Control: no-store`).
 
 ```
 GET /airports-api/health
@@ -47,8 +48,29 @@ GET /airports-api/health
 **200**
 
 ```json
-{ "ok": true }
+{
+  "ok": true,
+  "polls10m": 18,
+  "lastPollMs": 1784550112745,
+  "lastPollAgoS": 22,
+  "generatedAt": 1784550134799
+}
 ```
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `ok` | bool | API is up |
+| `polls10m` | int | Poll cycles recorded in the last 10 minutes |
+| `lastPollMs` | int \| null | Most recent poll, epoch ms UTC; `null` if none |
+| `lastPollAgoS` | int \| null | Seconds since the last poll |
+| `generatedAt` | int | Server time, epoch ms UTC |
+
+Interpreting `polls10m` (collector runs `--every 30` → a poll every 30s):
+
+- **~18–20** → a full 9-minute loop ran (healthy).
+- **Much lower, and `lastPollAgoS` small** → the loop is running now but started recently.
+- **`lastPollAgoS` large / growing** (e.g. > 600) → the collector stopped — the
+  scheduled task was cancelled, is failing, or isn't firing.
 
 ---
 

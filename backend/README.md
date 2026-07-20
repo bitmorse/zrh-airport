@@ -62,9 +62,10 @@ Api) has a suite.
 ## Running the collector locally
 
 ```
-php backend/bin/collect.php LSZH                      # one poll; prints a summary line
+php backend/bin/collect.php LSZH                       # one poll; prints a summary line
 php backend/bin/collect.php --loop 540 --every 30 LSZH # poll every 30s for 9 min
-php backend/bin/collect.php LSZH VTBS                  # sweep several airports
+php backend/bin/collect.php --loop 540 --every 30 --all # every configured airport
+php backend/bin/collect.php LSZH VTBS                   # sweep specific airports
 ZRH_DB=/tmp/stats.db php backend/bin/collect.php LSZH
 ```
 
@@ -128,12 +129,15 @@ web docroot and exposes only the front controller:
    `config/` or `data/` do end up under the docroot, deny them (`data/.htaccess`
    already does this).
 4. **Scheduled Task** (Site → *Manage Scheduled Tasks*):
-   - Command: `php /home/protected/backend/bin/collect.php --loop 540 --every 30 LSZH`
+   - Command (all configured airports): `php /home/protected/backend/bin/collect.php --loop 540 --every 30 --all`
+     (or name specific airports instead of `--all`, e.g. `... --every 30 LSZH`).
    - Tag: `collect`, run at the panel's **maximum frequency** (NFS caps this at
      ~every 10 minutes). The `--loop` makes each kick poll every 30s for 9 minutes,
      so you get continuous cadence despite the coarse cron. No `ZRH_DB` needed in
      the command — the default path matches the API's.
    - If NFS kills long-running tasks, lower `--loop` (e.g. `--loop 240`); it's safe.
+   - Verify a run finished by opening `/airports-api/health` — `polls10m` should
+     be ~18–20 after a full loop.
 5. **Dead-man's switch (optional).** Set `ZRH_HEALTHCHECK_URL` to a
    healthchecks.io ping URL in the task command; the collector pings it after a
    successful sweep so you're alerted if collection silently stops.

@@ -134,4 +134,40 @@ return [
         Assert::same(2, $sum['days'], 'two distinct days');
         Assert::same(15, $sum['busiestHour'], 'busiest local hour is 15');
     },
+
+    'poll log: counts heartbeats in a window and reports the last one' => function (): void {
+        $s = memStore();
+        $t0 = tsAt('2026-07-20 12:00:00', TZ);
+        for ($i = 0; $i < 5; $i++) {
+            $s->recordPoll($t0 + $i * 30_000);
+        }
+        $act = $s->pollActivity($t0);
+        Assert::same(5, $act['count'], 'five polls counted');
+        Assert::same($t0 + 4 * 30_000, $act['lastMs'], 'last poll ts');
+    },
+
+    'poll log: window excludes older heartbeats' => function (): void {
+        $s = memStore();
+        $t0 = tsAt('2026-07-20 12:00:00', TZ);
+        $s->recordPoll($t0 - 20 * 60_000); // 20 min ago
+        $s->recordPoll($t0 - 60_000);      // 1 min ago
+        $act = $s->pollActivity($t0 - 10 * 60_000); // last 10 min
+        Assert::same(1, $act['count'], 'only the recent poll');
+    },
+
+    'poll log: empty -> zero count and null last' => function (): void {
+        $s = memStore();
+        $act = $s->pollActivity(0);
+        Assert::same(0, $act['count']);
+        Assert::true($act['lastMs'] === null, 'null last when empty');
+    },
+
+    'poll log: prunes heartbeats older than the retention window' => function (): void {
+        $s = memStore();
+        $t0 = tsAt('2026-07-20 12:00:00', TZ);
+        $s->recordPoll($t0 - 3 * 3_600_000); // 3h ago
+        $s->recordPoll($t0);
+        $act = $s->pollActivity($t0 - 24 * 3_600_000); // wide window
+        Assert::same(1, $act['count'], '3h-old heartbeat pruned');
+    },
 ];

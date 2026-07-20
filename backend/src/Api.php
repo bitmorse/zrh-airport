@@ -34,7 +34,16 @@ final class Api
             return self::json(404, ['error' => 'not found']);
         }
         if ($route === ['health']) {
-            return self::json(200, ['ok' => true]);
+            $now = (int) $opts['nowMs'];
+            $act = $store->pollActivity($now - 10 * 60_000);
+            $last = $act['lastMs'];
+            return self::json(200, [
+                'ok' => true,
+                'polls10m' => $act['count'],
+                'lastPollMs' => $last,
+                'lastPollAgoS' => $last === null ? null : (int) round(($now - $last) / 1000),
+                'generatedAt' => $now,
+            ], null, false); // never cache live status
         }
 
         [$rawIcao, $resource] = $route;
@@ -108,23 +117,24 @@ final class Api
      *                             perturb the tag); defaults to the body.
      * @return array{status:int,headers:array<string,string>,body:string}
      */
-    private static function json(int $status, array $data, ?array $etagSeed = null): array
+    private static function json(int $status, array $data, ?array $etagSeed = null, bool $cacheable = true): array
     {
         $body = json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         if ($body === false) {
             $body = '{"error":"encoding failed"}';
             $status = 500;
         }
-        $seed = $etagSeed === null ? $body : (json_encode($etagSeed, JSON_UNESCAPED_SLASHES) ?: $body);
-        return [
-            'status' => $status,
-            'headers' => [
-                'Content-Type' => 'application/json; charset=utf-8',
-                'Cache-Control' => 'public, max-age=300',
-                'ETag' => '"' . substr(hash('sha256', $seed), 0, 16) . '"',
-                'Access-Control-Allow-Origin' => '*',
-            ],
-            'body' => $body,
+        $headers = [
+            'Content-Type' => 'application/json; charset=utf-8',
+            'Access-Control-Allow-Origin' => '*',
         ];
+        if ($cacheable) {
+            $seed = $etagSeed === null ? $body : (json_encode($etagSeed, JSON_UNESCAPED_SLASHES) ?: $body);
+            $headers['Cache-Control'] = 'public, max-age=300';
+            $headers['ETag'] = '"' . substr(hash('sha256', $seed), 0, 16) . '"';
+        } else {
+            $headers['Cache-Control'] = 'no-store';
+        }
+        return ['status' => $status, 'headers' => $headers, 'body' => $body];
     }
 }

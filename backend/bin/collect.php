@@ -13,6 +13,9 @@ declare(strict_types=1);
  * running this gives continuous 30s cadence 24/7:
  *   php bin/collect.php --loop 540 --every 30 LSZH
  *
+ * Poll every configured airport with --all instead of naming them:
+ *   php bin/collect.php --loop 540 --every 30 --all
+ *
  * A non-blocking flock (held for the whole run) prevents overlapping kicks. On a
  * run with at least one successful poll it pings ZRH_HEALTHCHECK_URL, if set, as
  * a dead-man's switch. Safe to be killed mid-run: each poll commits on its own,
@@ -39,9 +42,14 @@ if ($lock === false || !flock($lock, LOCK_EX | LOCK_NB)) {
 
 $store = Store::open($cfg['db']);
 
+// --all polls every configured airport; otherwise use the ones named on the CLI.
+$icaos = $args['all']
+    ? array_keys(json_decode((string) file_get_contents($cfg['airports']), true) ?: [])
+    : $args['icaos'];
+
 // Pre-load airport geometry once (reused across every poll in the loop).
 $airports = [];
-foreach ($args['icaos'] as $icao) {
+foreach ($icaos as $icao) {
     try {
         $airports[$icao] = Airport::load($icao, $cfg['airports']);
     } catch (\Throwable $e) {
@@ -93,6 +101,9 @@ do {
             fwrite(STDERR, '[' . date('c') . "] {$icao} ERROR: " . $e->getMessage() . "\n");
         }
     }
+
+    // Heartbeat: one per poll cycle, so /health can report the poll rate.
+    $store->recordPoll($nowMs);
 
     if ($args['loopSeconds'] === 0) {
         break;

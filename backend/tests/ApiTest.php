@@ -40,6 +40,22 @@ return [
         Assert::true($body['ok'] === true, 'ok true');
     },
 
+    'health: reports recent poll activity, uncached' => function (): void {
+        $store = apiStore();
+        $opts = apiOpts();
+        $now = $opts['nowMs'];
+        $store->recordPoll($now - 30_000);
+        $store->recordPoll($now - 5_000);
+        $store->recordPoll($now - 15 * 60_000); // outside the 10-min window
+        $r = Api::handle($store, '/api/v1/health', [], $opts);
+        $b = json_decode($r['body'], true);
+        Assert::same(2, $b['polls10m'], 'two polls in the last 10 min');
+        Assert::same($now - 5_000, $b['lastPollMs'], 'last poll ts');
+        Assert::true($b['lastPollAgoS'] >= 4 && $b['lastPollAgoS'] <= 6, 'age ~5s');
+        // Health must not be cached — it reflects live status.
+        Assert::true(str_contains(strtolower($r['headers']['Cache-Control'] ?? ''), 'no-store'), 'no-store');
+    },
+
     'movements: returns per-end histogram' => function (): void {
         $r = Api::handle(apiStore(), '/api/v1/LSZH/movements', ['days' => '60'], apiOpts());
         Assert::same(200, $r['status']);
