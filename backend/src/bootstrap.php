@@ -12,6 +12,7 @@ require_once __DIR__ . '/Geo.php';
 require_once __DIR__ . '/Airport.php';
 require_once __DIR__ . '/Detector.php';
 require_once __DIR__ . '/Adsb.php';
+require_once __DIR__ . '/Weather.php';
 require_once __DIR__ . '/Store.php';
 require_once __DIR__ . '/Collector.php';
 require_once __DIR__ . '/Api.php';

@@ -92,6 +92,26 @@ final class Store
         // how many polls ran recently (did the cron run its full loop?).
         $this->pdo->exec('CREATE TABLE IF NOT EXISTS poll_log (ts_utc INTEGER NOT NULL)');
         $this->pdo->exec('CREATE INDEX IF NOT EXISTS idx_poll_ts ON poll_log(ts_utc)');
+        // Hourly weather, one row per (airport, hour), upserted so forecasts refine
+        // toward actuals. Bucketed to airport-local hour to line up with movements.
+        $this->pdo->exec(<<<'SQL'
+            CREATE TABLE IF NOT EXISTS weather (
+                icao         TEXT    NOT NULL,
+                ts_utc       INTEGER NOT NULL,
+                local_date   TEXT    NOT NULL,
+                local_hour   INTEGER NOT NULL,
+                wind_dir     INTEGER,
+                wind_kt      REAL,
+                gust_kt      REAL,
+                temp_c       REAL,
+                precip_mm    REAL,
+                visibility_m REAL,
+                cloud_pct    REAL,
+                pressure_hpa REAL,
+                fetched_at   INTEGER NOT NULL,
+                PRIMARY KEY (icao, ts_utc)
+            );
+        SQL);
     }
 
     private const POLL_RETENTION_MS = 2 * 3_600_000; // keep ~2h of heartbeats
@@ -204,6 +224,100 @@ final class Store
     public function pruneMovements(string $icao, int $cutoffMs): int
     {
         $stmt = $this->pdo->prepare('DELETE FROM movements WHERE icao = ? AND ts_utc < ?');
+        $stmt->execute([$icao, $cutoffMs]);
+        return $stmt->rowCount();
+    }
+
+    // ---- weather ----
+
+    /**
+     * Upsert hourly weather rows (as Weather::normalise emits). One row per
+     * (icao, hour); re-fetching an hour refines it in place. Bucketed to the
+     * airport-local hour at write time, like movements.
+     *
+     * @param array<int,array{tsMs:int,windDir:?int,windKt:?float,gustKt:?float,tempC:?float,precipMm:?float,visibilityM:?float,cloudPct:?float,pressureHpa:?float}> $rows
+     */
+    public function upsertWeather(string $icao, array $rows, string $timeZone, int $fetchedAtMs): int
+    {
+        if ($rows === []) {
+            return 0;
+        }
+        $tz = new \DateTimeZone($timeZone);
+        $stmt = $this->pdo->prepare(
+            'INSERT INTO weather (icao, ts_utc, local_date, local_hour, wind_dir, wind_kt,
+                gust_kt, temp_c, precip_mm, visibility_m, cloud_pct, pressure_hpa, fetched_at)
+             VALUES (:icao, :ts, :date, :hour, :wdir, :wkt, :gust, :temp, :precip, :vis, :cloud, :press, :fetched)
+             ON CONFLICT(icao, ts_utc) DO UPDATE SET
+                local_date = excluded.local_date, local_hour = excluded.local_hour,
+                wind_dir = excluded.wind_dir, wind_kt = excluded.wind_kt,
+                gust_kt = excluded.gust_kt, temp_c = excluded.temp_c,
+                precip_mm = excluded.precip_mm, visibility_m = excluded.visibility_m,
+                cloud_pct = excluded.cloud_pct, pressure_hpa = excluded.pressure_hpa,
+                fetched_at = excluded.fetched_at'
+        );
+        $this->pdo->beginTransaction();
+        try {
+            foreach ($rows as $r) {
+                $b = self::localBucket((int) $r['tsMs'], $tz);
+                $stmt->execute([
+                    ':icao' => $icao,
+                    ':ts' => (int) $r['tsMs'],
+                    ':date' => $b['date'],
+                    ':hour' => $b['hour'],
+                    ':wdir' => $r['windDir'] ?? null,
+                    ':wkt' => $r['windKt'] ?? null,
+                    ':gust' => $r['gustKt'] ?? null,
+                    ':temp' => $r['tempC'] ?? null,
+                    ':precip' => $r['precipMm'] ?? null,
+                    ':vis' => $r['visibilityM'] ?? null,
+                    ':cloud' => $r['cloudPct'] ?? null,
+                    ':press' => $r['pressureHpa'] ?? null,
+                    ':fetched' => $fetchedAtMs,
+                ]);
+            }
+            $this->pdo->commit();
+        } catch (\Throwable $e) {
+            $this->pdo->rollBack();
+            throw $e;
+        }
+        return count($rows);
+    }
+
+    /**
+     * Hourly weather at or after $sinceMs, oldest first. Future forecast hours are
+     * included (sinceMs is only a lower bound). Pure SELECT — safe under openReader.
+     */
+    public function weather(string $icao, int $sinceMs): array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT ts_utc, local_date, local_hour, wind_dir, wind_kt, gust_kt, temp_c,
+                    precip_mm, visibility_m, cloud_pct, pressure_hpa
+             FROM weather WHERE icao = ? AND ts_utc >= ? ORDER BY ts_utc'
+        );
+        $stmt->execute([$icao, $sinceMs]);
+        $out = [];
+        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
+            $out[] = [
+                'tsUtc' => (int) $r['ts_utc'],
+                'localDate' => (string) $r['local_date'],
+                'localHour' => (int) $r['local_hour'],
+                'windDir' => $r['wind_dir'] === null ? null : (int) $r['wind_dir'],
+                'windKt' => $r['wind_kt'] === null ? null : (float) $r['wind_kt'],
+                'gustKt' => $r['gust_kt'] === null ? null : (float) $r['gust_kt'],
+                'tempC' => $r['temp_c'] === null ? null : (float) $r['temp_c'],
+                'precipMm' => $r['precip_mm'] === null ? null : (float) $r['precip_mm'],
+                'visibilityM' => $r['visibility_m'] === null ? null : (float) $r['visibility_m'],
+                'cloudPct' => $r['cloud_pct'] === null ? null : (float) $r['cloud_pct'],
+                'pressureHpa' => $r['pressure_hpa'] === null ? null : (float) $r['pressure_hpa'],
+            ];
+        }
+        return $out;
+    }
+
+    /** Delete weather hours strictly older than $cutoffMs; returns rows removed. */
+    public function pruneWeather(string $icao, int $cutoffMs): int
+    {
+        $stmt = $this->pdo->prepare('DELETE FROM weather WHERE icao = ? AND ts_utc < ?');
         $stmt->execute([$icao, $cutoffMs]);
         return $stmt->rowCount();
     }

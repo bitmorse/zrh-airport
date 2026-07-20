@@ -73,6 +73,18 @@ final class Api
                 $data['generatedAt'] = (int) $opts['nowMs'];
                 return self::json(200, $data, $seed);
 
+            case 'weather':
+                // Recent observed hours (back to the window) plus any forecast
+                // hours the collector has stored ahead of now.
+                $data = [
+                    'icao' => $icao,
+                    'hours' => $store->weather($icao, $sinceMs),
+                    'windowDays' => $windowDays,
+                ];
+                $seed = $data;
+                $data['generatedAt'] = (int) $opts['nowMs'];
+                return self::json(200, $data, $seed);
+
             default:
                 return self::json(404, ['error' => 'not found']);
         }
@@ -96,7 +108,7 @@ final class Api
         }
         if ($n >= 2) {
             $resource = strtolower($parts[$n - 1]);
-            if ($resource === 'movements' || $resource === 'summary') {
+            if ($resource === 'movements' || $resource === 'summary' || $resource === 'weather') {
                 return [$parts[$n - 2], $resource];
             }
         }

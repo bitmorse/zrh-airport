@@ -179,6 +179,66 @@ GET /airports-api/LSZH/summary?days=60
 
 ---
 
+## `GET /{icao}/weather`
+
+Hourly weather for the airport, from Open-Meteo — recent **observed** hours plus
+near-term **forecast** hours. Wind is the field that matters most for runway
+utilisation (aircraft use the runway most into-wind). Source data is hourly, so
+values change at most a few times per hour.
+
+```
+GET /airports-api/LSZH/weather?days=2
+```
+
+**200**
+
+```json
+{
+  "icao": "LSZH",
+  "hours": [
+    {
+      "tsUtc": 1784550000000,
+      "localDate": "2026-07-20",
+      "localHour": 15,
+      "windDir": 250,
+      "windKt": 12.0,
+      "gustKt": 19.0,
+      "tempC": 23.4,
+      "precipMm": 0.0,
+      "visibilityM": 20000.0,
+      "cloudPct": 40.0,
+      "pressureHpa": 1016.9
+    }
+  ],
+  "windowDays": 2,
+  "generatedAt": 1784550134799
+}
+```
+
+### Fields
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `hours[]` | array | One entry per hour, oldest first |
+| `hours[].tsUtc` | int | Start of the hour, epoch ms UTC. **Past = observed, future = forecast** |
+| `hours[].localDate` / `localHour` | string / int | Airport-local date and hour `0–23` |
+| `hours[].windDir` | int \| null | Wind **from** direction, degrees true |
+| `hours[].windKt` | float \| null | Wind speed, knots |
+| `hours[].gustKt` | float \| null | Wind gust, knots |
+| `hours[].tempC` | float \| null | Temperature, °C |
+| `hours[].precipMm` | float \| null | Precipitation, mm |
+| `hours[].visibilityM` | float \| null | Visibility, metres |
+| `hours[].cloudPct` | float \| null | Cloud cover, % |
+| `hours[].pressureHpa` | float \| null | Surface pressure, hPa |
+| `windowDays` | int | Past window after clamping; forecast hours are always included |
+| `generatedAt` | int | Server time, epoch ms UTC |
+
+`days` bounds how far **back** to return; forecast hours ahead of now are always
+included (up to what the collector has stored, ~2 days). Any field may be `null`
+if the source omitted it.
+
+---
+
 ## Errors
 
 All errors are JSON with an `error` string.

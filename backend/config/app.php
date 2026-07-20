@@ -24,4 +24,7 @@ return [
     'retentionDays' => 60,
     'defaultWindowDays' => 60,
     'maxWindowDays' => 60,
+    // Weather is hourly, so fetch it on a throttle rather than every poll.
+    'weatherEverySeconds' => 900,   // 15 min
+    'weatherRetentionDays' => 365,  // keep a year of hourly weather (tiny; for training)
 ];

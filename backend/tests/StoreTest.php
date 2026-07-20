@@ -26,6 +26,17 @@ function mv(string $kind, string $hex, string $end, int $ts): array
     return ['kind' => $kind, 'hex' => $hex, 'end' => $end, 'ts' => $ts];
 }
 
+/** A normalised weather row (as Weather::normalise emits), with sane defaults. */
+function wx(int $tsMs, array $over = []): array
+{
+    return array_merge([
+        'tsMs' => $tsMs,
+        'windDir' => null, 'windKt' => null, 'gustKt' => null,
+        'tempC' => null, 'precipMm' => null, 'visibilityM' => null,
+        'cloudPct' => null, 'pressureHpa' => null,
+    ], $over);
+}
+
 return [
     'migrate: creates movements and tracker tables' => function (): void {
         $s = memStore();
@@ -198,5 +209,68 @@ return [
         $s->recordPoll($t0);
         $act = $s->pollActivity($t0 - 24 * 3_600_000); // wide window
         Assert::same(1, $act['count'], '3h-old heartbeat pruned');
+    },
+
+    'migrate: creates the weather table' => function (): void {
+        $s = memStore();
+        $names = $s->pdo->query("SELECT name FROM sqlite_master WHERE type='table'")
+            ->fetchAll(PDO::FETCH_COLUMN);
+        Assert::true(in_array('weather', $names, true), 'weather table');
+    },
+
+    'weather: upsert stores hourly rows, bucketed to local hour, read back in order' => function (): void {
+        $s = memStore();
+        $h12 = tsAt('2026-07-20 12:00:00', 'UTC');
+        $h13 = tsAt('2026-07-20 13:00:00', 'UTC');
+        $s->upsertWeather('LSZH', [
+            wx($h13, ['windDir' => 250, 'windKt' => 12.0]),
+            wx($h12, ['windDir' => 240, 'windKt' => 8.0]),
+        ], TZ, $h13);
+
+        $rows = $s->weather('LSZH', 0);
+        Assert::count(2, $rows, 'two hours');
+        Assert::same($h12, $rows[0]['tsUtc'], 'ordered by ts ascending');
+        Assert::same(240, $rows[0]['windDir'], 'wind dir');
+        Assert::near(8.0, $rows[0]['windKt'], 1e-9, 'wind kt');
+        // 12:00 UTC is 14:00 in Zurich summer (UTC+2).
+        Assert::same(14, $rows[0]['localHour'], 'bucketed to local hour');
+    },
+
+    'weather: re-upserting the same hour updates in place (forecast refines)' => function (): void {
+        $s = memStore();
+        $h = tsAt('2026-07-20 12:00:00', 'UTC');
+        $s->upsertWeather('LSZH', [wx($h, ['windDir' => 240, 'windKt' => 8.0])], TZ, $h);
+        $s->upsertWeather('LSZH', [wx($h, ['windDir' => 300, 'windKt' => 20.0])], TZ, $h + 3_600_000);
+
+        $rows = $s->weather('LSZH', 0);
+        Assert::count(1, $rows, 'still one row for that hour');
+        Assert::same(300, $rows[0]['windDir'], 'updated wind dir');
+        Assert::near(20.0, $rows[0]['windKt'], 1e-9, 'updated wind kt');
+    },
+
+    'weather: read respects the since cutoff but includes future forecast hours' => function (): void {
+        $s = memStore();
+        $now = tsAt('2026-07-20 12:00:00', 'UTC');
+        $s->upsertWeather('LSZH', [
+            wx($now - 48 * 3_600_000, ['windDir' => 100]), // 2 days ago
+            wx($now - 1 * 3_600_000, ['windDir' => 200]),  // recent
+            wx($now + 6 * 3_600_000, ['windDir' => 300]),  // forecast
+        ], TZ, $now);
+
+        $rows = $s->weather('LSZH', $now - 24 * 3_600_000); // last 24h onward
+        Assert::count(2, $rows, 'excludes the 2-day-old hour, keeps recent + forecast');
+        Assert::same(300, $rows[count($rows) - 1]['windDir'], 'forecast hour included last');
+    },
+
+    'weather: prune drops hours older than the cutoff' => function (): void {
+        $s = memStore();
+        $now = tsAt('2026-07-20 12:00:00', 'UTC');
+        $s->upsertWeather('LSZH', [
+            wx($now - 400 * 24 * 3_600_000, ['windDir' => 100]), // ~400 days ago
+            wx($now, ['windDir' => 200]),
+        ], TZ, $now);
+        $removed = $s->pruneWeather('LSZH', $now - 365 * 24 * 3_600_000);
+        Assert::same(1, $removed, 'one old hour pruned');
+        Assert::count(1, $s->weather('LSZH', 0), 'one remains');
     },
 ];

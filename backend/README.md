@@ -20,11 +20,13 @@ NFS Daemon (polls every 30s, 24/7)                  SQLite (backend/data/stats.d
     ├─ Adsb::fetchAircraftNear() (adsb.lol → .fi → .live)  tracker  — per-aircraft memory
     ├─ Detector::detect()     → landings/takeoffs                  across polls
     ├─ Store::insertMovements()                          poll_log  — heartbeats (for /health)
-    ├─ Store::saveTracker()  ├─ Store::recordPoll()
-    └─ Store::pruneMovements() (>60 days)
+    ├─ Store::saveTracker()  ├─ Store::recordPoll()      weather   — hourly, upserted
+    ├─ Store::pruneMovements() (>60 days)                          (Open-Meteo, every ~15 min)
+    └─ Weather::fetchHourly() → Store::upsertWeather() (throttled, >365 days pruned)
                                                      Read API (airports-api/index.php)
 Browser Stats card ── GET /airports-api/LSZH/movements ──▶ Zrh\Api::handle → JSON
                       GET /airports-api/LSZH/summary       (read-only, Store::openReader)
+                      GET /airports-api/LSZH/weather
 ```
 
 - **Persistent process, persisted state.** Landing/takeoff detection needs the
@@ -46,7 +48,7 @@ Browser Stats card ── GET /airports-api/LSZH/movements ──▶ Zrh\Api::ha
 
 ```
 backend/
-  src/          Geo, Airport, Adsb, Detector, Store, Collector, Api, Cli  (namespace Zrh\)
+  src/          Geo, Airport, Adsb, Weather, Detector, Store, Collector, Api, Cli  (namespace Zrh\)
   config/       airports.json (ported from src/data/airports.ts), app.php
   bin/          collect.php — collector entry; daemon.sh — NFS daemon run script
   airports-api/ index.php + .htaccess  — web-facing API front controller
@@ -98,17 +100,23 @@ segments, so the same code works under any base path.
 
 | Method | Path | Notes |
 |--------|------|-------|
-| GET | `/airports-api/health` | liveness |
+| GET | `/airports-api/health` | liveness + collector poll activity |
 | GET | `/airports-api/{icao}/movements?days=60` | per-runway-end 24h histogram |
 | GET | `/airports-api/{icao}/summary?days=60` | totals, distinct days, busiest hour |
+| GET | `/airports-api/{icao}/weather?days=60` | hourly weather (recent observed + forecast) |
 
 `{icao}` is case-insensitive and must be a configured airport (`LSZH`, `VTBS`).
-`days` is clamped to the 60-day retention window. Responses are gzip-friendly
-JSON with `Cache-Control: public, max-age=300` and a data-based `ETag`, so a
-reopened card revalidates to a cheap `304`. Fetch **on open, not on a poll.**
+`days` is clamped to the 60-day window. Responses are gzip-friendly JSON with
+`Cache-Control: public, max-age=300` and a data-based `ETag`, so a reopened card
+revalidates to a cheap `304`. Fetch **on open, not on a poll.** Full field
+reference in `api.md`.
 
 The `movements` payload mirrors the frontend's `RunwayHistogram` shape
-(`src/domain/movementStats.ts`): `ends[]` busiest-first, each with 24 `hours`.
+(`src/domain/movementStats.ts`): `ends[]` busiest-first, each with 24 `hours`. The
+`weather` payload is `{ icao, hours[] }` — wind (`windDir`°, `windKt`, `gustKt`),
+temp, precip, visibility, cloud, pressure per hour; past `tsUtc` = observed,
+future = forecast. Wind drives runway selection, so this is the basis for a future
+weather → runway-utilisation predictor (see the plan).
 
 ## Deploying on NearlyFreeSpeech
 
@@ -180,7 +188,9 @@ Then check `https://bitmorse.com/airports-api/health` returns `{"ok":true, ...}`
   negligible traffic.
 - Storage: aggregates only. ~60 days of movements is a few MB; `tracker` is
   bounded by the count of currently-airborne aircraft; `poll_log` holds ~2h of
-  heartbeats.
+  heartbeats; `weather` is ~9k rows/airport/year (365-day retention, negligible).
+- Weather adds one small Open-Meteo JSON fetch per airport every ~15 min
+  (`weatherEverySeconds`) — a rounding error against the movement traffic.
 
 ## Operations
 

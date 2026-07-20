@@ -33,6 +33,7 @@ use Zrh\Airport;
 use Zrh\Cli;
 use Zrh\Collector;
 use Zrh\Store;
+use Zrh\Weather;
 
 /** Seconds between the daemon's "alive" summary lines (keeps the log bounded). */
 const SUMMARY_EVERY_S = 600;
@@ -92,6 +93,8 @@ $totalMovements = 0;
 $okPolls = 0;
 $errPolls = 0;
 $lastSummary = microtime(true);
+$lastWeather = 0.0; // 0 → fetch weather on the very first cycle
+$weatherEvery = (int) ($cfg['weatherEverySeconds'] ?? 900);
 
 do {
     $cycleStart = microtime(true);
@@ -138,6 +141,25 @@ do {
         $store->recordPoll($nowMs);
     } catch (\Throwable $e) {
         fwrite(STDERR, '[' . date('c') . "] heartbeat ERROR: " . $e->getMessage() . "\n");
+    }
+
+    // Weather is hourly — fetch it on a throttle, not every poll. Each airport is
+    // guarded so a weather hiccup never disturbs movement collection.
+    if (microtime(true) - $lastWeather >= $weatherEvery) {
+        foreach ($airports as $icao => $airport) {
+            try {
+                Collector::runWeather(
+                    $airport,
+                    $store,
+                    fn () => Weather::fetchHourly($airport->arp),
+                    $nowMs,
+                    (int) ($cfg['weatherRetentionDays'] ?? Collector::WEATHER_RETENTION_DAYS),
+                );
+            } catch (\Throwable $e) {
+                fwrite(STDERR, '[' . date('c') . "] {$icao} weather ERROR: " . $e->getMessage() . "\n");
+            }
+        }
+        $lastWeather = microtime(true);
     }
 
     // Periodic "alive" summary keeps a long-running daemon's log bounded.

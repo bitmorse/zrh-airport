@@ -50,4 +50,31 @@ final class Collector
             'pruned' => $pruned,
         ];
     }
+
+    /** Number of days of hourly weather kept (see the plan: longer than movements). */
+    public const WEATHER_RETENTION_DAYS = 365;
+
+    /**
+     * One weather cycle: fetch the hourly forecast/observation set and upsert it,
+     * then prune beyond the retention window. Stateless (no tracker). The fetcher
+     * is injected so tests need no network. Returns the number of hours written.
+     *
+     * @param callable():array<int,array> $fetchWeather normalised Weather rows
+     */
+    public static function runWeather(
+        Airport $airport,
+        Store $store,
+        callable $fetchWeather,
+        int $nowMs,
+        int $retentionDays = self::WEATHER_RETENTION_DAYS,
+    ): int {
+        $icao = $airport->icao;
+        $tz = $airport->timeZone ?? 'UTC';
+
+        $rows = $fetchWeather();
+        $written = $store->upsertWeather($icao, $rows, $tz, $nowMs);
+        $store->pruneWeather($icao, $nowMs - $retentionDays * self::DAY_MS);
+
+        return $written;
+    }
 }

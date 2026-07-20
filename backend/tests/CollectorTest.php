@@ -66,4 +66,30 @@ return [
         Assert::same(1, $r['pruned'], 'ancient movement pruned');
         Assert::same(0, $store->histogram('LSZH', 0)['totals']['landings'], 'gone');
     },
+
+    'runWeather: fetches, upserts hourly rows, and prunes old ones' => function (): void {
+        $ap = Airport::load('LSZH', __DIR__ . '/../config/airports.json');
+        $pdo = new PDO('sqlite::memory:');
+        $store = new Store($pdo);
+        $store->migrate();
+
+        $now = 1_784_500_000_000;
+        // Seed an ancient hour directly, then run a weather cycle with fresh rows.
+        $store->upsertWeather('LSZH', [
+            ['tsMs' => $now - 400 * 24 * 3_600_000, 'windDir' => 90, 'windKt' => 5.0,
+             'gustKt' => null, 'tempC' => null, 'precipMm' => null,
+             'visibilityM' => null, 'cloudPct' => null, 'pressureHpa' => null],
+        ], 'Europe/Zurich', $now);
+
+        $written = Collector::runWeather($ap, $store, fn () => [
+            ['tsMs' => $now, 'windDir' => 240, 'windKt' => 12.0, 'gustKt' => 18.0,
+             'tempC' => 24.0, 'precipMm' => 0.0, 'visibilityM' => 20000.0,
+             'cloudPct' => 30.0, 'pressureHpa' => 1016.0],
+        ], $now, 365);
+
+        Assert::same(1, $written, 'one hour written');
+        $rows = $store->weather('LSZH', 0);
+        Assert::count(1, $rows, 'ancient hour pruned, fresh hour kept');
+        Assert::same(240, $rows[0]['windDir'], 'fresh wind dir stored');
+    },
 ];

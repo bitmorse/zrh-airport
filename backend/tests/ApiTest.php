@@ -84,6 +84,45 @@ return [
         Assert::same($a['headers']['ETag'], $b['headers']['ETag'], 'etag stable across wall-clock');
     },
 
+    'weather: returns hourly rows within the window' => function (): void {
+        $store = apiStore();
+        $opts = apiOpts();
+        $now = $opts['nowMs'];
+        $store->upsertWeather('LSZH', [
+            ['tsMs' => $now - 2 * 3_600_000, 'windDir' => 240, 'windKt' => 10.0, 'gustKt' => 16.0,
+             'tempC' => 22.0, 'precipMm' => 0.0, 'visibilityM' => 24000.0, 'cloudPct' => 20.0, 'pressureHpa' => 1017.0],
+            ['tsMs' => $now + 3 * 3_600_000, 'windDir' => 260, 'windKt' => 14.0, 'gustKt' => 22.0,
+             'tempC' => 20.0, 'precipMm' => 0.1, 'visibilityM' => 18000.0, 'cloudPct' => 60.0, 'pressureHpa' => 1015.0],
+        ], 'Europe/Zurich', $now);
+
+        $r = Api::handle($store, '/api/v1/LSZH/weather', [], $opts);
+        Assert::same(200, $r['status']);
+        $body = json_decode($r['body'], true);
+        Assert::same('LSZH', $body['icao']);
+        Assert::count(2, $body['hours'], 'observed + forecast hour');
+        Assert::same(240, $body['hours'][0]['windDir'], 'first hour wind dir');
+        Assert::true(isset($r['headers']['ETag']), 'weather is cacheable');
+    },
+
+    'weather: etag stable across wall-clock (data-only fingerprint)' => function (): void {
+        $store = apiStore();
+        $o1 = apiOpts();
+        $o2 = apiOpts();
+        $o2['nowMs'] = $o1['nowMs'] + 42_000;
+        $store->upsertWeather('LSZH', [
+            ['tsMs' => $o1['nowMs'], 'windDir' => 200, 'windKt' => 8.0, 'gustKt' => null, 'tempC' => null,
+             'precipMm' => null, 'visibilityM' => null, 'cloudPct' => null, 'pressureHpa' => null],
+        ], 'Europe/Zurich', $o1['nowMs']);
+        $a = Api::handle($store, '/api/v1/LSZH/weather', [], $o1);
+        $b = Api::handle($store, '/api/v1/LSZH/weather', [], $o2);
+        Assert::same($a['headers']['ETag'], $b['headers']['ETag'], 'etag stable');
+    },
+
+    'weather: unknown airport -> 404' => function (): void {
+        $r = Api::handle(apiStore(), '/api/v1/EGLL/weather', [], apiOpts());
+        Assert::same(404, $r['status']);
+    },
+
     'summary: returns headline stats' => function (): void {
         $r = Api::handle(apiStore(), '/api/v1/LSZH/summary', [], apiOpts());
         Assert::same(200, $r['status']);
