@@ -1,9 +1,15 @@
 import { useState } from "react";
 import { PROVIDER_NAMES } from "../data/adsb";
+import type { DepartureEvent } from "../domain/departures";
+import type { Arrival } from "../domain/predictions";
 import { DEFAULT_SETTINGS, useSettings } from "../hooks/useSettings";
 import type { Units } from "../lib/format";
+import { AtcPanel } from "./AtcPanel";
 import { Modal } from "./Modal";
+import { PoiManager } from "./PoiManager";
 import { RefreshIcon } from "./icons";
+
+type Tab = "general" | "regions" | "atc";
 
 const NM_TO_KM = 1.852;
 const M_PER_NM = 1852;
@@ -23,19 +29,29 @@ const geoToMeters = (val: number, u: Units) =>
  * source needs no credentials; the API-token field exists so a key can be requested
  * and stored locally if a provider ever requires one — no backend. Also hosts the
  * data-age readout + manual refresh (moved out of the header now that dead reckoning
- * makes it redundant there).
+ * makes it redundant there), plus the Regions-of-interest and ATC-listen panels as
+ * their own tabs (they persist immediately via their own stores, no Save needed).
  */
 export function SettingsModal({
   onClose,
   ageSec,
   isFetching,
   onRefresh,
+  arrivals,
+  departures,
+  now,
+  onSelect,
 }: {
   onClose: () => void;
   ageSec: number | null;
   isFetching: boolean;
   onRefresh: () => void;
+  arrivals: Arrival[];
+  departures: DepartureEvent[];
+  now: number;
+  onSelect?: (hex: string) => void;
 }) {
+  const [tab, setTab] = useState<Tab>("general");
   const [settings, update] = useSettings();
   const [pollSeconds, setPollSeconds] = useState(String(settings.pollSeconds));
   const [units, setUnits] = useState<Units>(settings.units);
@@ -80,7 +96,42 @@ export function SettingsModal({
   }
 
   return (
-    <Modal title="Settings" onClose={onClose}>
+    <Modal title="Settings" onClose={onClose} maxWidth="max-w-lg">
+      <div className="mb-4 flex w-fit overflow-hidden border border-border text-xs">
+        {(
+          [
+            ["general", "Settings"],
+            ["regions", "Regions"],
+            ["atc", "ATC"],
+          ] as [Tab, string][]
+        ).map(([t, label]) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setTab(t)}
+            aria-pressed={tab === t}
+            className={`px-3 py-1 uppercase ${
+              tab === t
+                ? "bg-primary text-on-primary"
+                : "text-on-surface-variant hover:bg-surface-container"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "regions" ? (
+        <PoiManager />
+      ) : tab === "atc" ? (
+        <AtcPanel
+          arrivals={arrivals}
+          departures={departures}
+          now={now}
+          onSelect={onSelect}
+        />
+      ) : (
+        <>
       <div className="flex flex-col gap-4 text-sm">
         <div className="flex items-center justify-between gap-2 border border-border bg-surface-container px-3 py-2">
           <span className="text-[11px] text-on-surface-variant">
@@ -205,6 +256,8 @@ export function SettingsModal({
           Save
         </button>
       </div>
+        </>
+      )}
     </Modal>
   );
 }

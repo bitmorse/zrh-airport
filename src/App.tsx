@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AirportSvg } from "./components/AirportSvg";
-import { AtcPanel } from "./components/AtcPanel";
 import { FlightDetails } from "./components/FlightDetails";
 import { Legend } from "./components/Legend";
 import { MovementsByHour } from "./components/MovementsByHour";
 import { TrafficBar } from "./components/TrafficBar";
 import { RecorderModal } from "./components/RecorderModal";
 import { StatsModal } from "./components/StatsModal";
-import { PoiManager } from "./components/PoiManager";
 import { SettingsModal } from "./components/SettingsModal";
 import { snapshotAircraft, type AircraftSnapshot } from "./data/adsb";
 import { AIRPORTS, airportConfigByIcao } from "./data/airports";
@@ -438,19 +436,6 @@ export default function App() {
           </div>
 
           <div className="border border-border bg-surface-container-low p-4">
-            <AtcPanel
-              arrivals={arrivals}
-              departures={traffic.departures}
-              now={now}
-              onSelect={handleSelect}
-            />
-          </div>
-
-          <div className="border border-border bg-surface-container-low p-4">
-            <PoiManager />
-          </div>
-
-          <div className="border border-border bg-surface-container-low p-4">
             <Legend />
           </div>
 
@@ -479,6 +464,13 @@ export default function App() {
           ageSec={ageSec}
           isFetching={traffic.isFetching}
           onRefresh={traffic.refetch}
+          arrivals={arrivals}
+          departures={traffic.departures}
+          now={now}
+          onSelect={(hex) => {
+            handleSelect(hex);
+            setShowSettings(false);
+          }}
         />
       )}
       {showStats && <StatsModal onClose={() => setShowStats(false)} />}
