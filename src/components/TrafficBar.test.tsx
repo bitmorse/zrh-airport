@@ -131,6 +131,64 @@ describe("TrafficBar", () => {
     expect(row.className).not.toMatch(/bg-status-(arrival|departure|cleared|alert)/);
   });
 
+  it("also shows the selected arrival when it isn't the soonest", () => {
+    const soonest = { ...arrival, hex: "soon", callsign: "SOON1", etaSeconds: 60 };
+    const later = { ...arrival, hex: "later", callsign: "LATER2", etaSeconds: 240 };
+    render(
+      <TrafficBar
+        arrivals={[soonest, later]}
+        departures={[]}
+        now={NOW}
+        lastUpdated={NOW}
+        selectedHex="later"
+        onSelect={() => {}}
+      />,
+    );
+    // Both the soonest and the selected (non-soonest) arrival have rows.
+    expect(screen.getByText("SOON1")).toBeInTheDocument();
+    expect(screen.getByText("LATER2")).toBeInTheDocument();
+    expect(screen.getByRole("button", { pressed: true })).toHaveTextContent("LATER2");
+  });
+
+  it("surfaces a selected departure even when it's beyond the cap", () => {
+    render(
+      <TrafficBar
+        arrivals={[]}
+        departures={[
+          holding("d0", "DEP0", NOW),
+          holding("d1", "DEP1", NOW),
+          holding("d2", "DEP2", NOW),
+          holding("d3", "DEP3", NOW),
+          holding("d4", "DEP4", NOW),
+        ]}
+        now={NOW}
+        lastUpdated={NOW}
+        selectedHex="d4"
+        onSelect={() => {}}
+      />,
+    );
+    expect(screen.getByText("DEP4")).toBeInTheDocument(); // shown despite the cap
+    expect(screen.getByRole("button", { pressed: true })).toHaveTextContent("DEP4");
+    expect(screen.getByText("+1 more departing")).toBeInTheDocument();
+  });
+
+  it("shows a selected in-range aircraft with no movement row", () => {
+    render(
+      <TrafficBar
+        arrivals={[arrival]}
+        departures={[]}
+        aircraft={[acItem("arr1", "B77L"), acItem("wander", "C25A")]}
+        now={NOW}
+        lastUpdated={NOW}
+        selectedHex="wander"
+        onSelect={() => {}}
+      />,
+    );
+    const row = screen.getByRole("button", { pressed: true });
+    expect(row).toHaveTextContent("WANDER");
+    expect(row).toHaveTextContent(/in range/);
+  });
+
   it("caps the list at 3 departures and shows a '+N more' line", () => {
     render(
       <TrafficBar

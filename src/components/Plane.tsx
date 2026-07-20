@@ -4,15 +4,22 @@ import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
 import { projectToSvg, inViewport } from "../lib/projection";
 import { AIRPLANE_PATH } from "./icons";
 
-// Phase colours reference the shared design tokens (no inline hex).
+// Phase colours reference the shared design tokens (no inline hex). On the runway the
+// glyph is painted white — like the runway numbers, which stay legible in direct
+// sunlight where the dark on-surface tone washed out against the grey strip.
+const RUNWAY_COLOR = "var(--color-surface-container-lowest)"; // white paint
 const PHASE_COLOR: Record<string, string> = {
   approach: "var(--color-status-arrival)", // arriving
-  runway: "var(--color-status-runway)", // on/over the runway
+  runway: RUNWAY_COLOR, // on/over the runway
   departure: "var(--color-status-departure)", // climbing out
 };
 const INACTIVE_COLOR = "var(--color-muted)";
 const SELECT_COLOR = "var(--color-status-arrival)";
 const LABEL_COLOR = "var(--color-on-surface)";
+// Halo separates the glyph from its background: a white outline over the grey runway
+// / colours over white elsewhere — but the white runway glyph needs a dark edge.
+const HALO_LIGHT = "var(--color-surface-container-lowest)";
+const HALO_DARK = "var(--color-on-surface)";
 
 /**
  * A single aircraft, drawn as a small plane glyph pointing along its track.
@@ -37,7 +44,11 @@ export function Plane({
   if (!inViewport(pt, 20)) return null;
 
   const heading = ac.track ?? 0;
+  const onRunway = assignment?.phase === "runway";
   const color = assignment ? PHASE_COLOR[assignment.phase] : INACTIVE_COLOR;
+  const halo = onRunway ? HALO_DARK : HALO_LIGHT;
+  // Keep the label dark (legible on the light map) when the glyph itself is white.
+  const labelColor = selected || onRunway ? LABEL_COLOR : color;
   const active = assignment !== null;
   const show = active || selected;
   const label = ac.flight ?? ac.hex.toUpperCase();
@@ -78,7 +89,7 @@ export function Plane({
         <path
           d={AIRPLANE_PATH}
           fill={color}
-          stroke="var(--color-surface-container-lowest)"
+          stroke={halo}
           strokeWidth={2}
           strokeLinejoin="round"
           paintOrder="stroke"
@@ -89,7 +100,7 @@ export function Plane({
           x={9}
           y={3}
           fontSize={7}
-          fill={selected ? LABEL_COLOR : color}
+          fill={labelColor}
           className="select-none"
           style={{ fontFamily: "var(--font-mono)" }}
         >
