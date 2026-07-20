@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import type { Aircraft } from "../data/adsb";
 import { type Airport } from "../data/flightInfo";
 import type { RunwayAssignment } from "../domain/assignRunway";
@@ -84,12 +83,11 @@ export function FlightDetails({
 }) {
   const callsign = item?.ac.flight ?? null;
   const route = useFlightRoute(callsign);
-  const [{ units }] = useSettings();
+  const [{ units, cockpitSim, muted }] = useSettings();
   const { iata, icao, fieldElevationFt, geoidFt } = useAirport().config;
-  const [gpws, setGpws] = useState(false);
-  // Reset the toggle whenever the selection changes.
-  useEffect(() => setGpws(false), [item?.ac.hex]);
-  useGpws(item, gpws);
+  // Cockpit simulation plays GPWS for the selected flight, unless globally muted.
+  const cockpitLive = cockpitSim && !muted;
+  useGpws(item, cockpitLive);
 
   if (!item) {
     return (
@@ -138,19 +136,14 @@ export function FlightDetails({
               ) : null}
             </p>
           )}
-          <label
-            className="mt-1.5 flex w-fit cursor-pointer items-center gap-1.5 text-[11px] text-slate-400"
-            title="Speak GPWS altitude callouts as it descends (simulation from GNSS altitude)"
-          >
-            <input
-              type="checkbox"
-              checked={gpws}
-              onChange={(e) => setGpws(e.target.checked)}
-              className="accent-sky-500"
-            />
-            play GPWS
-            {gpws && <span className="text-amber-300">◉ live</span>}
-          </label>
+          {cockpitLive && (
+            <p
+              className="mt-1.5 flex w-fit items-center gap-1.5 text-[11px] text-amber-300"
+              title="Cockpit simulation: GPWS callouts spoken as it descends (estimated from GNSS altitude). Toggle in Settings; mute in the header."
+            >
+              <span aria-hidden>◉</span> cockpit audio live
+            </p>
+          )}
         </div>
         <button
           onClick={onClear}

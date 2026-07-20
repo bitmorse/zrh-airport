@@ -5,15 +5,18 @@ import { FlightDetails } from "./components/FlightDetails";
 import { Legend } from "./components/Legend";
 import { MovementsByHour } from "./components/MovementsByHour";
 import { TrafficBar } from "./components/TrafficBar";
-import { NoiseRecorder } from "./components/NoiseRecorder";
-import { NoiseTable } from "./components/NoiseTable";
+import { RecorderModal } from "./components/RecorderModal";
+import { StatsModal } from "./components/StatsModal";
 import { PoiManager } from "./components/PoiManager";
 import { SettingsModal } from "./components/SettingsModal";
 import { snapshotAircraft, type AircraftSnapshot } from "./data/adsb";
 import { AIRPORTS, airportConfigByIcao } from "./data/airports";
 import { addNoiseEvent, type NoiseEvent } from "./data/noiseStore";
+import { totalPoints } from "./data/watchStore";
 import { buildAirport } from "./domain/airport";
 import { AirportContext } from "./hooks/useAirport";
+import { useWatchedFlights } from "./hooks/useWatchedFlights";
+import { useWatchTracker } from "./hooks/useWatchTracker";
 import {
   useAutoNoiseTrigger,
   type NoiseMeta,
@@ -34,9 +37,21 @@ export default function App() {
   );
   const traffic = useLiveTraffic(settings, airport);
   const [showSettings, setShowSettings] = useState(false);
+  const [showStats, setShowStats] = useState(false);
+  const [showRecorder, setShowRecorder] = useState(false);
   const [airportMenu, setAirportMenu] = useState(false);
   const [selectedHex, setSelectedHex] = useState<string | null>(null);
   const now = useNow(1000);
+
+  // Gamification: score + award a point when the selected flight completes.
+  const { watched } = useWatchedFlights();
+  const score = totalPoints(watched);
+  useWatchTracker({
+    newMovements: traffic.newMovements,
+    selectedHex,
+    aircraft: traffic.aircraft,
+    trailFor: traffic.trailFor,
+  });
 
   const handleSelect = useCallback((hex: string) => {
     setSelectedHex((cur) => (cur === hex ? null : hex));
@@ -204,26 +219,43 @@ export default function App() {
             </>
           )}
         </div>
-        <div className="flex items-center gap-3">
-          <div className="flex flex-col items-end leading-tight">
-            <span className={`text-xs ${stale ? "text-amber-400" : "text-slate-300"}`}>
-              {ageSec == null ? "—" : `${ageSec}s ago`}
-              {traffic.isFetching ? " · refreshing" : ""}
-            </span>
-            <span className="hidden text-[11px] text-slate-500 sm:block">
-              {traffic.provider ?? "—"} · {activeCount}/{traffic.aircraft.length} on runways
-            </span>
-          </div>
+        <div className="flex items-center gap-2">
+          <span className="mr-1 hidden text-[11px] text-slate-500 sm:block">
+            {traffic.provider ?? "—"} · {activeCount}/{traffic.aircraft.length} on runways
+          </span>
           <button
-            onClick={traffic.refetch}
-            disabled={traffic.isFetching}
-            aria-label="Refresh now"
-            title="Refresh now"
-            className={`rounded-lg border border-slate-700 p-1.5 text-slate-300 hover:bg-slate-800 disabled:opacity-40 ${
-              traffic.isFetching ? "animate-spin" : ""
+            onClick={() => setShowStats(true)}
+            aria-label="Flights watched"
+            title={`Flights watched · ${score} points`}
+            className="flex items-center gap-1 rounded-lg border border-slate-700 px-2 py-1.5 text-slate-200 hover:bg-slate-800"
+          >
+            <span aria-hidden>✈</span>
+            <span className="text-xs font-semibold tabular-nums">{score}</span>
+          </button>
+          <button
+            onClick={() => updateSettings({ muted: !settings.muted })}
+            aria-label={settings.muted ? "Unmute cockpit audio" : "Mute cockpit audio"}
+            aria-pressed={!settings.muted}
+            title={settings.muted ? "Cockpit audio muted — tap to unmute" : "Mute cockpit audio"}
+            className={`rounded-lg border p-1.5 hover:bg-slate-800 ${
+              settings.muted
+                ? "border-slate-700 text-slate-400"
+                : "border-sky-500 bg-sky-600/20 text-sky-200"
             }`}
           >
-            ⟳
+            {settings.muted ? "🔇" : "🔊"}
+          </button>
+          <button
+            onClick={() => setShowRecorder(true)}
+            aria-label="Microphone"
+            title="Microphone · noise recording"
+            className={`rounded-lg border p-1.5 hover:bg-slate-800 ${
+              recorder.isRecording
+                ? "border-red-500 bg-red-600/20 text-red-200"
+                : "border-slate-700 text-slate-200"
+            }`}
+          >
+            🎤
           </button>
           <button
             onClick={() => setShowSettings(true)}
@@ -311,18 +343,6 @@ export default function App() {
           </div>
 
           <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
-            <NoiseRecorder
-              recorder={recorder}
-              activeCallsign={activeCallsign}
-              position={geo.position}
-              onManualStop={onManualStop}
-            />
-            <div className="mt-4 border-t border-slate-800 pt-4">
-              <NoiseTable />
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
             <PoiManager />
           </div>
 
@@ -349,7 +369,24 @@ export default function App() {
         </aside>
       </main>
 
-      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+      {showSettings && (
+        <SettingsModal
+          onClose={() => setShowSettings(false)}
+          ageSec={ageSec}
+          isFetching={traffic.isFetching}
+          onRefresh={traffic.refetch}
+        />
+      )}
+      {showStats && <StatsModal onClose={() => setShowStats(false)} />}
+      {showRecorder && (
+        <RecorderModal
+          recorder={recorder}
+          activeCallsign={activeCallsign}
+          position={geo.position}
+          onManualStop={onManualStop}
+          onClose={() => setShowRecorder(false)}
+        />
+      )}
     </div>
     </AirportContext.Provider>
   );

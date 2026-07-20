@@ -26,6 +26,10 @@ export interface Settings {
   apiToken: string | null;
   /** Display units for distances, speeds and altitudes. */
   units: Units;
+  /** Cockpit simulation: estimate & play what the pilot would hear (GPWS callouts). */
+  cockpitSim: boolean;
+  /** Global mute for cockpit audio. Persisted; starts muted. */
+  muted: boolean;
   /** Map zoom factor (1 = full extent). */
   zoom: number;
   /** Normalized view centre in [0,1] (0.5,0.5 = airport reference point). */
@@ -43,6 +47,8 @@ export const DEFAULT_SETTINGS: Settings = {
   provider: null,
   apiToken: null,
   units: "metric",
+  cockpitSim: true,
+  muted: true,
   zoom: DEFAULT_ZOOM,
   cx: 0.5,
   cy: 0.5,

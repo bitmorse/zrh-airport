@@ -2,7 +2,6 @@ import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchAircraftNear, type Aircraft } from "../data/adsb";
 import type { Airport } from "../domain/airport";
-import type { LatLon } from "../lib/geo";
 import { assignRunway, type RunwayAssignment } from "../domain/assignRunway";
 import {
   detectDepartures,
@@ -12,7 +11,8 @@ import {
   type DepartureEvent,
   type DepartureMemory,
 } from "../domain/departures";
-import { detectMovements } from "../domain/movements";
+import { detectMovements, type Movement } from "../domain/movements";
+import type { TrailPoint } from "../data/watchStore";
 import {
   loadMovementLog,
   recordMovements,
@@ -51,10 +51,11 @@ const TRAIL_TTL_MS = 3 * 60 * 1000; // forget a plane's trail 3 min after it's g
 const EMPTY_AIRCRAFT: AircraftWithAssignment[] = [];
 const EMPTY_ARRIVALS: Arrival[] = [];
 const EMPTY_DEPARTURES: DepartureEvent[] = [];
-const EMPTY_TRAIL: LatLon[] = [];
+const EMPTY_TRAIL: TrailPoint[] = [];
+const EMPTY_MOVEMENTS: Movement[] = [];
 
 interface Trail {
-  points: LatLon[];
+  points: TrailPoint[];
   lastSeen: number;
 }
 
@@ -70,9 +71,11 @@ export interface LiveTraffic {
   isFetching: boolean;
   refetch: () => void;
   /** Recent position history for an aircraft (its trajectory), oldest → newest. */
-  trailFor: (hex: string) => LatLon[];
+  trailFor: (hex: string) => TrailPoint[];
   /** Per-airport landing/takeoff history, bucketed by local hour-of-day. */
   movementLog: MovementLog;
+  /** Discrete landing/takeoff events detected this poll (stable [] when none). */
+  newMovements: Movement[];
 }
 
 export function useLiveTraffic(settings: Settings, airport: Airport): LiveTraffic {
@@ -184,10 +187,16 @@ export function useLiveTraffic(settings: Settings, airport: Airport): LiveTraffi
             )
           : null;
 
-      // Append each aircraft's position to its trajectory history; forget old ones.
+      // Append each aircraft's position (with altitude + time) to its trajectory
+      // history; forget old ones. The trajectory is what the gamification snapshots.
       for (const ac of snap.aircraft) {
         const t = trails.current.get(ac.hex) ?? { points: [], lastSeen: 0 };
-        t.points.push({ lat: ac.lat, lon: ac.lon });
+        t.points.push({
+          lat: ac.lat,
+          lon: ac.lon,
+          alt: ac.altGeomFt ?? ac.altFt,
+          t: snap.fetchedAt,
+        });
         if (t.points.length > TRAIL_MAX_POINTS) t.points.shift();
         t.lastSeen = snap.fetchedAt;
         trails.current.set(ac.hex, t);
@@ -207,6 +216,8 @@ export function useLiveTraffic(settings: Settings, airport: Airport): LiveTraffi
         arrivals,
         departures,
         movementLog,
+        // Stable empty ref between events so movement-driven effects don't refire.
+        newMovements: newMovements.length ? newMovements : EMPTY_MOVEMENTS,
         needsFastPoll,
       };
     },
@@ -244,5 +255,6 @@ export function useLiveTraffic(settings: Settings, airport: Airport): LiveTraffi
     },
     trailFor,
     movementLog,
+    newMovements: query.data?.newMovements ?? EMPTY_MOVEMENTS,
   };
 }

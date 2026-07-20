@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { PROVIDER_NAMES } from "../data/adsb";
 import { DEFAULT_SETTINGS, useSettings } from "../hooks/useSettings";
 import type { Units } from "../lib/format";
+import { Modal } from "./Modal";
 
 const NM_TO_KM = 1.852;
 const M_PER_NM = 1852;
@@ -18,10 +19,22 @@ const geoToMeters = (val: number, u: Units) =>
 
 /**
  * Settings dialog. All values are persisted to localStorage. The default data
- * source needs no credentials; the API-token field exists so a key can be
- * requested and stored locally if a provider ever requires one — no backend.
+ * source needs no credentials; the API-token field exists so a key can be requested
+ * and stored locally if a provider ever requires one — no backend. Also hosts the
+ * data-age readout + manual refresh (moved out of the header now that dead reckoning
+ * makes it redundant there).
  */
-export function SettingsModal({ onClose }: { onClose: () => void }) {
+export function SettingsModal({
+  onClose,
+  ageSec,
+  isFetching,
+  onRefresh,
+}: {
+  onClose: () => void;
+  ageSec: number | null;
+  isFetching: boolean;
+  onRefresh: () => void;
+}) {
   const [settings, update] = useSettings();
   const [pollSeconds, setPollSeconds] = useState(String(settings.pollSeconds));
   const [units, setUnits] = useState<Units>(settings.units);
@@ -29,6 +42,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [geofence, setGeofence] = useState(
     String(geoToDisplay(settings.geofenceRadiusM, settings.units)),
   );
+  const [cockpitSim, setCockpitSim] = useState(settings.cockpitSim);
   const [provider, setProvider] = useState(settings.provider ?? "");
   const [apiToken, setApiToken] = useState(settings.apiToken ?? "");
 
@@ -49,12 +63,6 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const geoMin = metric ? 0.3 : 0.2;
   const geoMax = metric ? 20 : 11;
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   function save() {
     const nm = displayToNm(Number(radius) || radiusToDisplay(DEFAULT_SETTINGS.radiusNm, units), units);
     const geoM = geoToMeters(Number(geofence) || geoToDisplay(DEFAULT_SETTINGS.geofenceRadiusM, units), units);
@@ -62,6 +70,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
       pollSeconds: clamp(Number(pollSeconds) || DEFAULT_SETTINGS.pollSeconds, 10, 600),
       radiusNm: Math.round(clamp(nm, 5, 250)),
       geofenceRadiusM: Math.round(clamp(geoM, 300, 20000)),
+      cockpitSim,
       units,
       provider: provider || null,
       apiToken: apiToken.trim() || null,
@@ -70,114 +79,132 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Settings"
-    >
-      <div
-        className="w-full max-w-md rounded-xl border border-slate-700 bg-slate-900 p-5 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 className="mb-4 text-lg font-semibold text-slate-100">Settings</h2>
-
-        <div className="flex flex-col gap-4 text-sm">
-          <Field label="Refresh interval (seconds)" hint="10–600">
-            <input
-              type="number"
-              min={10}
-              max={600}
-              value={pollSeconds}
-              onChange={(e) => setPollSeconds(e.target.value)}
-              className={inputCls}
-            />
-          </Field>
-
-          <Field label="Units" hint="applies to distances, speeds and altitudes">
-            <select
-              value={units}
-              onChange={(e) => changeUnits(e.target.value as Units)}
-              className={inputCls}
-            >
-              <option value="metric">Metric (km, km/h, m)</option>
-              <option value="imperial">Aviation (NM, kt, ft)</option>
-            </select>
-          </Field>
-
-          <Field label={`Query radius (${radiusUnit})`} hint={`${radiusMin}–${radiusMax}`}>
-            <input
-              type="number"
-              min={radiusMin}
-              max={radiusMax}
-              value={radius}
-              onChange={(e) => setRadius(e.target.value)}
-              className={inputCls}
-            />
-          </Field>
-
-          <Field
-            label={`Recording geofence radius (${geoUnit})`}
-            hint={`${geoMin}–${geoMax} · aircraft entering this radius around your GPS location auto-record`}
-          >
-            <input
-              type="number"
-              step={0.1}
-              min={geoMin}
-              max={geoMax}
-              value={geofence}
-              onChange={(e) => setGeofence(e.target.value)}
-              className={inputCls}
-            />
-          </Field>
-
-          <Field label="Preferred data provider" hint="tried first; others are fallbacks">
-            <select
-              value={provider}
-              onChange={(e) => setProvider(e.target.value)}
-              className={inputCls}
-            >
-              <option value="">Auto (adsb.lol → fallbacks)</option>
-              {PROVIDER_NAMES.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
-          </Field>
-
-          <Field
-            label="API token (reserved)"
-            hint="not used by the current sources; stored only in your browser for future providers"
-          >
-            <input
-              type="password"
-              value={apiToken}
-              onChange={(e) => setApiToken(e.target.value)}
-              placeholder="none required"
-              className={inputCls}
-              autoComplete="off"
-            />
-          </Field>
-        </div>
-
-        <div className="mt-6 flex justify-end gap-2">
+    <Modal title="Settings" onClose={onClose}>
+      <div className="flex flex-col gap-4 text-sm">
+        <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-800/40 px-3 py-2">
+          <span className="text-[11px] text-slate-400">
+            Data {ageSec == null ? "—" : `updated ${ageSec}s ago`}
+            {isFetching ? " · refreshing" : ""}
+          </span>
           <button
-            onClick={onClose}
-            className="rounded-lg px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-800"
+            onClick={onRefresh}
+            disabled={isFetching}
+            className="shrink-0 rounded border border-slate-700 px-2 py-0.5 text-xs text-slate-200 hover:bg-slate-800 disabled:opacity-40"
           >
-            Cancel
-          </button>
-          <button
-            onClick={save}
-            className="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500"
-          >
-            Save
+            ⟳ Refresh
           </button>
         </div>
+
+        <Field label="Refresh interval (seconds)" hint="10–600">
+          <input
+            type="number"
+            min={10}
+            max={600}
+            value={pollSeconds}
+            onChange={(e) => setPollSeconds(e.target.value)}
+            className={inputCls}
+          />
+        </Field>
+
+        <Field label="Units" hint="applies to distances, speeds and altitudes">
+          <select
+            value={units}
+            onChange={(e) => changeUnits(e.target.value as Units)}
+            className={inputCls}
+          >
+            <option value="metric">Metric (km, km/h, m)</option>
+            <option value="imperial">Aviation (NM, kt, ft)</option>
+          </select>
+        </Field>
+
+        <Field label={`Query radius (${radiusUnit})`} hint={`${radiusMin}–${radiusMax}`}>
+          <input
+            type="number"
+            min={radiusMin}
+            max={radiusMax}
+            value={radius}
+            onChange={(e) => setRadius(e.target.value)}
+            className={inputCls}
+          />
+        </Field>
+
+        <Field
+          label={`Recording geofence radius (${geoUnit})`}
+          hint={`${geoMin}–${geoMax} · aircraft entering this radius around your GPS location auto-record`}
+        >
+          <input
+            type="number"
+            step={0.1}
+            min={geoMin}
+            max={geoMax}
+            value={geofence}
+            onChange={(e) => setGeofence(e.target.value)}
+            className={inputCls}
+          />
+        </Field>
+
+        <label className="flex items-start gap-2">
+          <input
+            type="checkbox"
+            checked={cockpitSim}
+            onChange={(e) => setCockpitSim(e.target.checked)}
+            className="mt-0.5 accent-sky-500"
+          />
+          <span className="flex flex-col">
+            <span className="font-medium text-slate-200">Cockpit simulation</span>
+            <span className="text-[11px] text-slate-500">
+              Hear what the pilot would hear — from ADS-B we estimate and play the cockpit
+              alerts (GPWS altitude callouts) for the flight you have selected. Mute/unmute
+              from the header.
+            </span>
+          </span>
+        </label>
+
+        <Field label="Preferred data provider" hint="tried first; others are fallbacks">
+          <select
+            value={provider}
+            onChange={(e) => setProvider(e.target.value)}
+            className={inputCls}
+          >
+            <option value="">Auto (adsb.lol → fallbacks)</option>
+            {PROVIDER_NAMES.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+        </Field>
+
+        <Field
+          label="API token (reserved)"
+          hint="not used by the current sources; stored only in your browser for future providers"
+        >
+          <input
+            type="password"
+            value={apiToken}
+            onChange={(e) => setApiToken(e.target.value)}
+            placeholder="none required"
+            className={inputCls}
+            autoComplete="off"
+          />
+        </Field>
       </div>
-    </div>
+
+      <div className="mt-6 flex justify-end gap-2">
+        <button
+          onClick={onClose}
+          className="rounded-lg px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-800"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={save}
+          className="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500"
+        >
+          Save
+        </button>
+      </div>
+    </Modal>
   );
 }
 
