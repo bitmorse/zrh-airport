@@ -1,9 +1,9 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { AirportSvg } from "./components/AirportSvg";
-import { ArrivalsBoard } from "./components/ArrivalsBoard";
 import { AtcPanel } from "./components/AtcPanel";
 import { FlightDetails } from "./components/FlightDetails";
 import { Legend } from "./components/Legend";
+import { MovementsByHour } from "./components/MovementsByHour";
 import { TrafficBar } from "./components/TrafficBar";
 import { NoiseRecorder } from "./components/NoiseRecorder";
 import { NoiseTable } from "./components/NoiseTable";
@@ -256,15 +256,10 @@ export default function App() {
           </div>
 
           <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
-            <ArrivalsBoard
-              arrivals={arrivals}
-              aircraft={traffic.aircraft}
-              departures={traffic.departures}
-              lastUpdated={traffic.lastUpdated}
+            <MovementsByHour
+              log={traffic.movementLog}
+              timeZone={airport.config.timeZone}
               now={now}
-              stale={stale}
-              selectedHex={selectedHex}
-              onSelect={handleSelect}
             />
           </div>
 

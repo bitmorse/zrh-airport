@@ -12,6 +12,12 @@ import {
   type DepartureEvent,
   type DepartureMemory,
 } from "../domain/departures";
+import { detectMovements } from "../domain/movements";
+import {
+  loadMovementLog,
+  recordMovements,
+  type MovementLog,
+} from "../domain/movementStats";
 import {
   countsByEnd,
   loadObservations,
@@ -65,6 +71,8 @@ export interface LiveTraffic {
   refetch: () => void;
   /** Recent position history for an aircraft (its trajectory), oldest → newest. */
   trailFor: (hex: string) => LatLon[];
+  /** Per-airport landing/takeoff history, bucketed by local hour-of-day. */
+  movementLog: MovementLog;
 }
 
 export function useLiveTraffic(settings: Settings, airport: Airport): LiveTraffic {
@@ -75,6 +83,8 @@ export function useLiveTraffic(settings: Settings, airport: Airport): LiveTraffi
   const gateCrossings = useRef<GateCrossings>(new Map());
   const landingMemory: { current: Parameters<typeof trackLandings>[2] } = useRef(new Map());
   const trails = useRef(new Map<string, Trail>());
+  const [movementLog, setMovementLog] = useState<MovementLog>({});
+  const countedMovements = useRef(new Map<string, number>());
 
   // Seed counts from any persisted window on mount so the map isn't blank after
   // a reload within the 15-minute window.
@@ -87,6 +97,20 @@ export function useLiveTraffic(settings: Settings, airport: Airport): LiveTraffi
       alive = false;
     };
   }, []);
+
+  // Load (and on airport switch, reload) this airport's movement history; reset the
+  // per-aircraft de-dup memory so counts can't carry across airports.
+  useEffect(() => {
+    let alive = true;
+    countedMovements.current.clear();
+    setMovementLog({});
+    loadMovementLog(airport.config.icao).then((log) => {
+      if (alive) setMovementLog(log);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [airport.config.icao]);
 
   const query = useQuery({
     queryKey: ["adsb", airport.config.icao, settings.radiusNm, settings.provider],
@@ -142,6 +166,24 @@ export function useLiveTraffic(settings: Settings, airport: Airport): LiveTraffi
       );
       prevGs.current = gsSnapshot(snap.aircraft);
 
+      // Count discrete landings/takeoffs and fold them into the local hour-of-day
+      // history. Only touch storage when something actually happened.
+      const newMovements = detectMovements(
+        arrivals,
+        departures,
+        countedMovements.current,
+        snap.fetchedAt,
+      );
+      const movementLog =
+        newMovements.length > 0
+          ? await recordMovements(
+              airport.config.icao,
+              newMovements,
+              airport.config.timeZone,
+              snap.fetchedAt,
+            )
+          : null;
+
       // Append each aircraft's position to its trajectory history; forget old ones.
       for (const ac of snap.aircraft) {
         const t = trails.current.get(ac.hex) ?? { points: [], lastSeen: 0 };
@@ -158,7 +200,15 @@ export function useLiveTraffic(settings: Settings, airport: Airport): LiveTraffi
         departures.some((d) => d.phase === "holding" || d.phase === "roll") ||
         arrivals.some((a) => a.etaSeconds < FAST_ARRIVAL_S);
 
-      return { snap, withAssignment, counts: freshCounts, arrivals, departures, needsFastPoll };
+      return {
+        snap,
+        withAssignment,
+        counts: freshCounts,
+        arrivals,
+        departures,
+        movementLog,
+        needsFastPoll,
+      };
     },
     refetchInterval: (query) => {
       if (query.state.data?.needsFastPoll) return FAST_POLL_MS;
@@ -171,6 +221,7 @@ export function useLiveTraffic(settings: Settings, airport: Airport): LiveTraffi
 
   useEffect(() => {
     if (query.data) setCounts(query.data.counts);
+    if (query.data?.movementLog) setMovementLog(query.data.movementLog);
   }, [query.data]);
 
   const trailFor = useCallback(
@@ -192,5 +243,6 @@ export function useLiveTraffic(settings: Settings, airport: Airport): LiveTraffi
       void query.refetch();
     },
     trailFor,
+    movementLog,
   };
 }

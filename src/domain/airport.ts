@@ -43,6 +43,12 @@ export interface AirportConfig {
   iata: string;
   /** Human name, e.g. "Zürich". */
   name: string;
+  /**
+   * IANA time zone of the field, e.g. "Europe/Zurich". Used to bucket the
+   * movement history by the airport's local hour-of-day (like a "popular times"
+   * chart). Defaults to the viewer's local time zone if omitted.
+   */
+  timeZone?: string;
   /** Reference point — query centre and projection anchor (near the field). */
   arp: LatLon;
   /** Field elevation in feet (for altitude-above-field). */
