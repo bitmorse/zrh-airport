@@ -8,22 +8,22 @@ declare(strict_types=1);
  * Single poll (default):
  *   php bin/collect.php LSZH
  *
- * Self-looping — poll every 30s for 9 minutes, then exit (recommended on NFS,
- * whose scheduled tasks fire at most every ~10 min). One cron kick every 10 min
- * running this gives continuous 30s cadence 24/7:
- *   php bin/collect.php --loop 540 --every 30 LSZH
- *
- * Poll every configured airport with --all instead of naming them:
- *   php bin/collect.php --loop 540 --every 30 --all
- *
- * Run as a persistent NFS daemon (no scheduled-task time/frequency limits) —
- * loops forever, polling every 30s until killed:
+ * Persistent NFS daemon (recommended) — loop forever, polling every 30s across
+ * every configured airport until killed; NFS restarts it if it exits:
  *   php bin/collect.php --forever --every 30 --all
  *
- * A non-blocking flock (held for the whole run) prevents overlapping kicks. On a
- * run with at least one successful poll it pings ZRH_HEALTHCHECK_URL, if set, as
- * a dead-man's switch. Safe to be killed mid-run: each poll commits on its own,
- * so the next kick simply resumes.
+ * Bounded loop (scheduled-task fallback / local testing) — poll every 30s for
+ * N seconds then exit:
+ *   php bin/collect.php --loop 540 --every 30 --all
+ *
+ * Robustness for the daemon case:
+ *   - a non-blocking flock keeps a single instance;
+ *   - every poll and the heartbeat write are individually guarded, so a bad
+ *     fetch or a transient DB lock never kills the loop;
+ *   - fatal startup errors sleep before exiting, so NFS's restart-on-exit can't
+ *     hot-loop on a persistent failure;
+ *   - --forever keeps stdout quiet (a periodic "alive" summary + errors only) to
+ *     bound the daemon log; monitor via the API's /health `polls10m` instead.
  */
 
 require __DIR__ . '/../src/bootstrap.php';
@@ -34,19 +34,41 @@ use Zrh\Cli;
 use Zrh\Collector;
 use Zrh\Store;
 
+/** Seconds between the daemon's "alive" summary lines (keeps the log bounded). */
+const SUMMARY_EVERY_S = 600;
+/** Backoff before exiting on a fatal error, so NFS restart-on-exit can't hot-loop. */
+const RESTART_THROTTLE_S = 15;
+
 $cfg = require __DIR__ . '/../config/app.php';
 $args = Cli::parseArgs($argv);
+$forever = $args['forever'];
+$looping = $forever || $args['loopSeconds'] > 0;
 
-$lockPath = sys_get_temp_dir() . '/zrh-collect.lock';
-$lock = fopen($lockPath, 'c');
+$fatal = static function (string $msg) use ($forever): never {
+    fwrite(STDERR, '[' . date('c') . "] FATAL: {$msg}\n");
+    if ($forever) {
+        sleep(RESTART_THROTTLE_S); // throttle NFS's restart-on-exit
+    }
+    exit(1);
+};
+
+// Single-instance guard.
+$lock = fopen(sys_get_temp_dir() . '/zrh-collect.lock', 'c');
 if ($lock === false || !flock($lock, LOCK_EX | LOCK_NB)) {
-    fwrite(STDERR, '[' . date('c') . "] previous run still in progress — skipping\n");
+    fwrite(STDERR, '[' . date('c') . "] another instance holds the lock — exiting\n");
+    if ($forever) {
+        sleep(RESTART_THROTTLE_S);
+    }
     exit(0);
 }
 
-$store = Store::open($cfg['db']);
+try {
+    $store = Store::open($cfg['db']);
+} catch (\Throwable $e) {
+    $fatal('cannot open database: ' . $e->getMessage());
+}
 
-// --all polls every configured airport; otherwise use the ones named on the CLI.
+// --all polls every configured airport; otherwise the ones named on the CLI.
 $icaos = $args['all']
     ? array_keys(json_decode((string) file_get_contents($cfg['airports']), true) ?: [])
     : $args['icaos'];
@@ -60,14 +82,16 @@ foreach ($icaos as $icao) {
         fwrite(STDERR, '[' . date('c') . "] {$icao} config error: " . $e->getMessage() . "\n");
     }
 }
+if ($airports === []) {
+    $fatal('no valid airports to poll');
+}
 
-$forever = $args['forever'];
-$looping = $forever || $args['loopSeconds'] > 0;
 $deadline = microtime(true) + $args['loopSeconds'];
 $polls = 0;
 $totalMovements = 0;
 $okPolls = 0;
 $errPolls = 0;
+$lastSummary = microtime(true);
 
 do {
     $cycleStart = microtime(true);
@@ -89,8 +113,9 @@ do {
             );
             $okPolls++;
             $totalMovements += $result['movements'];
-            // In loop mode, stay quiet unless something actually happened.
-            if (!$looping || $result['movements'] > 0) {
+            // Single/bounded-loop modes log interesting polls for visibility; a
+            // --forever daemon stays quiet (see the periodic summary below).
+            if (!$forever && (!$looping || $result['movements'] > 0)) {
                 fwrite(STDOUT, sprintf(
                     "[%s] %s provider=%s seen=%d movements=%d tracked=%d pruned=%d\n",
                     date('c'),
@@ -108,14 +133,31 @@ do {
         }
     }
 
-    // Heartbeat: one per poll cycle, so /health can report the poll rate.
-    $store->recordPoll($nowMs);
+    // Heartbeat — guarded so a transient DB lock can't kill the daemon.
+    try {
+        $store->recordPoll($nowMs);
+    } catch (\Throwable $e) {
+        fwrite(STDERR, '[' . date('c') . "] heartbeat ERROR: " . $e->getMessage() . "\n");
+    }
+
+    // Periodic "alive" summary keeps a long-running daemon's log bounded.
+    if ($forever && microtime(true) - $lastSummary >= SUMMARY_EVERY_S) {
+        fwrite(STDOUT, sprintf(
+            "[%s] alive: polls=%d ok=%d err=%d movements=%d\n",
+            date('c'),
+            $polls,
+            $okPolls,
+            $errPolls,
+            $totalMovements,
+        ));
+        $lastSummary = microtime(true);
+    }
 
     if (!$looping) {
         break; // single poll
     }
-    // Sleep to the next interval. In --forever (daemon) mode there is no
-    // deadline; otherwise stop once the next poll would fall past it.
+    // Sleep to the next interval. In --forever mode there is no deadline;
+    // otherwise stop once the next poll would fall past it.
     $next = $cycleStart + $args['everySeconds'];
     if (!$forever && $next >= $deadline) {
         break;
@@ -126,7 +168,7 @@ do {
     }
 } while ($forever || microtime(true) < $deadline);
 
-if ($looping) {
+if ($looping && !$forever) {
     fwrite(STDOUT, sprintf(
         "[%s] loop done: polls=%d ok=%d err=%d movements=%d\n",
         date('c'),
@@ -137,9 +179,9 @@ if ($looping) {
     ));
 }
 
-// Dead-man's switch: ping only if at least one poll succeeded this run.
+// Dead-man's switch for finite runs (a --forever daemon is monitored via /health).
 $hcUrl = getenv('ZRH_HEALTHCHECK_URL') ?: (string) ($_SERVER['ZRH_HEALTHCHECK_URL'] ?? '');
-if ($okPolls > 0 && $hcUrl !== '') {
+if (!$forever && $okPolls > 0 && $hcUrl !== '') {
     $ch = curl_init($hcUrl);
     curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 5]);
     curl_exec($ch);
