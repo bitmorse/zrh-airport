@@ -6,3 +6,9 @@ RewriteBase /airports-api/
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^ index.php [QSA,L]
+
+# Deployment-specific: tell index.php where the backend code + DB live (they sit
+# outside the web docroot). index.php also falls back to /home/protected/backend
+# on its own, so these are belt-and-suspenders — adjust the paths if you move it.
+SetEnv ZRH_BACKEND_ROOT /home/protected/backend
+SetEnv ZRH_DB /home/protected/backend/data/stats.db

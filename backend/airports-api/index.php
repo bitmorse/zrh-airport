@@ -5,9 +5,11 @@ declare(strict_types=1);
 /**
  * Web entry point for the read-only stats API. This folder is meant to be the
  * web-facing one (e.g. mounted at bitmorse.com/airports-api). The backend root
- * that holds src/, config/ and data/ is located by, in order:
- *   1. the ZRH_BACKEND_ROOT env / SetEnv value, if it points at a src/bootstrap.php;
- *   2. walking up from this file until a src/bootstrap.php is found.
+ * that holds src/, config/ and data/ is located by trying, in order:
+ *   1. the ZRH_BACKEND_ROOT env / Apache SetEnv value;
+ *   2. walking up from this file (works if the code sits alongside index.php);
+ *   3. the standard NFS locations below — a safety net so the API keeps working
+ *      even if the SetEnv line is ever dropped from .htaccess.
  * All routing lives in Zrh\Api::handle (see src/Api.php).
  */
 
@@ -16,17 +18,26 @@ require $root . '/src/bootstrap.php';
 
 function zrh_backend_root(string $start): string
 {
+    $candidates = [];
     $env = getenv('ZRH_BACKEND_ROOT') ?: (string) ($_SERVER['ZRH_BACKEND_ROOT'] ?? '');
-    if ($env !== '' && is_file($env . '/src/bootstrap.php')) {
-        return $env;
+    if ($env !== '') {
+        $candidates[] = $env;
     }
     $dir = $start;
     for ($i = 0; $i < 6; $i++) {
-        if (is_file($dir . '/src/bootstrap.php')) {
-            return $dir;
-        }
+        $candidates[] = $dir;
         $dir = dirname($dir);
     }
+    // Known NFS layout: code kept outside the web docroot.
+    $candidates[] = '/home/protected/backend';
+    $candidates[] = '/home/private/backend';
+
+    foreach ($candidates as $c) {
+        if ($c !== '' && is_file($c . '/src/bootstrap.php')) {
+            return $c;
+        }
+    }
+
     http_response_code(500);
     header('Content-Type: application/json');
     echo '{"error":"backend root not found — set ZRH_BACKEND_ROOT to the backend/ directory"}';
