@@ -129,14 +129,23 @@ web docroot and exposes only the front controller:
    The DB and its `-wal`/`-shm` sidecars must never be web-served. If `src/`,
    `config/` or `data/` do end up under the docroot, deny them (`data/.htaccess`
    already does this).
-4. **Run the collector — as a Daemon (recommended).** NFS scheduled tasks fire
-   at most ~every 10 min *and* are time-limited (~3 min), so they can't poll
-   continuously. A **Daemon** (Site → *Manage Daemons*) has neither limit and is
-   the right fit — it stays running and NFS restarts it if it dies.
-   - Command: `php /home/protected/backend/bin/collect.php --forever --every 30 --all`
-   - `--forever` loops until killed; `--every 30` polls every 30s; `--all` covers
-     every configured airport. No `ZRH_DB` needed — the default path matches the API's.
-   - The process is mostly asleep between polls (low CPU/RAU).
+4. **Run the collector — as a Daemon (recommended).** Needs a server type with
+   daemons (e.g. *Kitchen Sink*). NFS scheduled tasks fire at most ~every 10 min
+   *and* are time-limited (~3 min), so they can't poll continuously; a **Daemon**
+   (Site → *Manage Daemons*) has neither limit and NFS restarts it if it dies.
+   The daemon page can't pass arguments, so use the bundled run script
+   `bin/daemon.sh` (it runs `collect.php --forever --every 30 --all`):
+   - **Tag:** `collect`
+   - **Command Line:** `/home/protected/backend/bin/daemon.sh` (make it executable:
+     `chmod +x /home/protected/backend/bin/daemon.sh`)
+   - **Working Directory:** `/home/protected/backend` (any value works — the script
+     uses absolute paths)
+   - **Run Daemon As:** `me` — so it runs as your member user, owns the DB, and
+     writes with no permission fiddling. (If you must run it as `web`, make the
+     data dir writable by web: `chmod 777 /home/protected/backend/data` and delete
+     any existing `bitmorse`-owned `stats.db*` so the web daemon recreates it.)
+   - No `ZRH_DB` needed — the script's default DB path matches the API's.
+   - Mostly asleep between polls (low CPU/RAU).
 
    **Alternative — Scheduled Task** (if you'd rather not run a daemon): fire it at
    the panel's max frequency with a loop that stays under the task time limit:
