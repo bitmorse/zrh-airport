@@ -24,6 +24,14 @@ export interface RunwayEnd {
   bearingDeg: number;
 }
 
+/** A published radio frequency for a ground station (tower, ground, ATIS, …). */
+export interface RadioFrequency {
+  /** Short service label, e.g. "Tower", "Ground", "ATIS". */
+  label: string;
+  /** Frequency in MHz, formatted for display, e.g. "118.100". */
+  mhz: string;
+}
+
 /** One threshold of a physical runway, as authored in a config. */
 export interface RunwayEndSpec {
   id: string;
@@ -60,6 +68,8 @@ export interface AirportConfig {
    */
   geoidFt?: number;
   runways: RunwaySpec[];
+  /** Published ground-station radio frequencies (reference info; from OurAirports). */
+  frequencies?: RadioFrequency[];
 }
 
 /** Derived, ready-to-use geometry for the active airport. */

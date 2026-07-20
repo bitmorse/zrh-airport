@@ -79,6 +79,22 @@ export function AtcPanel({
         </a>
       </div>
 
+      {config.frequencies && config.frequencies.length > 0 && (
+        <div className="mb-3 rounded-lg border border-slate-800 bg-slate-800/30 p-2.5">
+          <div className="mb-1 text-[11px] font-medium text-slate-400">
+            Frequencies <span className="text-slate-600">· MHz</span>
+          </div>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px]">
+            {config.frequencies.map((f) => (
+              <div key={f.label} className="flex items-baseline justify-between gap-2">
+                <span className="truncate text-slate-500">{f.label}</span>
+                <span className="shrink-0 font-mono tabular-nums text-slate-200">{f.mhz}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col gap-1.5">
         {feeds.map((f) => (
           <div key={f.role} className="flex items-center gap-2">
@@ -167,7 +183,8 @@ export function AtcPanel({
         so the match is a best guess. No stream URLs are bundled: LiveATC’s terms don’t
         permit embedding their feeds, and direct links rotate/block hotlinking. Use
         “Find {config.iata} feeds ↗” to grab a current URL and paste it above (any
-        Icecast/MP3 source works).
+        Icecast/MP3 source works). Frequencies are published reference values from
+        OurAirports — always confirm against current charts.
       </p>
     </div>
   );

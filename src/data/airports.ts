@@ -35,6 +35,17 @@ export const ZRH: AirportConfig = {
       ],
     },
   ],
+
+  frequencies: [
+    { label: "Tower", mhz: "118.100" },
+    { label: "Ground", mhz: "121.902" },
+    { label: "Apron N", mhz: "121.855" },
+    { label: "Apron S", mhz: "121.755" },
+    { label: "Delivery", mhz: "121.925" },
+    { label: "ATIS", mhz: "125.725" },
+    { label: "Approach", mhz: "125.325" },
+    { label: "Departure", mhz: "125.950" },
+  ],
 };
 
 export const BKK: AirportConfig = {
@@ -65,6 +76,15 @@ export const BKK: AirportConfig = {
         { id: "20R", threshold: { lat: 13.70016, lon: 100.73844 } },
       ],
     },
+  ],
+
+  frequencies: [
+    { label: "Tower 01L/19R", mhz: "119.000" },
+    { label: "Tower 01R/19L", mhz: "118.200" },
+    { label: "Ground (Main)", mhz: "121.750" },
+    { label: "Ground (East)", mhz: "121.650" },
+    { label: "Ground (West)", mhz: "121.950" },
+    { label: "ATIS", mhz: "127.800" },
   ],
 };
 

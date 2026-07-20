@@ -49,8 +49,12 @@ afterEach(() => {
 describe("AtcPanel", () => {
   it("renders a row per ATC position with a disabled play until a URL is pasted", () => {
     renderPanel([arrival], []);
+    // Each ATC position has its own feed row (identified by its play button, since
+    // the labels now also appear in the frequency list).
     for (const label of ["Approach", "Tower", "Departure", "Ground"]) {
-      expect(screen.getByText(label)).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: new RegExp(`Play ${label}`, "i") }),
+      ).toBeInTheDocument();
     }
     const play = screen.getByRole("button", { name: /Play Tower/i });
     expect(play).toBeDisabled();
@@ -60,6 +64,10 @@ describe("AtcPanel", () => {
     const link = screen.getByRole("link", { name: /Find ZRH feeds/i });
     expect(link).toHaveAttribute("href", "https://www.liveatc.net/search/?icao=LSZH");
     expect(link).toHaveAttribute("target", "_blank");
+
+    // Published frequencies from the airport config are shown as reference info.
+    expect(screen.getByText("Frequencies")).toBeInTheDocument();
+    expect(screen.getByText("118.100")).toBeInTheDocument(); // Tower, unique value
   });
 
   it("plays a feed after a URL is entered and shows who's on frequency", async () => {
