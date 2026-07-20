@@ -18,6 +18,8 @@ export interface Settings {
   pollSeconds: number;
   /** Query radius around the airport, nautical miles. */
   radiusNm: number;
+  /** Auto-recording geofence radius around the observer's GPS location, metres. */
+  geofenceRadiusM: number;
   /** Preferred provider name, tried first before fallbacks. */
   provider: string | null;
   /** Optional API token, stored locally only (future use). */
@@ -37,6 +39,7 @@ export const DEFAULT_SETTINGS: Settings = {
   airport: DEFAULT_AIRPORT_ICAO,
   pollSeconds: 15,
   radiusNm: 25,
+  geofenceRadiusM: 3000,
   provider: null,
   apiToken: null,
   units: "metric",

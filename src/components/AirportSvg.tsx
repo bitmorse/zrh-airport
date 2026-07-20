@@ -8,6 +8,7 @@ import { PlaneLayer } from "./PlaneLayer";
 import { PoiLayer } from "./PoiLayer";
 import { RunwayHeat } from "./RunwayHeat";
 import { TrailLayer } from "./TrailLayer";
+import { UserLayer } from "./UserLayer";
 
 function AirportSvgImpl({
   aircraft,
@@ -15,6 +16,12 @@ function AirportSvgImpl({
   lastUpdated,
   selectedHex,
   trail,
+  userPosition,
+  heading,
+  fenceRadiusM,
+  recording,
+  locateNonce,
+  onLocate,
   onSelect,
 }: {
   aircraft: AircraftWithAssignment[];
@@ -22,12 +29,27 @@ function AirportSvgImpl({
   lastUpdated: number | null;
   selectedHex?: string | null;
   trail?: LatLon[];
+  userPosition?: LatLon | null;
+  heading?: number | null;
+  fenceRadiusM?: number;
+  recording?: boolean;
+  locateNonce?: number;
+  onLocate?: () => void;
   onSelect?: (hex: string) => void;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const airport = useAirport();
-  const { viewBox, zoom, zoomIn, zoomOut, reset, focusOn, isDragging, bind } =
+  const { viewBox, zoom, zoomIn, zoomOut, reset, focusOn, centerOn, isDragging, bind } =
     useViewport(svgRef);
+
+  // Recenter on the user each time the locate button is tapped — once a fix exists.
+  // The nonce (bumped per tap) also handles the case where GPS wasn't ready at tap.
+  const centeredNonce = useRef<number | null>(null);
+  useEffect(() => {
+    if (locateNonce == null || locateNonce === centeredNonce.current || !userPosition) return;
+    centeredNonce.current = locateNonce;
+    centerOn(projectToSvg(airport.config.arp, userPosition));
+  }, [locateNonce, userPosition, airport, centerOn]);
 
   // When a flight is selected (e.g. tapped in a board), reveal it on the map if it
   // isn't already in view — once per selection, framed with the field.
@@ -108,6 +130,15 @@ function AirportSvgImpl({
         selectedHex={selectedHex}
         onSelect={onSelect}
       />
+
+      {userPosition && (
+        <UserLayer
+          userPos={userPosition}
+          heading={heading ?? null}
+          radiusM={fenceRadiusM ?? 0}
+          recording={!!recording}
+        />
+      )}
       </svg>
 
       <div className="absolute left-2 top-2 flex flex-col gap-1">
@@ -120,6 +151,15 @@ function AirportSvgImpl({
         <ZoomButton label="Reset view" onClick={reset} disabled={zoom === 1}>
           ⟳
         </ZoomButton>
+        {onLocate && (
+          <ZoomButton
+            label="Show my location"
+            onClick={onLocate}
+            active={!!userPosition}
+          >
+            ⌖
+          </ZoomButton>
+        )}
       </div>
     </div>
   );
@@ -129,21 +169,28 @@ function ZoomButton({
   label,
   onClick,
   disabled,
+  active,
   children,
 }: {
   label: string;
   onClick: () => void;
   disabled?: boolean;
+  active?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <button
       type="button"
       aria-label={label}
+      aria-pressed={active}
       title={label}
       onClick={onClick}
       disabled={disabled}
-      className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-700 bg-slate-900/80 text-lg leading-none text-slate-200 hover:bg-slate-800 disabled:opacity-30"
+      className={`flex h-8 w-8 items-center justify-center rounded-md border text-lg leading-none disabled:opacity-30 ${
+        active
+          ? "border-sky-500 bg-sky-600/30 text-sky-200 hover:bg-sky-600/40"
+          : "border-slate-700 bg-slate-900/80 text-slate-200 hover:bg-slate-800"
+      }`}
     >
       {children}
     </button>

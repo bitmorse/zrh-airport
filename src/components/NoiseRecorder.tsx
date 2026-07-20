@@ -38,7 +38,8 @@ export function NoiseRecorder({
       <div>
         <h2 className="font-semibold text-slate-200">Aircraft noise</h2>
         <p className="text-[11px] text-slate-500">
-          auto-records around landings &amp; takeoffs · relative loudness (uncalibrated)
+          auto-records aircraft entering your GPS geofence · landings/takeoffs as a
+          fallback · relative loudness (uncalibrated)
         </p>
       </div>
 
@@ -60,7 +61,7 @@ export function NoiseRecorder({
             <span className="text-xs text-slate-300">
               {isRecording
                 ? `Recording ${activeCallsign ?? "…"}`
-                : "Listening — auto-records around landings"}
+                : "Listening — records aircraft inside your geofence"}
             </span>
           </div>
 

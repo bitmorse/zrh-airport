@@ -9,7 +9,9 @@ export interface NoiseEvent {
   hex: string | null;
   callsign: string | null;
   runwayEnd: string | null;
-  kind: "arrival" | "departure" | null;
+  kind: "arrival" | "departure" | "geofence" | null;
+  /** For geofence-triggered clips: the fence radius (metres) in force at recording. */
+  geofenceRadiusM: number | null;
   /** ICAO type designator, description and registration, from the ADS-B feed. */
   aircraftType: string | null;
   aircraftTypeDesc: string | null;

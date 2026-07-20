@@ -4,10 +4,17 @@ import { DEFAULT_SETTINGS, useSettings } from "../hooks/useSettings";
 import type { Units } from "../lib/format";
 
 const NM_TO_KM = 1.852;
+const M_PER_NM = 1852;
 // Radius is stored in NM; show it in the user's units.
 const radiusToDisplay = (nm: number, u: Units) =>
   u === "metric" ? Math.round(nm * NM_TO_KM) : Math.round(nm);
 const displayToNm = (val: number, u: Units) => (u === "metric" ? val / NM_TO_KM : val);
+
+// Geofence radius is stored in metres; show it as km (metric) or NM (imperial).
+const geoToDisplay = (m: number, u: Units) =>
+  u === "metric" ? +(m / 1000).toFixed(1) : +(m / M_PER_NM).toFixed(1);
+const geoToMeters = (val: number, u: Units) =>
+  u === "metric" ? val * 1000 : val * M_PER_NM;
 
 /**
  * Settings dialog. All values are persisted to localStorage. The default data
@@ -19,13 +26,18 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [pollSeconds, setPollSeconds] = useState(String(settings.pollSeconds));
   const [units, setUnits] = useState<Units>(settings.units);
   const [radius, setRadius] = useState(String(radiusToDisplay(settings.radiusNm, settings.units)));
+  const [geofence, setGeofence] = useState(
+    String(geoToDisplay(settings.geofenceRadiusM, settings.units)),
+  );
   const [provider, setProvider] = useState(settings.provider ?? "");
   const [apiToken, setApiToken] = useState(settings.apiToken ?? "");
 
-  // Switching units re-expresses the radius field so it stays the same distance.
+  // Switching units re-expresses the distance fields so they stay the same distance.
   function changeUnits(next: Units) {
     const nm = displayToNm(Number(radius) || settings.radiusNm, units);
     setRadius(String(radiusToDisplay(nm, next)));
+    const m = geoToMeters(Number(geofence) || 0, units) || settings.geofenceRadiusM;
+    setGeofence(String(geoToDisplay(m, next)));
     setUnits(next);
   }
 
@@ -33,6 +45,9 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const radiusUnit = metric ? "km" : "nautical miles";
   const radiusMin = metric ? 9 : 5;
   const radiusMax = metric ? 463 : 250;
+  const geoUnit = metric ? "km" : "NM";
+  const geoMin = metric ? 0.3 : 0.2;
+  const geoMax = metric ? 20 : 11;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -42,9 +57,11 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
 
   function save() {
     const nm = displayToNm(Number(radius) || radiusToDisplay(DEFAULT_SETTINGS.radiusNm, units), units);
+    const geoM = geoToMeters(Number(geofence) || geoToDisplay(DEFAULT_SETTINGS.geofenceRadiusM, units), units);
     update({
       pollSeconds: clamp(Number(pollSeconds) || DEFAULT_SETTINGS.pollSeconds, 10, 600),
       radiusNm: Math.round(clamp(nm, 5, 250)),
+      geofenceRadiusM: Math.round(clamp(geoM, 300, 20000)),
       units,
       provider: provider || null,
       apiToken: apiToken.trim() || null,
@@ -96,6 +113,21 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               max={radiusMax}
               value={radius}
               onChange={(e) => setRadius(e.target.value)}
+              className={inputCls}
+            />
+          </Field>
+
+          <Field
+            label={`Recording geofence radius (${geoUnit})`}
+            hint={`${geoMin}–${geoMax} · aircraft entering this radius around your GPS location auto-record`}
+          >
+            <input
+              type="number"
+              step={0.1}
+              min={geoMin}
+              max={geoMax}
+              value={geofence}
+              onChange={(e) => setGeofence(e.target.value)}
               className={inputCls}
             />
           </Field>

@@ -24,6 +24,7 @@ function event(overrides: Partial<NoiseEvent>): NoiseEvent {
     callsign: "SWR40L",
     runwayEnd: "28",
     kind: "arrival",
+    geofenceRadiusM: null,
     aircraftType: "A320",
     aircraftTypeDesc: "AIRBUS A-320",
     registration: "HB-JCA",

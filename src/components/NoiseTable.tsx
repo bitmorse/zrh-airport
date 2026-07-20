@@ -52,6 +52,7 @@ function exportCsv(events: NoiseEvent[]) {
     "ac_lon",
     "obs_lat",
     "obs_lon",
+    "geofence_radius_m",
     "held_s",
     "peak_rel",
     "peak_dbfs",
@@ -75,6 +76,7 @@ function exportCsv(events: NoiseEvent[]) {
     e.acLon ?? "",
     e.lat ?? "",
     e.lon ?? "",
+    e.geofenceRadiusM ?? "",
     e.heldSeconds ?? "",
     relLoudness(e.peakDbfs),
     e.peakDbfs.toFixed(1),
@@ -159,7 +161,8 @@ export function NoiseTable() {
         <h2 className="font-semibold text-slate-200">Measurements</h2>
         <p className="mt-1 text-[11px] text-slate-500">
           No recordings yet. Enable the microphone above; clips are captured
-          automatically around landings and listed here.
+          automatically when an aircraft enters your geofence (or around a nearby
+          landing/takeoff) and listed here.
         </p>
       </div>
     );
@@ -222,7 +225,13 @@ export function NoiseTable() {
                 <td className="py-1.5 pr-2 tabular-nums">{hhmm(e.startedAt)}</td>
                 <td className="py-1.5 pr-2 font-mono">
                   <div>
-                    {e.kind === "departure" ? "🛫" : e.kind === "arrival" ? "🛬" : ""}{" "}
+                    {e.kind === "departure"
+                      ? "🛫"
+                      : e.kind === "arrival"
+                        ? "🛬"
+                        : e.kind === "geofence"
+                          ? "📍"
+                          : ""}{" "}
                     {e.callsign ?? e.hex?.toUpperCase() ?? "—"}
                     {e.runwayEnd && (
                       <span className="ml-1 text-sky-300">{e.runwayEnd}</span>

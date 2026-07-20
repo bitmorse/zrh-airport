@@ -22,6 +22,8 @@ interface Viewport {
   reset: () => void;
   /** Reveal `target` if it's off-screen, framing it with `context` (e.g. the field). */
   focusOn: (target: Pt, context?: Pt) => void;
+  /** Recenter on `target` at the current zoom, even if it's already visible. */
+  centerOn: (target: Pt) => void;
   isDragging: boolean;
   bind: {
     onPointerDown: (e: React.PointerEvent) => void;
@@ -188,6 +190,10 @@ export function useViewport(svgRef: React.RefObject<SVGSVGElement | null>): View
     },
     [apply],
   );
+  const centerOn = useCallback(
+    (target: Pt) => apply(fitPoints([target], viewRef.current.zoom)),
+    [apply],
+  );
 
   return {
     viewBox: viewBoxString(view),
@@ -196,6 +202,7 @@ export function useViewport(svgRef: React.RefObject<SVGSVGElement | null>): View
     zoomOut,
     reset,
     focusOn,
+    centerOn,
     isDragging,
     bind: {
       onPointerDown,

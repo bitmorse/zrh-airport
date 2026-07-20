@@ -34,6 +34,11 @@ export function projectToSvg(arp: LatLon, p: LatLon): Point {
   };
 }
 
+/** Convert a length in metres to SVG units (equal x/y scale, so distances are true). */
+export function metersToSvg(m: number): number {
+  return m * SCALE;
+}
+
 /** True if the point is within the SVG viewport (with an optional margin). */
 export function inViewport(pt: Point, margin = 0): boolean {
   return (

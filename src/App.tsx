@@ -15,9 +15,10 @@ import { addNoiseEvent, type NoiseEvent } from "./data/noiseStore";
 import { buildAirport } from "./domain/airport";
 import { AirportContext } from "./hooks/useAirport";
 import {
-  useLandingNoiseTrigger,
+  useAutoNoiseTrigger,
   type NoiseMeta,
-} from "./hooks/useLandingNoiseTrigger";
+} from "./hooks/useAutoNoiseTrigger";
+import { useDeviceHeading, requestHeadingPermission } from "./hooks/useDeviceHeading";
 import { useGeoWatch, type GeoFix } from "./hooks/useGeoWatch";
 import { useLiveTraffic } from "./hooks/useLiveTraffic";
 import { useNoiseRecorder, type Recording } from "./hooks/useNoiseRecorder";
@@ -46,10 +47,20 @@ export default function App() {
     [traffic.aircraft, selectedHex],
   );
 
-  // Landing-noise recording.
+  // Aircraft-noise recording + "where am I" location.
   const recorder = useNoiseRecorder();
-  const geo = useGeoWatch(recorder.isArmed); // live GPS while the mic is on
+  const [showLocation, setShowLocation] = useState(false);
+  const [locateNonce, setLocateNonce] = useState(0);
+  // Live GPS while the mic is on (for the geofence) or while showing my location.
+  const geo = useGeoWatch(recorder.isArmed || showLocation);
+  const heading = useDeviceHeading(showLocation);
   const arrivals = traffic.arrivals;
+
+  const onLocate = useCallback(() => {
+    void requestHeadingPermission();
+    setShowLocation(true);
+    setLocateNonce((n) => n + 1); // recenter on the user, even if already shown
+  }, []);
 
   // Latest aircraft list, read at save time to enrich a measurement by hex.
   const aircraftRef = useRef(traffic.aircraft);
@@ -69,8 +80,9 @@ export default function App() {
         id: crypto.randomUUID(),
         hex: meta?.hex ?? null,
         callsign: meta?.callsign ?? null,
-        runwayEnd: meta?.end ?? null,
+        runwayEnd: meta?.end || null,
         kind: meta?.kind ?? null,
+        geofenceRadiusM: meta?.geofenceRadiusM ?? null,
         aircraftType: snap?.type ?? null,
         aircraftTypeDesc: snap?.typeDesc ?? null,
         registration: snap?.registration ?? null,
@@ -94,7 +106,7 @@ export default function App() {
     [],
   );
 
-  const { activeCallsign } = useLandingNoiseTrigger({
+  const { activeCallsign } = useAutoNoiseTrigger({
     armed: recorder.isArmed,
     aircraft: traffic.aircraft,
     arrivals,
@@ -102,6 +114,9 @@ export default function App() {
     now,
     lastUpdated: traffic.lastUpdated,
     recorder,
+    userPos: geo.position,
+    geofenceRadiusM: settings.geofenceRadiusM,
+    fieldElevationFt: airport.config.fieldElevationFt,
     onComplete: (meta, rec) => saveNoise(meta, rec, geo.ref.current),
   });
 
@@ -244,6 +259,12 @@ export default function App() {
             lastUpdated={traffic.lastUpdated}
             selectedHex={selectedHex}
             trail={selectedHex ? traffic.trailFor(selectedHex) : undefined}
+            userPosition={showLocation || recorder.isRecording ? geo.position : null}
+            heading={heading}
+            fenceRadiusM={settings.geofenceRadiusM}
+            recording={recorder.isRecording}
+            locateNonce={locateNonce}
+            onLocate={onLocate}
             onSelect={handleSelect}
           />
         </section>
