@@ -25,10 +25,14 @@ function RunwayEndZone({
   const zoneEnd = lerp(ta, tb, END_FRACTION);
   const color = heatColor(count);
 
-  // Label sits outside the threshold, along the runway axis. Pushing it well
-  // clear of the strip also separates the 14 & 16 badges, whose thresholds are
-  // close together but whose axes diverge.
-  const outward = lerp(ta, tb, -0.14);
+  // Runway number painted on the surface just inside the threshold, like a real
+  // runway designation marking: oriented to read from the approach (the glyphs
+  // point up the runway, ta → tb), so the two ends face opposite ways as they do
+  // in life. Rotating (0,-1) — SVG text's "up" — onto the ta→tb axis gives the angle.
+  const label = lerp(ta, tb, 0.11);
+  const angleDeg =
+    (Math.atan2(tb.x - ta.x, -(tb.y - ta.y)) * 180) / Math.PI;
+  const fontSize = end.id.length >= 3 ? 6.5 : 9;
 
   return (
     <g>
@@ -41,40 +45,20 @@ function RunwayEndZone({
         strokeWidth={END_WIDTH}
         strokeLinecap="butt"
       />
-      <g transform={`translate(${outward.x.toFixed(1)} ${outward.y.toFixed(1)})`}>
-        {/* Square end-ID badge (rectilinear, per design). */}
-        <rect
-          x={-10.5}
-          y={-10.5}
-          width={21}
-          height={21}
-          fill="var(--color-inverse-surface)"
-          stroke={color}
-          strokeWidth={1.5}
-        />
-        <text
-          textAnchor="middle"
-          dominantBaseline="central"
-          fontSize={9}
-          fontWeight={700}
-          fill="var(--color-inverse-on-surface)"
-          style={{ fontFamily: "var(--font-mono)" }}
-        >
-          {end.id}
-        </text>
-        {count > 0 && (
-          <text
-            textAnchor="middle"
-            y={19}
-            fontSize={8.5}
-            fontWeight={700}
-            fill={color}
-            style={{ fontFamily: "var(--font-mono)" }}
-          >
-            {count}
-          </text>
-        )}
-      </g>
+      <text
+        x={label.x}
+        y={label.y}
+        transform={`rotate(${angleDeg.toFixed(1)} ${label.x.toFixed(1)} ${label.y.toFixed(1)})`}
+        textAnchor="middle"
+        dominantBaseline="central"
+        fontSize={fontSize}
+        fontWeight={700}
+        letterSpacing="0.5"
+        fill="var(--color-surface-container-lowest)"
+        style={{ fontFamily: "var(--font-mono)" }}
+      >
+        {end.id}
+      </text>
     </g>
   );
 }
