@@ -71,9 +71,18 @@ export function Plane({
         />
       )}
       {/* Airplane glyph (viewBox 0 0 24 24, nose at +x): centre on the origin, scale
-          to ~13 units, and rotate so heading 0 (north) points up. */}
+          to ~13 units, and rotate so heading 0 (north) points up. A light halo keeps
+          it legible over the grey runway strips (on-runway/inactive glyphs would
+          otherwise share the strip's tone) as well as the white radar field. */}
       <g transform={`rotate(${(heading - 90).toFixed(0)}) translate(-6.5 -6.5) scale(0.54)`}>
-        <path d={AIRPLANE_PATH} fill={color} />
+        <path
+          d={AIRPLANE_PATH}
+          fill={color}
+          stroke="var(--color-surface-container-lowest)"
+          strokeWidth={2}
+          strokeLinejoin="round"
+          paintOrder="stroke"
+        />
       </g>
       {show && (
         <text

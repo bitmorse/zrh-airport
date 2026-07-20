@@ -23,6 +23,11 @@ export function useGpws(item: AircraftWithAssignment | null, enabled: boolean): 
   const lastEst = useRef(0);
   const state = useRef<GpwsState>(createGpwsState(Number.POSITIVE_INFINITY));
   const audio = useRef<Map<string, HTMLAudioElement>>(new Map());
+  // Callouts are spoken strictly one at a time: cues queue up and each plays only
+  // once the previous has finished, so they never overlap ("retard" then "ten", not
+  // on top of each other). `current` is the clip playing right now, if any.
+  const queue = useRef<string[]>([]);
+  const current = useRef<HTMLAudioElement | null>(null);
   // Track the enabled edge so re-enabling (e.g. recording stopped / unmuted) starts a
   // fresh countdown rather than resuming a stale `announced` set.
   const prevEnabled = useRef(false);
@@ -67,20 +72,52 @@ export function useGpws(item: AircraftWithAssignment | null, enabled: boolean): 
   useEffect(() => {
     if (!activeHex) return;
 
+    // Play the next queued callout, then chain to the one after it when it ends.
+    // A no-op while something is already speaking — that's what prevents overlap.
+    const playNext = () => {
+      if (current.current) return;
+      const url = queue.current.shift();
+      if (!url) return;
+      const a = audio.current.get(url);
+      if (!a) {
+        playNext();
+        return;
+      }
+      current.current = a;
+      a.currentTime = 0;
+      const onDone = () => {
+        a.removeEventListener("ended", onDone);
+        current.current = null;
+        playNext();
+      };
+      a.addEventListener("ended", onDone);
+      void a.play().catch(() => {
+        a.removeEventListener("ended", onDone);
+        current.current = null;
+        playNext();
+      });
+    };
+
     const id = setInterval(() => {
       const b = base.current;
       const est = b.agl + b.vrFps * ((Date.now() - b.ts) / 1000);
       const descending = est < lastEst.current - 1; // net descent, ignore tiny noise
       lastEst.current = est;
       for (const c of gpwsAdvance(state.current, { aglFt: est, descending, onGround: b.onGround })) {
-        const a = audio.current.get(c.url);
-        if (a) {
-          a.currentTime = 0;
-          void a.play().catch(() => {});
-        }
+        queue.current.push(c.url);
       }
+      playNext();
     }, 400);
 
-    return () => clearInterval(id);
+    return () => {
+      clearInterval(id);
+      // New aircraft / disarmed: drop pending callouts and cut any in progress so a
+      // stale approach never bleeds into the next.
+      queue.current = [];
+      if (current.current) {
+        current.current.pause();
+        current.current = null;
+      }
+    };
   }, [activeHex]);
 }
