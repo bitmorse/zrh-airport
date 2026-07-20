@@ -13,6 +13,8 @@ import { addNoiseEvent, type NoiseEvent } from "./data/noiseStore";
 import { totalPoints } from "./data/watchStore";
 import { buildAirport } from "./domain/airport";
 import { AUTO_IDLE_MS, pickInteresting, shouldRelease } from "./domain/autoSelect";
+import { byRunway, summarize } from "./domain/movementStats";
+import { useAirportStats } from "./hooks/useAirportStats";
 import { AirportContext } from "./hooks/useAirport";
 import { useWatchedFlights } from "./hooks/useWatchedFlights";
 import { useWatchTracker } from "./hooks/useWatchTracker";
@@ -240,6 +242,21 @@ export default function App() {
     [traffic.aircraft],
   );
 
+  // "Traffic by hour" now shows the backend collector's 24/7 history; fall back to
+  // this device's own recorded log when the server is unreachable.
+  const stats = useAirportStats(airport.config.icao);
+  const localRunways = useMemo(() => byRunway(traffic.movementLog), [traffic.movementLog]);
+  const localSummary = useMemo(() => summarize(traffic.movementLog), [traffic.movementLog]);
+  const statRunways = stats.data ? stats.data.runways : localRunways;
+  const statSummary = stats.data ? stats.data.summary : localSummary;
+  const statSourceNote = stats.data
+    ? `server · ${stats.data.windowDays}-day history`
+    : stats.isError
+      ? "device history · server unavailable"
+      : localSummary.landings + localSummary.takeoffs > 0
+        ? "device history"
+        : undefined;
+
   const switchAirport = useCallback(
     (icao: string) => {
       setAirportMenu(false);
@@ -429,9 +446,12 @@ export default function App() {
 
           <div className="border border-border bg-surface-container-low p-4">
             <MovementsByHour
-              log={traffic.movementLog}
+              runways={statRunways}
+              summary={statSummary}
               timeZone={airport.config.timeZone}
               now={now}
+              loading={stats.isLoading && !stats.data}
+              sourceNote={statSourceNote}
             />
           </div>
 

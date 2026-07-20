@@ -1,10 +1,8 @@
 import { useState } from "react";
 import {
-  byRunway,
   localHour,
-  summarize,
   type HourStat,
-  type MovementLog,
+  type MovementSummary,
   type RunwayHistogram,
 } from "../domain/movementStats";
 
@@ -38,23 +36,30 @@ function niceMax(v: number): number {
 
 /**
  * "Traffic by hour": a popular-times–style chart of landings vs. takeoffs, **one
- * small-multiple per runway end**, bucketed by the airport's local hour-of-day from
- * history collected on this device. Every runway shares a Y scale (labelled, with
- * ticks) so busy and quiet ends are directly comparable. Toggle a typical day
- * (average per observed day) vs. all-time totals.
+ * small-multiple per runway end**, bucketed by the airport's local hour-of-day. The
+ * aggregated per-runway histograms are supplied by the caller (server-collected
+ * history from the stats API, or on-device history as a fallback). Every runway
+ * shares a Y scale (labelled, with ticks) so busy and quiet ends are directly
+ * comparable. Toggle a typical day (average per observed day) vs. all-time totals.
  */
 export function MovementsByHour({
-  log,
+  runways,
+  summary,
   timeZone,
   now,
+  loading,
+  sourceNote,
 }: {
-  log: MovementLog;
+  runways: RunwayHistogram[];
+  summary: MovementSummary;
   timeZone?: string;
   now: number;
+  /** True while the first server fetch is in flight and there's nothing to show yet. */
+  loading?: boolean;
+  /** Short provenance note appended to the footer (e.g. "server · 60-day history"). */
+  sourceNote?: string;
 }) {
   const [mode, setMode] = useState<Mode>("avg");
-  const runways = byRunway(log);
-  const summary = summarize(log);
   const nowHour = localHour(now, timeZone).hour;
 
   const valueOf = (h: HourStat) =>
@@ -101,10 +106,14 @@ export function MovementsByHour({
       </div>
 
       {empty ? (
-        <p className="text-xs leading-relaxed text-muted">
-          No history yet. Landings and takeoffs are counted per runway as they happen and
-          stored on this device — leave the tab open to build up a typical-day profile.
-        </p>
+        loading ? (
+          <p className="text-xs leading-relaxed text-muted">Loading traffic history…</p>
+        ) : (
+          <p className="text-xs leading-relaxed text-muted">
+            No history yet. Landings and takeoffs are counted per runway as they happen —
+            check back once the collector has recorded some movements.
+          </p>
+        )
       ) : (
         <>
           <div className="flex items-center gap-3 text-[11px] uppercase tracking-wide text-on-surface-variant">
@@ -135,10 +144,10 @@ export function MovementsByHour({
 
       <p className="text-[10px] leading-relaxed text-muted">
         {empty
-          ? "Stored locally · never leaves your device."
+          ? (sourceNote ?? "")
           : `${summary.landings} landings · ${summary.takeoffs} takeoffs over ${summary.days} ${
               summary.days === 1 ? "day" : "days"
-            }${tz ? ` · ${tz} local time` : ""}`}
+            }${tz ? ` · ${tz} local time` : ""}${sourceNote ? ` · ${sourceNote}` : ""}`}
       </p>
     </div>
   );
