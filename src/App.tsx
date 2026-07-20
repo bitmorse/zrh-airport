@@ -240,6 +240,7 @@ export default function App() {
             counts={traffic.counts}
             lastUpdated={traffic.lastUpdated}
             selectedHex={selectedHex}
+            trail={selectedHex ? traffic.trailFor(selectedHex) : undefined}
             onSelect={handleSelect}
           />
         </section>
@@ -305,10 +306,11 @@ export default function App() {
           )}
 
           <p className="px-1 text-[11px] leading-relaxed text-slate-500">
-            Runway use is inferred from aircraft position, track and altitude —
-            not an official airport feed. Data:{" "}
-            <span className="text-slate-400">adsb.lol / adsb.fi / airplanes.live</span>.
-            Everything runs in your browser; nothing is sent to a server.
+            Runway use, arrivals and departures are inferred from each aircraft’s
+            position, track and altitude — not an official airport feed. Traffic from{" "}
+            <span className="text-slate-400">adsb.lol / adsb.fi / airplanes.live</span>,
+            routes from adsbdb. Everything runs in your browser and your settings, pins
+            and recordings stay on your device.
           </p>
         </aside>
       </main>

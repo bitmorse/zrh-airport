@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  fitPoints,
+  isPointVisible,
   normalizeView,
   panBy,
   viewBoxString,
@@ -18,6 +20,8 @@ interface Viewport {
   zoomIn: () => void;
   zoomOut: () => void;
   reset: () => void;
+  /** Reveal `target` if it's off-screen, framing it with `context` (e.g. the field). */
+  focusOn: (target: Pt, context?: Pt) => void;
   isDragging: boolean;
   bind: {
     onPointerDown: (e: React.PointerEvent) => void;
@@ -175,6 +179,15 @@ export function useViewport(svgRef: React.RefObject<SVGSVGElement | null>): View
     () => apply(normalizeView({ zoom: 1, cx: 0.5, cy: 0.5 })),
     [apply],
   );
+  const focusOn = useCallback(
+    (target: Pt, context?: Pt) => {
+      // Only adjust the view when the target isn't already comfortably on screen.
+      if (isPointVisible(viewRef.current, target)) return;
+      const pts = context ? [target, context] : [target];
+      apply(fitPoints(pts, viewRef.current.zoom));
+    },
+    [apply],
+  );
 
   return {
     viewBox: viewBoxString(view),
@@ -182,6 +195,7 @@ export function useViewport(svgRef: React.RefObject<SVGSVGElement | null>): View
     zoomIn,
     zoomOut,
     reset,
+    focusOn,
     isDragging,
     bind: {
       onPointerDown,

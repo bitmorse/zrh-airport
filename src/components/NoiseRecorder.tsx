@@ -36,9 +36,9 @@ export function NoiseRecorder({
   return (
     <div className="flex flex-col gap-2.5 text-sm">
       <div>
-        <h2 className="font-semibold text-slate-200">Landing noise</h2>
+        <h2 className="font-semibold text-slate-200">Aircraft noise</h2>
         <p className="text-[11px] text-slate-500">
-          records around each landing · relative loudness (uncalibrated)
+          auto-records around landings &amp; takeoffs · relative loudness (uncalibrated)
         </p>
       </div>
 

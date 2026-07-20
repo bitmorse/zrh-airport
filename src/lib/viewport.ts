@@ -84,6 +84,52 @@ export function zoomAtPoint(
   return normalizeView({ zoom: nextZoom, cx, cy });
 }
 
+/** Is an SVG point comfortably inside the current view (with an edge inset)? */
+export function isPointVisible(
+  v: ViewState,
+  pt: { x: number; y: number },
+  insetFrac = 0.08,
+): boolean {
+  const b = computeViewBox(v);
+  const ix = b.w * insetFrac;
+  const iy = b.h * insetFrac;
+  return (
+    pt.x >= b.x + ix && pt.x <= b.x + b.w - ix && pt.y >= b.y + iy && pt.y <= b.y + b.h - iy
+  );
+}
+
+/**
+ * A view that frames the given SVG points with margin, never zooming in past
+ * `maxZoom` (pass the current zoom to only ever zoom out / pan to reveal them).
+ */
+export function fitPoints(
+  points: { x: number; y: number }[],
+  maxZoom = MAX_ZOOM,
+  marginFrac = 0.2,
+): ViewState {
+  if (points.length === 0) return normalizeView({ zoom: DEFAULT_ZOOM, cx: 0.5, cy: 0.5 });
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const p of points) {
+    minX = Math.min(minX, p.x);
+    maxX = Math.max(maxX, p.x);
+    minY = Math.min(minY, p.y);
+    maxY = Math.max(maxY, p.y);
+  }
+  const mx = Math.max((maxX - minX) * marginFrac, SVG_W * 0.06);
+  const my = Math.max((maxY - minY) * marginFrac, SVG_H * 0.06);
+  const w = maxX - minX + 2 * mx;
+  const h = maxY - minY + 2 * my;
+  const fitZoom = Math.min(SVG_W / w, SVG_H / h);
+  return normalizeView({
+    zoom: clampZoom(Math.min(maxZoom, fitZoom)),
+    cx: (minX + maxX) / 2 / SVG_W,
+    cy: (minY + maxY) / 2 / SVG_H,
+  });
+}
+
 /** Pan by a fraction of the current viewport (e.g. from a drag delta). */
 export function panBy(v: ViewState, dxFrac: number, dyFrac: number): ViewState {
   const cur = normalizeView(v);

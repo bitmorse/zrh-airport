@@ -1,29 +1,49 @@
-import { memo, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 import { useAirport } from "../hooks/useAirport";
 import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
 import { useViewport } from "../hooks/useViewport";
-import { SVG_W, SVG_H } from "../lib/projection";
+import type { LatLon } from "../lib/geo";
+import { projectToSvg, SVG_W, SVG_H } from "../lib/projection";
 import { PlaneLayer } from "./PlaneLayer";
 import { PoiLayer } from "./PoiLayer";
 import { RunwayHeat } from "./RunwayHeat";
+import { TrailLayer } from "./TrailLayer";
 
 function AirportSvgImpl({
   aircraft,
   counts,
   lastUpdated,
   selectedHex,
+  trail,
   onSelect,
 }: {
   aircraft: AircraftWithAssignment[];
   counts: Record<string, number>;
   lastUpdated: number | null;
   selectedHex?: string | null;
+  trail?: LatLon[];
   onSelect?: (hex: string) => void;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const airport = useAirport();
-  const { viewBox, zoom, zoomIn, zoomOut, reset, isDragging, bind } =
+  const { viewBox, zoom, zoomIn, zoomOut, reset, focusOn, isDragging, bind } =
     useViewport(svgRef);
+
+  // When a flight is selected (e.g. tapped in a board), reveal it on the map if it
+  // isn't already in view — once per selection, framed with the field.
+  const focusedHex = useRef<string | null>(null);
+  useEffect(() => {
+    if (!selectedHex) {
+      focusedHex.current = null;
+      return;
+    }
+    if (focusedHex.current === selectedHex) return;
+    const sel = aircraft.find((a) => a.ac.hex === selectedHex);
+    if (!sel) return; // not in this poll yet — retry on the next
+    focusedHex.current = selectedHex;
+    const target = projectToSvg(airport.config.arp, { lat: sel.ac.lat, lon: sel.ac.lon });
+    focusOn(target, { x: SVG_W / 2, y: SVG_H / 2 });
+  }, [selectedHex, aircraft, airport, focusOn]);
 
   return (
     <div className="relative h-full w-full">
@@ -73,6 +93,8 @@ function AirportSvgImpl({
       ))}
 
       <PoiLayer />
+
+      {trail && <TrailLayer points={trail} />}
 
       <PlaneLayer
         aircraft={aircraft}

@@ -95,8 +95,8 @@ export function FlightDetails({
       <div className="text-sm">
         <h2 className="font-semibold text-slate-200">Flight lookup</h2>
         <p className="mt-1 text-xs text-slate-500">
-          Tap a plane on the map (or a runway’s inbound below) to see its airline,
-          flight number and route.
+          Tap a plane on the map, or any movement in the boards, to see its type,
+          route and live altitude — the map recentres on it and draws its track.
         </p>
       </div>
     );

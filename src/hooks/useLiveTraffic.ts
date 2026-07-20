@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchAircraftNear, type Aircraft } from "../data/adsb";
 import type { Airport } from "../domain/airport";
+import type { LatLon } from "../lib/geo";
 import { assignRunway, type RunwayAssignment } from "../domain/assignRunway";
 import {
   detectDepartures,
@@ -36,10 +37,20 @@ export interface AircraftWithAssignment {
 const FAST_POLL_MS = 4000;
 const FAST_ARRIVAL_S = 45;
 
+// Per-aircraft position history (drawn as the selected flight's trajectory).
+const TRAIL_MAX_POINTS = 240;
+const TRAIL_TTL_MS = 3 * 60 * 1000; // forget a plane's trail 3 min after it's gone
+
 // Stable identities for the pre-data case so memoized consumers don't churn.
 const EMPTY_AIRCRAFT: AircraftWithAssignment[] = [];
 const EMPTY_ARRIVALS: Arrival[] = [];
 const EMPTY_DEPARTURES: DepartureEvent[] = [];
+const EMPTY_TRAIL: LatLon[] = [];
+
+interface Trail {
+  points: LatLon[];
+  lastSeen: number;
+}
 
 export interface LiveTraffic {
   aircraft: AircraftWithAssignment[];
@@ -52,6 +63,8 @@ export interface LiveTraffic {
   error: Error | null;
   isFetching: boolean;
   refetch: () => void;
+  /** Recent position history for an aircraft (its trajectory), oldest → newest. */
+  trailFor: (hex: string) => LatLon[];
 }
 
 export function useLiveTraffic(settings: Settings, airport: Airport): LiveTraffic {
@@ -61,6 +74,7 @@ export function useLiveTraffic(settings: Settings, airport: Airport): LiveTraffi
   const depMemory = useRef(new Map<string, DepartureMemory>());
   const gateCrossings = useRef<GateCrossings>(new Map());
   const landingMemory: { current: Parameters<typeof trackLandings>[2] } = useRef(new Map());
+  const trails = useRef(new Map<string, Trail>());
 
   // Seed counts from any persisted window on mount so the map isn't blank after
   // a reload within the 15-minute window.
@@ -128,6 +142,18 @@ export function useLiveTraffic(settings: Settings, airport: Airport): LiveTraffi
       );
       prevGs.current = gsSnapshot(snap.aircraft);
 
+      // Append each aircraft's position to its trajectory history; forget old ones.
+      for (const ac of snap.aircraft) {
+        const t = trails.current.get(ac.hex) ?? { points: [], lastSeen: 0 };
+        t.points.push({ lat: ac.lat, lon: ac.lon });
+        if (t.points.length > TRAIL_MAX_POINTS) t.points.shift();
+        t.lastSeen = snap.fetchedAt;
+        trails.current.set(ac.hex, t);
+      }
+      for (const [hex, t] of trails.current) {
+        if (snap.fetchedAt - t.lastSeen > TRAIL_TTL_MS) trails.current.delete(hex);
+      }
+
       const needsFastPoll =
         departures.some((d) => d.phase === "holding" || d.phase === "roll") ||
         arrivals.some((a) => a.etaSeconds < FAST_ARRIVAL_S);
@@ -147,6 +173,11 @@ export function useLiveTraffic(settings: Settings, airport: Airport): LiveTraffi
     if (query.data) setCounts(query.data.counts);
   }, [query.data]);
 
+  const trailFor = useCallback(
+    (hex: string) => trails.current.get(hex)?.points ?? EMPTY_TRAIL,
+    [],
+  );
+
   return {
     aircraft: query.data?.withAssignment ?? EMPTY_AIRCRAFT,
     arrivals: query.data?.arrivals ?? EMPTY_ARRIVALS,
@@ -160,5 +191,6 @@ export function useLiveTraffic(settings: Settings, airport: Airport): LiveTraffi
     refetch: () => {
       void query.refetch();
     },
+    trailFor,
   };
 }

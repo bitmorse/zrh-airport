@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { SVG_W } from "./projection";
+import { SVG_H, SVG_W } from "./projection";
 import {
   MAX_ZOOM,
   MIN_ZOOM,
   clampCenter,
   clampZoom,
   computeViewBox,
+  fitPoints,
+  isPointVisible,
   panBy,
   zoomAtPoint,
 } from "./viewport";
@@ -66,5 +68,36 @@ describe("panBy", () => {
     // Cannot pan past the world edge.
     const maxed = panBy({ zoom: 2, cx: 0.5, cy: 0.5 }, 5, 0);
     expect(maxed.cx).toBeCloseTo(0.75);
+  });
+});
+
+describe("isPointVisible", () => {
+  const view = { zoom: 4, cx: 0.5, cy: 0.5 }; // centred, quarter-width box
+  it("is true for the centre, false for a point outside the box", () => {
+    expect(isPointVisible(view, { x: SVG_W / 2, y: SVG_H / 2 })).toBe(true);
+    expect(isPointVisible(view, { x: 0, y: 0 })).toBe(false); // world corner, off-screen
+  });
+});
+
+describe("fitPoints", () => {
+  it("frames two points centred between them", () => {
+    const v = fitPoints([
+      { x: SVG_W * 0.4, y: SVG_H / 2 },
+      { x: SVG_W * 0.6, y: SVG_H / 2 },
+    ]);
+    expect(v.cx).toBeCloseTo(0.5, 2);
+    expect(isPointVisible(v, { x: SVG_W * 0.4, y: SVG_H / 2 })).toBe(true);
+    expect(isPointVisible(v, { x: SVG_W * 0.6, y: SVG_H / 2 })).toBe(true);
+  });
+
+  it("never zooms in past the given max (only zooms out to reveal)", () => {
+    // Two nearby points would fit at high zoom, but maxZoom caps it.
+    const v = fitPoints([{ x: SVG_W / 2, y: SVG_H / 2 }, { x: SVG_W / 2 + 5, y: SVG_H / 2 }], 3);
+    expect(v.zoom).toBeLessThanOrEqual(3);
+  });
+
+  it("zooms out to fit a far-apart pair", () => {
+    const v = fitPoints([{ x: 0, y: 0 }, { x: SVG_W, y: SVG_H }], MAX_ZOOM);
+    expect(v.zoom).toBeCloseTo(MIN_ZOOM, 5);
   });
 });
