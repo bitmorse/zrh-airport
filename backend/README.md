@@ -2,8 +2,8 @@
 
 A tiny PHP + SQLite service that collects airport movement statistics (landings
 and takeoffs per runway) **around the clock**, independent of whether any user
-has the web app open. It runs as a cron job on NearlyFreeSpeech.NET shared
-hosting and exposes a read-only REST API for the app's Stats card.
+has the web app open. It runs as a persistent daemon on NearlyFreeSpeech.NET
+shared hosting and exposes a read-only REST API for the app's Stats card.
 
 ## Why a backend at all
 
@@ -14,35 +14,41 @@ compact aggregates so the history survives and is shared across all users.
 ## Architecture
 
 ```
-NFS Daemon (polls every 30s, 24/7)                   SQLite (backend/data/stats.db)
-  php bin/collect.php --forever --every 30 --all   movements  — one row per event,
-    ├─ Store::loadTracker()   ← detector state                pre-bucketed to local hour
-    ├─ Adsb::fetchAircraftNear()  (adsb.lol → .fi → .live)  tracker    — per-aircraft memory
-    ├─ Detector::detect()     → landings/takeoffs             between cron runs
-    ├─ Store::insertMovements()
-    ├─ Store::saveTracker()
-    └─ Store::pruneMovements()  (>60 days)
-                                                 Read API (public/index.php)
-Browser Stats card ── GET /api/v1/LSZH/movements ──▶ Zrh\Api::handle → JSON
-                      GET /api/v1/LSZH/summary
+NFS Daemon (polls every 30s, 24/7)                  SQLite (backend/data/stats.db)
+  php bin/collect.php --forever --every 30 --all      movements — one row per event,
+    ├─ Store::loadTracker()   ← detector state                    pre-bucketed to local hour
+    ├─ Adsb::fetchAircraftNear() (adsb.lol → .fi → .live)  tracker  — per-aircraft memory
+    ├─ Detector::detect()     → landings/takeoffs                  across polls
+    ├─ Store::insertMovements()                          poll_log  — heartbeats (for /health)
+    ├─ Store::saveTracker()  ├─ Store::recordPoll()
+    └─ Store::pruneMovements() (>60 days)
+                                                     Read API (airports-api/index.php)
+Browser Stats card ── GET /airports-api/LSZH/movements ──▶ Zrh\Api::handle → JSON
+                      GET /airports-api/LSZH/summary       (read-only, Store::openReader)
 ```
 
-- **Stateless cron, stateful detection.** Each run is a fresh process, but
-  landing/takeoff detection needs the previous poll. That memory lives in the
-  `tracker` table (`Store::loadTracker`/`saveTracker`), not in process RAM.
+- **Persistent process, persisted state.** Landing/takeoff detection needs the
+  previous poll. That memory lives in the `tracker` table
+  (`Store::loadTracker`/`saveTracker`), so the process can be restarted anytime
+  without losing continuity.
 - **Detection is a reduced port** of the frontend's `src/domain` logic — just the
   two countable events. Threshold constants in `src/Detector.php` mirror
   `src/domain/departures.ts`; **keep them in sync when tuning either side.**
-- **Read-only public API.** The collector is the only writer and runs locally on
-  the same box, so there is no ingest endpoint and no authentication anywhere.
+- **Read-only API.** The daemon is the only writer; the API opens the DB
+  read-only (`Store::openReader`), so it needs no write access and there's no
+  ingest endpoint and no authentication anywhere.
+- **Rollback-journal, not WAL.** On NFS the API runs as a different, lower-priv
+  user than the daemon; WAL would require that reader to write sidecar files it
+  can't. Plain DELETE-journal mode lets a read-only reader work with only file
+  read permission.
 
 ## Layout
 
 ```
 backend/
-  src/          Geo, Airport, Adsb, Detector, Store, Collector, Api  (namespace Zrh\)
+  src/          Geo, Airport, Adsb, Detector, Store, Collector, Api, Cli  (namespace Zrh\)
   config/       airports.json (ported from src/data/airports.ts), app.php
-  bin/          collect.php   — cron entry point
+  bin/          collect.php — collector entry; daemon.sh — NFS daemon run script
   airports-api/ index.php + .htaccess  — web-facing API front controller
   data/         stats.db at runtime (gitignored; keep OUTSIDE the docroot on NFS)
   tests/        zero-dependency test runner + suites
@@ -126,9 +132,10 @@ web docroot and exposes only the front controller:
    ```
    SetEnv ZRH_DB /home/protected/backend/data/stats.db
    ```
-   The DB and its `-wal`/`-shm` sidecars must never be web-served. If `src/`,
+   The DB (and any transient `-journal`) must never be web-served. If `src/`,
    `config/` or `data/` do end up under the docroot, deny them (`data/.htaccess`
-   already does this).
+   already does this). The API opens the DB read-only, so the web user needs only
+   read permission on it — no WAL sidecars are involved.
 4. **Run the collector — as a Daemon (recommended).** Needs a server type with
    daemons (e.g. *Kitchen Sink*). NFS scheduled tasks fire at most ~every 10 min
    *and* are time-limited (~3 min), so they can't poll continuously; a **Daemon**
@@ -166,12 +173,41 @@ Then check `https://bitmorse.com/airports-api/health` returns `{"ok":true, ...}`
 
 ## Bandwidth & storage
 
-- Collector fetches ~15–20 KB per poll → ~50–60 MB/day at 30s cadence. Well under
-  the 1 GB/day limit.
+- Collector fetches ~15–20 KB per airport per poll → ~50–60 MB/day per airport at
+  30s cadence (so `--all` with 2 airports ≈ 100–120 MB/day). Well under the
+  1 GB/day limit.
 - The read API is fetched on card-open (not polled) and cached, so 100 users add
   negligible traffic.
 - Storage: aggregates only. ~60 days of movements is a few MB; `tracker` is
-  bounded by the count of currently-airborne aircraft.
+  bounded by the count of currently-airborne aircraft; `poll_log` holds ~2h of
+  heartbeats.
+
+## Operations
+
+- **Monitoring.** The daemon self-monitors via `/airports-api/health`:
+  `polls10m` ≈ 18–20 when healthy (a poll every 30s), and `lastPollAgoS` stays
+  small. If `polls10m` is 0 and `lastPollAgoS` grows past ~600, the daemon is
+  down.
+- **Daemon log.** In `--forever` mode stdout is intentionally quiet: an `alive:`
+  summary every 10 minutes plus any errors. Per-poll detail is suppressed to keep
+  the log bounded.
+- **Resilience.** Each poll and the heartbeat write are individually guarded, so a
+  provider outage or a transient DB lock is logged and retried, not fatal. On a
+  fatal startup error the process backs off before exiting so NFS's restart can't
+  hot-loop.
+- **DB must exist for the API.** The API is read-only and won't create the file;
+  the daemon (or one manual `collect.php LSZH`) creates it on first poll.
+
+## Troubleshooting
+
+| Symptom | Cause / fix |
+|---------|-------------|
+| API returns `{"error":"backend root not found"}` (500) | `index.php` can't locate `src/`. Set `SetEnv ZRH_BACKEND_ROOT /home/protected/backend` in the web `.htaccess` (it also falls back to that path automatically). |
+| API returns `{"error":"internal error"}` (500) | Usually the DB: it doesn't exist yet (run the collector once) or the web user can't read it. The API is read-only + rollback-journal, so read permission is enough. Reproduce the real error from CLI: `php -r 'require ".../src/bootstrap.php"; $c=require ".../config/app.php"; Zrh\Store::openReader($c["db"]);'`. |
+| API returns `{"error":"not found"}` (404) | Expected for the bare `/airports-api` (it's the mount, not a route). Use `/airports-api/health` etc. |
+| PHP not executing (source shown / blank) | The site's Server Type must include PHP **and** daemons — use *Kitchen Sink*. |
+| `php: not found` in the daemon log | Set the full path in `bin/daemon.sh` (find it with `which php`, usually `/usr/local/bin/php`). |
+| Daemon writes fail with permission errors | Run the daemon as `me` (owns the DB), or make `data/` writable by `web`. |
 
 ## Limitations (v1)
 
