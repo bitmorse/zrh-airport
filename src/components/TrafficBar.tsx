@@ -4,6 +4,7 @@ import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
 import { useFlightRoute } from "../hooks/useFlightRoute";
 import { formatDuration, formatEta, routePairText } from "../lib/format";
 import { elapsedSec } from "../lib/reckon";
+import { LandingIcon, SquareIcon, TakeoffIcon } from "./icons";
 
 /** Join short glanceable tokens with a middot, dropping empties. */
 const secondaryOf = (...parts: (string | null | undefined)[]) =>
@@ -22,13 +23,13 @@ function TrafficRow({
   callsign,
   secondary,
   time,
-  timeClass = "text-slate-100",
+  timeClass = "text-on-surface",
   muted,
   highlight,
   selected,
   onClick,
 }: {
-  icon: string;
+  icon: React.ReactNode;
   end?: string;
   callsign?: string;
   secondary?: React.ReactNode;
@@ -46,31 +47,28 @@ function TrafficRow({
       disabled={!onClick}
       aria-pressed={onClick ? !!selected : undefined}
       title={end ? `Runway ${end}${callsign ? ` · ${callsign}` : ""}` : undefined}
-      className={`relative flex w-full items-center gap-2 py-1.5 pr-3 pl-3.5 text-left hover:bg-slate-800/50 disabled:cursor-default disabled:hover:bg-transparent ${
-        selected ? "bg-slate-200/[0.07]" : highlight ? "bg-amber-500/10" : ""
+      className={`relative flex w-full items-center gap-2 py-1.5 pr-3 pl-3.5 text-left hover:bg-surface-container disabled:cursor-default disabled:hover:bg-transparent ${
+        selected ? "bg-surface-container" : highlight ? "bg-surface-container-highest" : ""
       }`}
     >
-      {/* Selection cue — a neutral white rail, deliberately not a callout colour. */}
+      {/* Selection cue — a solid primary rail. */}
       {selected && (
-        <span
-          aria-hidden
-          className="absolute inset-y-1 left-0 w-[3px] rounded-full bg-slate-100"
-        />
+        <span aria-hidden className="absolute inset-y-0 left-0 w-[3px] bg-primary" />
       )}
-      <span aria-hidden>{icon}</span>
+      <span aria-hidden className="flex items-center text-on-surface-variant">{icon}</span>
       {muted ? (
-        <span className="flex-1 text-xs text-slate-500">{muted}</span>
+        <span className="flex-1 text-xs text-muted">{muted}</span>
       ) : (
         <span className="min-w-0 flex-1 truncate text-xs">
           {/* Label the runway so the leading number isn't a mystery. */}
-          <span className="font-semibold text-sky-300">
-            <span className="text-[10px] font-medium uppercase tracking-wide text-sky-300/50">
+          <span className="font-semibold text-status-arrival">
+            <span className="text-[10px] font-medium uppercase tracking-wide text-muted">
               RWY
             </span>{" "}
             {end}
           </span>
-          <span className="font-semibold text-slate-100"> {callsign}</span>
-          {secondary && <span className="text-slate-500"> · {secondary}</span>}
+          <span className="font-semibold text-on-surface"> {callsign}</span>
+          {secondary && <span className="text-muted"> · {secondary}</span>}
         </span>
       )}
       {time != null && (
@@ -92,17 +90,17 @@ function depRow(d: DepartureEvent, now: number): {
     return {
       secondary: "waiting",
       time: d.holdingSinceMs != null ? formatDuration((now - d.holdingSinceMs) / 1000) : "—",
-      timeClass: "text-amber-300",
+      timeClass: "text-status-departure",
     };
   }
   if (d.phase === "roll") {
     return {
       secondary: "cleared",
       time: d.waitedMs != null ? formatDuration(d.waitedMs / 1000) : "now",
-      timeClass: "text-emerald-300",
+      timeClass: "text-status-cleared",
     };
   }
-  return { secondary: "climbing", time: "↑", timeClass: "text-slate-400" };
+  return { secondary: "climbing", time: "↑", timeClass: "text-on-surface-variant" };
 }
 
 /**
@@ -146,19 +144,19 @@ export function TrafficBar({
   const extra = deps.length - shown.length;
 
   return (
-    <div className="w-full divide-y divide-slate-800 overflow-hidden rounded-xl border border-slate-800 bg-slate-900/70">
+    <div className="w-full divide-y divide-border overflow-hidden border border-border bg-surface-container-low">
       {soonest ? (
         <TrafficRow
-          icon="🛬"
+          icon={<LandingIcon size={16} />}
           end={soonest.end}
           callsign={soonest.callsign}
           secondary={
             flash ? (
               <span
-                className="animate-pulse font-semibold text-amber-300"
+                className="inline-flex animate-pulse items-center gap-1 font-semibold text-status-departure"
                 title="Approach gate (AGL from GNSS altitude — an estimate)"
               >
-                ◈ {flash}
+                <SquareIcon size={9} /> {flash}
               </span>
             ) : (
               secondaryOf(typeByHex.get(soonest.hex), routePair)
@@ -167,19 +165,19 @@ export function TrafficBar({
           time={stale ? "—" : formatEta(remaining!)}
           timeClass={
             flash
-              ? "text-amber-300"
+              ? "text-status-departure"
               : stale
-                ? "text-slate-500"
+                ? "text-muted"
                 : soon
-                  ? "text-emerald-300"
-                  : "text-slate-100"
+                  ? "text-status-cleared"
+                  : "text-on-surface"
           }
           highlight={!!flash}
           selected={soonest.hex === selectedHex}
           onClick={() => onSelect?.(soonest.hex)}
         />
       ) : (
-        <TrafficRow icon="🛬" muted="No inbound traffic" />
+        <TrafficRow icon={<LandingIcon size={16} />} muted="No inbound traffic" />
       )}
 
       {shown.map((d) => {
@@ -187,7 +185,7 @@ export function TrafficBar({
         return (
           <TrafficRow
             key={d.hex}
-            icon="🛫"
+            icon={<TakeoffIcon size={16} />}
             end={d.end}
             callsign={d.callsign}
             secondary={secondaryOf(typeByHex.get(d.hex), secondary)}
@@ -200,7 +198,7 @@ export function TrafficBar({
       })}
 
       {extra > 0 && (
-        <div className="px-3 py-1 text-[11px] text-slate-500">+{extra} more departing</div>
+        <div className="px-3 py-1 text-[11px] text-muted">+{extra} more departing</div>
       )}
     </div>
   );

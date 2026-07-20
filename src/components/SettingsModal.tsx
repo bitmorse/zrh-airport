@@ -3,6 +3,7 @@ import { PROVIDER_NAMES } from "../data/adsb";
 import { DEFAULT_SETTINGS, useSettings } from "../hooks/useSettings";
 import type { Units } from "../lib/format";
 import { Modal } from "./Modal";
+import { RefreshIcon } from "./icons";
 
 const NM_TO_KM = 1.852;
 const M_PER_NM = 1852;
@@ -81,17 +82,17 @@ export function SettingsModal({
   return (
     <Modal title="Settings" onClose={onClose}>
       <div className="flex flex-col gap-4 text-sm">
-        <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-800/40 px-3 py-2">
-          <span className="text-[11px] text-slate-400">
+        <div className="flex items-center justify-between gap-2 border border-border bg-surface-container px-3 py-2">
+          <span className="text-[11px] text-on-surface-variant">
             Data {ageSec == null ? "—" : `updated ${ageSec}s ago`}
             {isFetching ? " · refreshing" : ""}
           </span>
           <button
             onClick={onRefresh}
             disabled={isFetching}
-            className="shrink-0 rounded border border-slate-700 px-2 py-0.5 text-xs text-slate-200 hover:bg-slate-800 disabled:opacity-40"
+            className="flex shrink-0 items-center gap-1 border border-border px-2 py-0.5 text-xs uppercase text-on-surface-variant hover:bg-surface-container-high disabled:opacity-40"
           >
-            ⟳ Refresh
+            <RefreshIcon size={13} /> Refresh
           </button>
         </div>
 
@@ -148,11 +149,11 @@ export function SettingsModal({
             type="checkbox"
             checked={cockpitSim}
             onChange={(e) => setCockpitSim(e.target.checked)}
-            className="mt-0.5 accent-sky-500"
+            className="mt-0.5 accent-primary"
           />
           <span className="flex flex-col">
-            <span className="font-medium text-slate-200">Cockpit simulation</span>
-            <span className="text-[11px] text-slate-500">
+            <span className="font-medium text-on-surface">Cockpit simulation</span>
+            <span className="text-[11px] text-muted">
               Hear what the pilot would hear — from ADS-B we estimate and play the cockpit
               alerts (GPWS altitude callouts) for the flight you have selected. Mute/unmute
               from the header.
@@ -193,13 +194,13 @@ export function SettingsModal({
       <div className="mt-6 flex justify-end gap-2">
         <button
           onClick={onClose}
-          className="rounded-lg px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-800"
+          className="px-3 py-1.5 text-sm uppercase text-on-surface-variant hover:bg-surface-container"
         >
           Cancel
         </button>
         <button
           onClick={save}
-          className="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500"
+          className="border border-primary bg-primary px-3 py-1.5 text-sm font-medium uppercase text-on-primary hover:bg-primary-container"
         >
           Save
         </button>
@@ -209,7 +210,7 @@ export function SettingsModal({
 }
 
 const inputCls =
-  "w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-slate-100 outline-none focus:border-sky-500";
+  "w-full border border-border bg-surface-container-lowest px-3 py-1.5 text-on-surface outline-none focus:border-2 focus:border-primary";
 
 function clamp(n: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, n));
@@ -226,9 +227,9 @@ function Field({
 }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="font-medium text-slate-200">{label}</span>
+      <span className="font-medium text-on-surface">{label}</span>
       {children}
-      {hint && <span className="text-[11px] text-slate-500">{hint}</span>}
+      {hint && <span className="text-[11px] text-muted">{hint}</span>}
     </label>
   );
 }

@@ -2,12 +2,17 @@ import type { LatLon } from "../lib/geo";
 import { useAirport } from "../hooks/useAirport";
 import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
 import { projectToSvg, inViewport } from "../lib/projection";
+import { AIRPLANE_PATH } from "./icons";
 
+// Phase colours reference the shared design tokens (no inline hex).
 const PHASE_COLOR: Record<string, string> = {
-  approach: "#38bdf8", // sky — arriving
-  runway: "#e5e7eb", // near-white — on/over the runway
-  departure: "#fbbf24", // amber — climbing out
+  approach: "var(--color-status-arrival)", // arriving
+  runway: "var(--color-status-runway)", // on/over the runway
+  departure: "var(--color-status-departure)", // climbing out
 };
+const INACTIVE_COLOR = "var(--color-muted)";
+const SELECT_COLOR = "var(--color-status-arrival)";
+const LABEL_COLOR = "var(--color-on-surface)";
 
 /**
  * A single aircraft, drawn as a small plane glyph pointing along its track.
@@ -32,7 +37,7 @@ export function Plane({
   if (!inViewport(pt, 20)) return null;
 
   const heading = ac.track ?? 0;
-  const color = assignment ? PHASE_COLOR[assignment.phase] : "#64748b";
+  const color = assignment ? PHASE_COLOR[assignment.phase] : INACTIVE_COLOR;
   const active = assignment !== null;
   const show = active || selected;
   const label = ac.flight ?? ac.hex.toUpperCase();
@@ -53,26 +58,31 @@ export function Plane({
     >
       {/* Generous, invisible tap target. */}
       <circle r={10} fill="transparent" />
+      {/* Radar target: a sharp 1px square boundary (per design, not a circle). */}
       {selected && (
-        <circle r={9} fill="none" stroke="#38bdf8" strokeWidth={1.4} />
-      )}
-      <g transform={`rotate(${heading.toFixed(0)})`}>
-        {/* Plane glyph pointing "up" = north = track 0. */}
-        <path
-          d="M0,-7 L2.2,-1 L2.2,1.5 L0,0.5 L-2.2,1.5 L-2.2,-1 Z M0,0.5 L1.6,4 L1.6,5 L0,4.2 L-1.6,5 L-1.6,4 Z"
-          fill={color}
-          stroke="#0b1120"
-          strokeWidth={0.4}
+        <rect
+          x={-8}
+          y={-8}
+          width={16}
+          height={16}
+          fill="none"
+          stroke={SELECT_COLOR}
+          strokeWidth={1.4}
         />
+      )}
+      {/* Airplane glyph (viewBox 0 0 24 24, nose at +x): centre on the origin, scale
+          to ~13 units, and rotate so heading 0 (north) points up. */}
+      <g transform={`rotate(${(heading - 90).toFixed(0)}) translate(-6.5 -6.5) scale(0.54)`}>
+        <path d={AIRPLANE_PATH} fill={color} />
       </g>
       {show && (
         <text
-          x={6}
+          x={9}
           y={3}
           fontSize={7}
-          fill={selected ? "#e5e7eb" : color}
+          fill={selected ? LABEL_COLOR : color}
           className="select-none"
-          style={{ fontFamily: "ui-monospace, monospace" }}
+          style={{ fontFamily: "var(--font-mono)" }}
         >
           {label}
         </text>

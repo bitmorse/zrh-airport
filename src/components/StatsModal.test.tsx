@@ -61,10 +61,10 @@ describe("StatsModal", () => {
     expect(container.querySelector("svg[aria-label='Altitude trace']")).not.toBeNull();
 
     fireEvent.click(screen.getByText("SWR40L")); // → trajectory sheet
-    expect(screen.getByText("← Back")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Back/i })).toBeInTheDocument();
     expect(container.querySelector("svg[aria-label='Flight trajectory map']")).not.toBeNull();
 
-    fireEvent.click(screen.getByText("← Back"));
+    fireEvent.click(screen.getByRole("button", { name: /Back/i }));
     fireEvent.click(screen.getByRole("button", { name: "measurements" }));
     expect(screen.getByText("measurements-stub")).toBeInTheDocument();
   });

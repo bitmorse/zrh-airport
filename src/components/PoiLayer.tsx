@@ -40,11 +40,11 @@ export function PoiLayer() {
                 y={15}
                 textAnchor="middle"
                 fontSize={7.5}
-                fill="#cbd5e1"
-                stroke="#0b1120"
+                fill="var(--color-on-surface)"
+                stroke="var(--color-surface-container-lowest)"
                 strokeWidth={0.5}
                 paintOrder="stroke"
-                style={{ userSelect: "none", fontFamily: "ui-sans-serif, system-ui" }}
+                style={{ userSelect: "none", fontFamily: "var(--font-sans)" }}
               >
                 {p.label}
               </text>

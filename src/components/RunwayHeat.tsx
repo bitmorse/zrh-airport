@@ -42,14 +42,23 @@ function RunwayEndZone({
         strokeLinecap="butt"
       />
       <g transform={`translate(${outward.x.toFixed(1)} ${outward.y.toFixed(1)})`}>
-        <circle r={10.5} fill="#0b1120" stroke={color} strokeWidth={1.5} />
+        {/* Square end-ID badge (rectilinear, per design). */}
+        <rect
+          x={-10.5}
+          y={-10.5}
+          width={21}
+          height={21}
+          fill="var(--color-inverse-surface)"
+          stroke={color}
+          strokeWidth={1.5}
+        />
         <text
           textAnchor="middle"
           dominantBaseline="central"
           fontSize={9}
           fontWeight={700}
-          fill="#e5e7eb"
-          style={{ fontFamily: "ui-monospace, monospace" }}
+          fill="var(--color-inverse-on-surface)"
+          style={{ fontFamily: "var(--font-mono)" }}
         >
           {end.id}
         </text>
@@ -60,7 +69,7 @@ function RunwayEndZone({
             fontSize={8.5}
             fontWeight={700}
             fill={color}
-            style={{ fontFamily: "ui-monospace, monospace" }}
+            style={{ fontFamily: "var(--font-mono)" }}
           >
             {count}
           </text>
@@ -94,7 +103,7 @@ export function RunwayHeat({
         y1={t0.y}
         x2={t1.x}
         y2={t1.y}
-        stroke="#334155"
+        stroke="var(--color-outline)"
         strokeWidth={BASE_WIDTH}
         strokeLinecap="butt"
       />

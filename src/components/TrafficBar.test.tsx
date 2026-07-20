@@ -126,9 +126,9 @@ describe("TrafficBar", () => {
     );
     const row = screen.getByRole("button", { pressed: true });
     expect(row).toHaveTextContent("SWR40L");
-    // Neutral selection tint, not amber/emerald/sky.
-    expect(row.className).toMatch(/bg-slate-200/);
-    expect(row.className).not.toMatch(/bg-(amber|emerald|sky)/);
+    // Neutral surface selection tint, not a status/callout colour.
+    expect(row.className).toMatch(/bg-surface-container/);
+    expect(row.className).not.toMatch(/bg-status-(arrival|departure|cleared|alert)/);
   });
 
   it("caps the list at 3 departures and shows a '+N more' line", () => {

@@ -3,7 +3,8 @@ import type { LatLon } from "../lib/geo";
 import { metersToSvg, projectToSvg, SVG_H, SVG_W } from "../lib/projection";
 
 const PAD = 12;
-const BLUE = "#3b82f6";
+const USER = "var(--color-user)";
+const DOT_STROKE = "var(--color-surface-container-lowest)";
 
 /**
  * "You are here": the observer's GPS location on the map, with a heading cone (the
@@ -37,9 +38,9 @@ export function UserLayer({
           cx={raw.x}
           cy={raw.y}
           r={metersToSvg(radiusM)}
-          fill={BLUE}
+          fill={USER}
           fillOpacity={0.06}
-          stroke={BLUE}
+          stroke={USER}
           strokeOpacity={0.7}
           strokeWidth={1.5}
           strokeDasharray="4 3"
@@ -51,11 +52,11 @@ export function UserLayer({
         {/* Facing cone (compass heading), pointing north before rotation. */}
         {heading != null && !offMap && (
           <g transform={`rotate(${heading.toFixed(0)})`}>
-            <path d="M0,0 L-5,-17 L5,-17 Z" fill={BLUE} fillOpacity={0.35} />
+            <path d="M0,0 L-5,-17 L5,-17 Z" fill={USER} fillOpacity={0.35} />
           </g>
         )}
         {/* Location dot. */}
-        <circle r={5} fill={BLUE} stroke="#e5e7eb" strokeWidth={1.4} vectorEffect="non-scaling-stroke" />
+        <circle r={5} fill={USER} stroke={DOT_STROKE} strokeWidth={1.4} vectorEffect="non-scaling-stroke" />
       </g>
     </g>
   );

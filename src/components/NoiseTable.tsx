@@ -10,6 +10,23 @@ import {
 } from "../lib/format";
 import { buildNoiseMcap } from "../lib/mcap";
 import { blobToWav } from "../lib/wav";
+import {
+  CloseIcon,
+  DownloadIcon,
+  LandingIcon,
+  MyLocationIcon,
+  PlayIcon,
+  StopIcon,
+  TakeoffIcon,
+} from "./icons";
+
+/** The kind marker for a measurement row. */
+function KindIcon({ kind }: { kind: NoiseEvent["kind"] }) {
+  if (kind === "departure") return <TakeoffIcon size={13} />;
+  if (kind === "arrival") return <LandingIcon size={13} />;
+  if (kind === "geofence") return <MyLocationIcon size={13} />;
+  return null;
+}
 
 function hhmm(ts: number): string {
   const d = new Date(ts);
@@ -158,8 +175,8 @@ export function NoiseTable() {
   if (events.length === 0) {
     return (
       <div className="text-sm">
-        <h2 className="font-semibold text-slate-200">Measurements</h2>
-        <p className="mt-1 text-[11px] text-slate-500">
+        <h2 className="font-semibold uppercase tracking-wide text-on-surface">Measurements</h2>
+        <p className="mt-1 text-[11px] text-muted">
           No recordings yet. Enable the microphone above; clips are captured
           automatically when an aircraft enters your geofence (or around a nearby
           landing/takeoff) and listed here.
@@ -186,29 +203,29 @@ export function NoiseTable() {
   return (
     <div className="text-sm">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <h2 className="font-semibold text-slate-200">
-          Measurements <span className="text-xs text-slate-500">({events.length})</span>
+        <h2 className="font-semibold uppercase tracking-wide text-on-surface">
+          Measurements <span className="text-xs text-muted">({events.length})</span>
         </h2>
         <div className="flex gap-1">
           <button
             onClick={() => exportCsv(events)}
-            className="rounded border border-slate-700 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-800"
+            className="flex items-center gap-1 border border-border px-2 py-0.5 text-xs uppercase text-on-surface-variant hover:bg-surface-container"
           >
-            ⭳ CSV
+            <DownloadIcon size={13} /> CSV
           </button>
           <button
             onClick={exportMcap}
             disabled={exporting}
-            className="rounded border border-slate-700 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-800 disabled:opacity-50"
+            className="flex items-center gap-1 border border-border px-2 py-0.5 text-xs uppercase text-on-surface-variant hover:bg-surface-container disabled:opacity-50"
             title="Foxglove MCAP: audio + GPS + measurement on one timeline"
           >
-            {exporting ? "building…" : "⭳ MCAP"}
+            {exporting ? "building…" : <><DownloadIcon size={13} /> MCAP</>}
           </button>
         </div>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-left text-xs">
-          <thead className="text-slate-500">
+          <thead className="uppercase tracking-wide text-muted">
             <tr>
               <th className="pb-1 pr-2 font-medium">Time</th>
               <th className="pb-1 pr-2 font-medium">Aircraft</th>
@@ -219,45 +236,39 @@ export function NoiseTable() {
               <th className="pb-1 font-medium" />
             </tr>
           </thead>
-          <tbody className="text-slate-300">
+          <tbody className="text-on-surface-variant">
             {events.map((e) => (
-              <tr key={e.id} className="border-t border-slate-800">
+              <tr key={e.id} className="border-t border-border">
                 <td className="py-1.5 pr-2 tabular-nums">{hhmm(e.startedAt)}</td>
                 <td className="py-1.5 pr-2 font-mono">
-                  <div>
-                    {e.kind === "departure"
-                      ? "🛫"
-                      : e.kind === "arrival"
-                        ? "🛬"
-                        : e.kind === "geofence"
-                          ? "📍"
-                          : ""}{" "}
+                  <div className="flex items-center gap-1">
+                    <KindIcon kind={e.kind} />
                     {e.callsign ?? e.hex?.toUpperCase() ?? "—"}
                     {e.runwayEnd && (
-                      <span className="ml-1 text-sky-300">{e.runwayEnd}</span>
+                      <span className="ml-1 text-status-arrival">{e.runwayEnd}</span>
                     )}
                   </div>
                   {(e.aircraftType || e.registration) && (
-                    <div className="text-[10px] text-slate-500">
+                    <div className="text-[10px] text-muted">
                       {[e.aircraftType, e.registration].filter(Boolean).join(" · ")}
                     </div>
                   )}
                   {kinematicsLine(e, units) && (
-                    <div className="text-[10px] text-slate-500">
+                    <div className="text-[10px] text-muted">
                       {kinematicsLine(e, units)}
                     </div>
                   )}
                 </td>
-                <td className="py-1.5 pr-2 tabular-nums text-slate-400">
+                <td className="py-1.5 pr-2 tabular-nums text-on-surface-variant">
                   {e.lat != null && e.lon != null
                     ? `${e.lat.toFixed(3)}, ${e.lon.toFixed(3)}`
                     : "—"}
                 </td>
                 <td className="py-1.5 pr-2 tabular-nums">
-                  <span className="font-semibold text-slate-200">
+                  <span className="font-semibold text-on-surface">
                     {relLoudness(e.peakDbfs)}
                   </span>
-                  <span className="text-slate-500"> dB*</span>
+                  <span className="text-muted"> dB*</span>
                 </td>
                 <td className="py-1.5">
                   <div className="flex gap-1">
@@ -266,25 +277,25 @@ export function NoiseTable() {
                         <button
                           onClick={() => void play(e.id)}
                           aria-label={playingId === e.id ? "Stop playback" : "Play recording"}
-                          className="rounded px-1.5 text-slate-300 hover:bg-slate-800"
+                          className="px-1.5 text-on-surface-variant hover:bg-surface-container"
                         >
-                          {playingId === e.id ? "■" : "▶"}
+                          {playingId === e.id ? <StopIcon size={14} /> : <PlayIcon size={14} />}
                         </button>
                         <button
                           onClick={() => void download(e)}
                           aria-label="Download recording"
-                          className="rounded px-1.5 text-slate-300 hover:bg-slate-800"
+                          className="px-1.5 text-on-surface-variant hover:bg-surface-container"
                         >
-                          ⭳
+                          <DownloadIcon size={14} />
                         </button>
                       </>
                     )}
                     <button
                       onClick={() => void remove(e.id)}
                       aria-label="Delete measurement"
-                      className="rounded px-1.5 text-slate-500 hover:bg-slate-800 hover:text-red-300"
+                      className="px-1.5 text-muted hover:bg-surface-container hover:text-status-alert"
                     >
-                      ✕
+                      <CloseIcon size={14} />
                     </button>
                   </div>
                 </td>
@@ -293,10 +304,11 @@ export function NoiseTable() {
           </tbody>
         </table>
       </div>
-      <p className="mt-2 text-[10px] text-slate-600">
+      <p className="mt-2 text-[10px] text-muted">
         * uncalibrated relative loudness (0–100 from dBFS), not certified SPL. While
         the mic is recording, in-app playback may be quiet or routed to the earpiece
-        (a phone-OS limit) — use ⭳ to download a clip as WAV and play it at full volume.
+        (a phone-OS limit) — use the download button to save a clip as WAV and play it
+        at full volume.
       </p>
     </div>
   );

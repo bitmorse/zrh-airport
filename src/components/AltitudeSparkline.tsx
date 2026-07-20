@@ -8,7 +8,7 @@ const PAD = 2;
 export function AltitudeSparkline({ trajectory }: { trajectory: TrailPoint[] }) {
   const alts = trajectory.map((p) => p.alt).filter((a): a is number => a != null);
   if (alts.length < 2) {
-    return <span className="text-[10px] text-slate-600">no altitude</span>;
+    return <span className="text-[10px] text-muted">no altitude</span>;
   }
   const min = Math.min(...alts);
   const max = Math.max(...alts);
@@ -32,7 +32,7 @@ export function AltitudeSparkline({ trajectory }: { trajectory: TrailPoint[] }) 
       <path
         d={d}
         fill="none"
-        stroke="#38bdf8"
+        stroke="var(--color-status-arrival)"
         strokeWidth={1.5}
         strokeLinejoin="round"
         vectorEffect="non-scaling-stroke"

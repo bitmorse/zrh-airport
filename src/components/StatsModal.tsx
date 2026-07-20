@@ -5,6 +5,7 @@ import { AltitudeSparkline } from "./AltitudeSparkline";
 import { Modal } from "./Modal";
 import { NoiseTable } from "./NoiseTable";
 import { TrajectoryMap } from "./TrajectoryMap";
+import { BackIcon, CloseIcon, LandingIcon, MyLocationIcon, TakeoffIcon } from "./icons";
 
 function hhmm(ts: number): string {
   const d = new Date(ts);
@@ -30,15 +31,17 @@ export function StatsModal({ onClose }: { onClose: () => void }) {
         <FlightSheet flight={sheet} onBack={() => setSheetId(null)} />
       ) : (
         <>
-          <div className="mb-4 flex w-fit overflow-hidden rounded-md border border-slate-700 text-xs">
+          <div className="mb-4 flex w-fit overflow-hidden border border-border text-xs">
             {(["watched", "measurements"] as Tab[]).map((t) => (
               <button
                 key={t}
                 type="button"
                 onClick={() => setTab(t)}
                 aria-pressed={tab === t}
-                className={`px-3 py-1 capitalize ${
-                  tab === t ? "bg-slate-700 text-slate-100" : "text-slate-400 hover:bg-slate-800"
+                className={`px-3 py-1 uppercase ${
+                  tab === t
+                    ? "bg-primary text-on-primary"
+                    : "text-on-surface-variant hover:bg-surface-container"
                 }`}
               >
                 {t}
@@ -73,26 +76,26 @@ function WatchedTab({
   return (
     <div className="flex flex-col gap-3 text-sm">
       <div className="flex items-baseline gap-2">
-        <span className="text-3xl font-bold tabular-nums text-sky-300">{points}</span>
-        <span className="text-slate-400">points</span>
+        <span className="text-3xl font-bold tabular-nums text-status-arrival">{points}</span>
+        <span className="text-on-surface-variant">points</span>
       </div>
-      <p className="text-[11px] leading-relaxed text-slate-500">
+      <p className="text-[11px] leading-relaxed text-muted">
         Watch a flight to completion to score: select a plane and keep it selected until it
         fully lands or takes off. You earn double when you also captured a GPS-tagged
         recording of it.
       </p>
 
       {watched.length > 0 && (
-        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-400">
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-on-surface-variant">
           <span>{watched.length} flights</span>
-          <span>🛬 {landings} landings</span>
-          <span>🛫 {takeoffs} takeoffs</span>
-          <span>📍 {doubles} with GPS audio</span>
+          <span className="inline-flex items-center gap-1"><LandingIcon size={13} /> {landings} landings</span>
+          <span className="inline-flex items-center gap-1"><TakeoffIcon size={13} /> {takeoffs} takeoffs</span>
+          <span className="inline-flex items-center gap-1"><MyLocationIcon size={13} /> {doubles} with GPS audio</span>
         </div>
       )}
 
       {watched.length === 0 ? (
-        <p className="text-xs text-slate-600">
+        <p className="text-xs text-muted">
           No flights watched yet. Tap a plane, keep it selected, and wait for it to land or
           take off.
         </p>
@@ -101,25 +104,31 @@ function WatchedTab({
           {watched.map((w) => (
             <li
               key={w.id}
-              className="flex items-center gap-2 rounded-lg bg-slate-800/40 px-2.5 py-1.5"
+              className="flex items-center gap-2 bg-surface-container px-2.5 py-1.5"
             >
               <button
                 type="button"
                 onClick={() => onOpen(w.id)}
                 className="flex min-w-0 flex-1 items-center gap-2 text-left hover:opacity-90"
               >
-                <span aria-hidden>{w.kind === "landing" ? "🛬" : "🛫"}</span>
+                <span aria-hidden className="text-on-surface-variant">
+                  {w.kind === "landing" ? <LandingIcon size={14} /> : <TakeoffIcon size={14} />}
+                </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-xs">
-                    <span className="font-semibold text-slate-100">
+                    <span className="font-semibold text-on-surface">
                       {w.callsign ?? w.hex.toUpperCase()}
                     </span>
-                    {w.type && <span className="text-slate-500"> · {w.type}</span>}
-                    {w.end && <span className="text-sky-300"> · {w.end}</span>}
+                    {w.type && <span className="text-muted"> · {w.type}</span>}
+                    {w.end && <span className="text-status-arrival"> · {w.end}</span>}
                   </span>
-                  <span className="block text-[10px] text-slate-500">
+                  <span className="flex items-center text-[10px] text-muted">
                     {hhmm(w.completedAt)}
-                    {w.points === 2 && <span className="text-amber-300"> · 2× 📍</span>}
+                    {w.points === 2 && (
+                      <span className="ml-1 inline-flex items-center gap-0.5 text-status-departure">
+                        · 2× <MyLocationIcon size={11} />
+                      </span>
+                    )}
                   </span>
                 </span>
                 <span className="w-24 shrink-0">
@@ -130,9 +139,9 @@ function WatchedTab({
                 type="button"
                 onClick={() => void onRemove(w.id)}
                 aria-label="Delete watched flight"
-                className="shrink-0 rounded px-1.5 text-slate-500 hover:bg-slate-800 hover:text-red-300"
+                className="shrink-0 px-1.5 text-muted hover:bg-surface-container-high hover:text-status-alert"
               >
-                ✕
+                <CloseIcon size={14} />
               </button>
             </li>
           ))}
@@ -150,16 +159,25 @@ function FlightSheet({ flight, onBack }: { flight: WatchedFlight; onBack: () => 
 
   return (
     <div className="flex flex-col gap-3 text-sm">
-      <button type="button" onClick={onBack} className="w-fit text-xs text-sky-300 hover:underline">
-        ← Back
+      <button
+        type="button"
+        onClick={onBack}
+        className="flex w-fit items-center gap-1 text-xs uppercase text-status-arrival hover:underline"
+      >
+        <BackIcon size={13} /> Back
       </button>
       <div>
-        <div className="font-semibold text-slate-100">
-          {flight.kind === "landing" ? "🛬" : "🛫"} {flight.callsign ?? flight.hex.toUpperCase()}
-          {flight.type && <span className="text-slate-500"> · {flight.type}</span>}
-          {flight.points === 2 && <span className="ml-1 text-amber-300">2× 📍</span>}
+        <div className="flex items-center gap-1 font-semibold text-on-surface">
+          {flight.kind === "landing" ? <LandingIcon size={15} /> : <TakeoffIcon size={15} />}{" "}
+          {flight.callsign ?? flight.hex.toUpperCase()}
+          {flight.type && <span className="text-muted"> · {flight.type}</span>}
+          {flight.points === 2 && (
+            <span className="ml-1 inline-flex items-center gap-0.5 text-status-departure">
+              2× <MyLocationIcon size={12} />
+            </span>
+          )}
         </div>
-        <div className="text-[11px] text-slate-500">
+        <div className="text-[11px] text-muted">
           {hhmm(flight.completedAt)}
           {flight.end && ` · RWY ${flight.end}`}
           {peak != null && ` · peak ${Math.round(peak).toLocaleString()} ft`}

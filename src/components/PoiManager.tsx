@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { useAirport } from "../hooks/useAirport";
 import { usePois } from "../hooks/usePois";
+import { CloseIcon, MyLocationIcon } from "./icons";
 
 const QUICK_EMOJI = ["📍", "⭐", "🎯", "✈️", "🏠", "📷", "⚠️", "🚗", "🅿️", "❤️"];
 
 const inputCls =
-  "w-full rounded-md border border-slate-700 bg-slate-800 px-2 py-1 text-slate-100 outline-none focus:border-sky-500";
+  "w-full border border-border bg-surface-container-lowest px-2 py-1 text-on-surface outline-none focus:border-2 focus:border-primary";
 
 /**
  * Add / list / remove regions of interest. Each ROI is a lat/lon plus an emoji
@@ -65,8 +66,8 @@ export function PoiManager() {
   return (
     <div className="flex flex-col gap-3">
       <div>
-        <h2 className="text-sm font-semibold text-slate-200">Regions of interest</h2>
-        <p className="text-[11px] text-slate-500">pin a lat/lon with an emoji</p>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-on-surface">Regions of interest</h2>
+        <p className="text-[11px] text-muted">pin a lat/lon with an emoji</p>
       </div>
 
       {pois.length > 0 && (
@@ -74,12 +75,12 @@ export function PoiManager() {
           {pois.map((p) => (
             <li
               key={p.id}
-              className="flex items-center gap-2 rounded-md bg-slate-800/40 px-2 py-1 text-xs"
+              className="flex items-center gap-2 bg-surface-container px-2 py-1 text-xs"
             >
               <span className="text-base leading-none">{p.emoji}</span>
-              <span className="min-w-0 flex-1 truncate text-slate-300">
-                {p.label || <span className="text-slate-500">unnamed</span>}
-                <span className="ml-1 text-slate-500">
+              <span className="min-w-0 flex-1 truncate text-on-surface-variant">
+                {p.label || <span className="text-muted">unnamed</span>}
+                <span className="ml-1 text-muted">
                   {p.lat.toFixed(3)}, {p.lon.toFixed(3)}
                 </span>
               </span>
@@ -87,9 +88,9 @@ export function PoiManager() {
                 type="button"
                 onClick={() => remove(p.id)}
                 aria-label={`Remove ${p.label || "region"}`}
-                className="shrink-0 rounded px-1 text-slate-500 hover:bg-slate-700 hover:text-slate-200"
+                className="shrink-0 px-1 text-muted hover:bg-surface-container-high hover:text-on-surface"
               >
-                ✕
+                <CloseIcon size={13} />
               </button>
             </li>
           ))}
@@ -104,8 +105,8 @@ export function PoiManager() {
               key={e}
               onClick={() => setEmoji(e)}
               aria-label={`Use ${e}`}
-              className={`h-7 w-7 rounded text-base leading-none ${
-                emoji === e ? "bg-sky-600/40 ring-1 ring-sky-400" : "hover:bg-slate-800"
+              className={`h-7 w-7 text-base leading-none ${
+                emoji === e ? "bg-primary ring-1 ring-primary" : "hover:bg-surface-container"
               }`}
             >
               {e}
@@ -116,7 +117,7 @@ export function PoiManager() {
             onChange={(ev) => setEmoji(ev.target.value)}
             aria-label="Custom emoji"
             maxLength={4}
-            className="h-7 w-10 rounded border border-slate-700 bg-slate-800 text-center text-base outline-none focus:border-sky-500"
+            className="h-7 w-10 border border-border bg-surface-container-lowest text-center text-base outline-none focus:border-2 focus:border-primary"
           />
         </div>
 
@@ -143,9 +144,15 @@ export function PoiManager() {
           type="button"
           onClick={useMyLocation}
           disabled={locating}
-          className="flex items-center justify-center gap-1.5 rounded-md border border-slate-700 bg-slate-800/60 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-800 disabled:opacity-50"
+          className="flex items-center justify-center gap-1.5 border border-border bg-surface-container px-3 py-1.5 text-xs text-on-surface-variant hover:bg-surface-container-high disabled:opacity-50"
         >
-          {locating ? "Locating…" : "📍 Use my location"}
+          {locating ? (
+            "Locating…"
+          ) : (
+            <>
+              <MyLocationIcon size={13} /> Use my location
+            </>
+          )}
         </button>
 
         <input
@@ -157,11 +164,11 @@ export function PoiManager() {
           className={inputCls}
         />
 
-        {error && <div className="text-[11px] text-red-400">{error}</div>}
+        {error && <div className="text-[11px] text-status-alert">{error}</div>}
 
         <button
           type="submit"
-          className="rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500"
+          className="border border-primary bg-primary px-3 py-1.5 text-sm font-medium uppercase text-on-primary hover:bg-primary-container"
         >
           Add region
         </button>

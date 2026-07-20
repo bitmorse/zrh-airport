@@ -1,9 +1,17 @@
 import type { GeoFix } from "../hooks/useGeoWatch";
 import type { NoiseRecorder as Recorder } from "../hooks/useNoiseRecorder";
+import { MicOnIcon, MyLocationIcon, SquareIcon, StopIcon } from "./icons";
 
 /** dBFS (≤0) → 0..100% meter width (−60 dBFS floor). */
 function meterPct(dbfs: number): number {
   return Math.max(0, Math.min(100, ((dbfs + 60) / 60) * 100));
+}
+
+/** Flat VU colour by level (no gradient): quiet green → loud red. */
+function meterColor(pct: number): string {
+  if (pct >= 90) return "var(--color-status-alert)";
+  if (pct >= 66) return "var(--color-status-departure)";
+  return "var(--color-status-cleared)";
 }
 
 /**
@@ -33,11 +41,13 @@ export function NoiseRecorder({
     }
   }
 
+  const pct = meterPct(level);
+
   return (
     <div className="flex flex-col gap-2.5 text-sm">
       <div>
-        <h2 className="font-semibold text-slate-200">Aircraft noise</h2>
-        <p className="text-[11px] text-slate-500">
+        <h2 className="font-semibold uppercase tracking-wide text-on-surface">Aircraft noise</h2>
+        <p className="text-[11px] text-muted">
           auto-records aircraft entering your GPS geofence · landings/takeoffs as a
           fallback · relative loudness (uncalibrated)
         </p>
@@ -46,57 +56,66 @@ export function NoiseRecorder({
       {!isArmed ? (
         <button
           onClick={() => void arm()}
-          className="w-fit rounded-md bg-sky-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-sky-500"
+          className="flex w-fit items-center gap-1.5 bg-primary px-2.5 py-1 text-xs font-medium uppercase text-on-primary hover:bg-primary-container"
         >
-          🎤 Enable mic
+          <MicOnIcon size={14} /> Enable mic
         </button>
       ) : (
         <>
           <div className="flex items-center gap-2">
             <span
-              className={`h-2 w-2 shrink-0 rounded-full ${
-                isRecording ? "animate-pulse bg-red-500" : "bg-emerald-500"
+              className={`h-2 w-2 shrink-0 ${
+                isRecording ? "animate-pulse bg-status-alert" : "bg-status-cleared"
               }`}
             />
-            <span className="text-xs text-slate-300">
+            <span className="text-xs text-on-surface-variant">
               {isRecording
                 ? `Recording ${activeCallsign ?? "…"}`
                 : "Listening — records aircraft inside your geofence"}
             </span>
           </div>
 
-          {/* Live level meter. */}
-          <div className="h-2 w-full overflow-hidden rounded bg-slate-800">
+          {/* Live level meter — flat fill, colour by level (no gradient). */}
+          <div className="h-2 w-full overflow-hidden bg-surface-container-high">
             <div
-              className="h-full rounded bg-gradient-to-r from-emerald-500 via-amber-400 to-red-500 transition-[width] duration-75 ease-out"
-              style={{ width: `${meterPct(level).toFixed(0)}%` }}
+              className="h-full transition-[width] duration-75 ease-out"
+              style={{ width: `${pct.toFixed(0)}%`, background: meterColor(pct) }}
             />
           </div>
 
-          <div className="text-[11px] text-slate-500">
+          <div className="flex items-center gap-1 text-[11px] text-muted">
+            <MyLocationIcon size={12} />
             {position
-              ? `📍 ${position.lat.toFixed(5)}, ${position.lon.toFixed(5)}${
+              ? `${position.lat.toFixed(5)}, ${position.lon.toFixed(5)}${
                   position.accuracyM != null
                     ? ` (±${Math.round(position.accuracyM)} m)`
                     : ""
                 }`
-              : "📍 acquiring GPS…"}
+              : "acquiring GPS…"}
           </div>
 
           <div className="flex items-center gap-2">
             <button
               onClick={() => void manualToggle()}
-              className={`rounded-md px-2.5 py-1 text-xs font-medium ${
+              className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium uppercase ${
                 isRecording
-                  ? "bg-red-600 text-white hover:bg-red-500"
-                  : "border border-slate-700 text-slate-200 hover:bg-slate-800"
+                  ? "bg-status-alert text-on-primary hover:bg-error"
+                  : "border border-border text-on-surface-variant hover:bg-surface-container"
               }`}
             >
-              {isRecording ? "■ Stop" : "● Rec"}
+              {isRecording ? (
+                <>
+                  <StopIcon size={12} /> Stop
+                </>
+              ) : (
+                <>
+                  <SquareIcon size={12} /> Rec
+                </>
+              )}
             </button>
             <button
               onClick={disarm}
-              className="rounded-md border border-slate-700 px-2.5 py-1 text-xs text-slate-300 hover:bg-slate-800"
+              className="border border-border px-2.5 py-1 text-xs uppercase text-on-surface-variant hover:bg-surface-container"
             >
               Disable
             </button>
@@ -104,7 +123,7 @@ export function NoiseRecorder({
         </>
       )}
 
-      {error && <div className="text-[11px] text-red-400">{error}</div>}
+      {error && <div className="text-[11px] text-status-alert">{error}</div>}
     </div>
   );
 }

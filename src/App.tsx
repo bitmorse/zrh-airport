@@ -30,6 +30,14 @@ import { useNow } from "./hooks/useNow";
 import { useSettings } from "./hooks/useSettings";
 import { projectToSvg } from "./lib/projection";
 import { DEFAULT_ZOOM, isPointVisible, normalizeView } from "./lib/viewport";
+import {
+  ChevronDownIcon,
+  MicOnIcon,
+  PlaneIcon,
+  SettingsIcon,
+  SoundOffIcon,
+  SoundOnIcon,
+} from "./components/icons";
 
 export default function App() {
   const [settings, updateSettings] = useSettings();
@@ -248,13 +256,13 @@ export default function App() {
 
   return (
     <AirportContext.Provider value={airport}>
-    <div className="flex min-h-dvh flex-col bg-slate-950 text-slate-100">
-      <header className="border-b border-slate-800 px-4 py-2.5">
+    <div className="flex min-h-dvh flex-col bg-surface text-on-surface">
+      <header className="border-b border-border px-4 py-2.5">
         <div className="mx-auto flex w-full max-w-[1800px] items-center justify-between gap-3">
         <div className="relative">
           <button
             onClick={() => setAirportMenu((o) => !o)}
-            className="flex items-center gap-1.5 rounded-lg px-1 py-0.5 text-slate-100 hover:bg-slate-800"
+            className="flex items-center gap-1.5 px-1 py-0.5 text-on-surface hover:bg-surface-container"
             aria-haspopup="listbox"
             aria-expanded={airportMenu}
             title={`${airport.config.name} (${airport.config.icao}) · live runway traffic from open ADS-B · tap to switch airport`}
@@ -262,9 +270,7 @@ export default function App() {
             <span className="font-brand text-2xl font-black leading-none tracking-[0.18em]">
               {airport.config.iata}
             </span>
-            <span className="text-sm text-slate-500" aria-hidden>
-              ▾
-            </span>
+            <ChevronDownIcon className="text-muted" size={14} />
           </button>
           {airportMenu && (
             <>
@@ -274,7 +280,7 @@ export default function App() {
                 onClick={() => setAirportMenu(false)}
               />
               <ul
-                className="absolute left-0 top-full z-20 mt-1 min-w-44 overflow-hidden rounded-lg border border-slate-700 bg-slate-900 py-1 shadow-2xl"
+                className="absolute left-0 top-full z-20 mt-1 min-w-44 overflow-hidden border border-border bg-surface-container-lowest py-1"
                 role="listbox"
               >
                 {AIRPORTS.map((a) => (
@@ -283,14 +289,14 @@ export default function App() {
                       onClick={() => switchAirport(a.icao)}
                       role="option"
                       aria-selected={a.icao === airport.config.icao}
-                      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-slate-800 ${
-                        a.icao === airport.config.icao ? "bg-slate-800/60" : ""
+                      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-surface-container ${
+                        a.icao === airport.config.icao ? "bg-surface-container" : ""
                       }`}
                     >
-                      <span className="font-brand text-base font-black tracking-wider text-slate-100">
+                      <span className="font-brand text-base font-black tracking-wider text-on-surface">
                         {a.iata}
                       </span>
-                      <span className="text-xs text-slate-400">{a.name}</span>
+                      <span className="text-xs text-on-surface-variant">{a.name}</span>
                     </button>
                   </li>
                 ))}
@@ -299,16 +305,16 @@ export default function App() {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <span className="mr-1 hidden text-[11px] text-slate-500 sm:block">
+          <span className="mr-1 hidden text-[11px] uppercase tracking-wide text-muted sm:block">
             {traffic.provider ?? "—"} · {activeCount}/{traffic.aircraft.length} on runways
           </span>
           <button
             onClick={() => setShowStats(true)}
             aria-label="Flights watched"
             title={`Flights watched · ${score} points`}
-            className="flex items-center gap-1 rounded-lg border border-slate-700 px-2 py-1.5 text-slate-200 hover:bg-slate-800"
+            className="flex items-center gap-1 border border-border px-2 py-1.5 text-on-surface-variant hover:bg-surface-container"
           >
-            <span aria-hidden>✈</span>
+            <PlaneIcon size={16} />
             <span className="text-xs font-semibold tabular-nums">{score}</span>
           </button>
           <button
@@ -325,42 +331,42 @@ export default function App() {
                   ? "Cockpit audio muted — tap to unmute"
                   : "Mute cockpit audio"
             }
-            className={`rounded-lg border p-1.5 ${
+            className={`border p-1.5 ${
               recorder.isRecording
-                ? "cursor-not-allowed border-slate-700 text-slate-500 opacity-50"
+                ? "cursor-not-allowed border-border text-muted opacity-50"
                 : effectiveMuted
-                  ? "border-slate-700 text-slate-400 hover:bg-slate-800"
-                  : "border-sky-500 bg-sky-600/20 text-sky-200 hover:bg-slate-800"
+                  ? "border-border text-on-surface-variant hover:bg-surface-container"
+                  : "border-primary bg-primary text-on-primary hover:bg-primary-container"
             }`}
           >
-            {effectiveMuted ? "🔇" : "🔊"}
+            {effectiveMuted ? <SoundOffIcon size={18} /> : <SoundOnIcon size={18} />}
           </button>
           <button
             onClick={() => setShowRecorder(true)}
             aria-label="Microphone"
             title="Microphone · noise recording"
-            className={`rounded-lg border p-1.5 hover:bg-slate-800 ${
+            className={`border p-1.5 hover:bg-surface-container ${
               recorder.isRecording
-                ? "border-red-500 bg-red-600/20 text-red-200"
-                : "border-slate-700 text-slate-200"
+                ? "border-status-alert bg-status-alert text-on-primary"
+                : "border-border text-on-surface-variant"
             }`}
           >
-            🎤
+            <MicOnIcon size={18} />
           </button>
           <button
             onClick={() => setShowSettings(true)}
-            className="rounded-lg border border-slate-700 p-1.5 text-slate-200 hover:bg-slate-800"
+            className="border border-border p-1.5 text-on-surface-variant hover:bg-surface-container"
             aria-label="Open settings"
             title="Settings"
           >
-            ⚙︎
+            <SettingsIcon size={18} />
           </button>
         </div>
         </div>
       </header>
 
       {micHint && (
-        <div className="fixed right-4 top-14 z-40 rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-200 shadow-lg">
+        <div className="fixed right-4 top-14 z-40 border border-border bg-surface-container-lowest px-3 py-1.5 text-xs text-on-surface-variant">
           Turn off recording first to hear cockpit audio.
         </div>
       )}
@@ -381,7 +387,7 @@ export default function App() {
       </div>
 
       <main className="mx-auto flex w-full max-w-[1800px] flex-1 flex-col gap-4 p-4 lg:flex-row lg:items-start lg:justify-center">
-        <section className="relative aspect-[28/25] w-full overflow-hidden rounded-xl border border-slate-800 bg-slate-900/40 lg:h-[calc(100dvh-6rem)] lg:w-auto lg:min-w-0 lg:flex-none">
+        <section className="relative aspect-[28/25] w-full overflow-hidden border border-border bg-surface-container-lowest lg:h-[calc(100dvh-6rem)] lg:w-auto lg:min-w-0 lg:flex-none">
           <AirportSvg
             aircraft={traffic.aircraft}
             counts={traffic.counts}
@@ -414,7 +420,7 @@ export default function App() {
             />
           </div>
 
-          <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+          <div className="border border-border bg-surface-container-low p-4">
             <FlightDetails
               item={selectedAircraft}
               lastUpdated={traffic.lastUpdated}
@@ -423,7 +429,7 @@ export default function App() {
             />
           </div>
 
-          <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+          <div className="border border-border bg-surface-container-low p-4">
             <MovementsByHour
               log={traffic.movementLog}
               timeZone={airport.config.timeZone}
@@ -431,7 +437,7 @@ export default function App() {
             />
           </div>
 
-          <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+          <div className="border border-border bg-surface-container-low p-4">
             <AtcPanel
               arrivals={arrivals}
               departures={traffic.departures}
@@ -440,27 +446,27 @@ export default function App() {
             />
           </div>
 
-          <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+          <div className="border border-border bg-surface-container-low p-4">
             <PoiManager />
           </div>
 
-          <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+          <div className="border border-border bg-surface-container-low p-4">
             <Legend />
           </div>
 
           {traffic.isError && !traffic.lastUpdated && (
-            <div className="rounded-xl border border-red-900 bg-red-950/50 p-4 text-sm text-red-200">
+            <div className="border border-status-alert bg-error-container p-4 text-sm text-on-error-container">
               Couldn’t reach any ADS-B provider. Retrying…
-              <div className="mt-1 text-xs text-red-300/70">
+              <div className="mt-1 text-xs text-on-error-container">
                 {traffic.error?.message}
               </div>
             </div>
           )}
 
-          <p className="px-1 text-[11px] leading-relaxed text-slate-500">
+          <p className="px-1 text-[11px] leading-relaxed text-muted">
             Runway use, arrivals and departures are inferred from each aircraft’s
             position, track and altitude — not an official airport feed. Traffic from{" "}
-            <span className="text-slate-400">adsb.lol / adsb.fi / airplanes.live</span>,
+            <span className="text-on-surface-variant">adsb.lol / adsb.fi / airplanes.live</span>,
             routes from adsbdb. Everything runs in your browser and your settings, pins
             and recordings stay on your device.
           </p>

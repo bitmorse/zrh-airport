@@ -14,7 +14,7 @@ const PAD = 16;
 export function TrajectoryMap({ trajectory }: { trajectory: TrailPoint[] }) {
   const { strips } = useAirport();
   if (trajectory.length < 2) {
-    return <p className="text-xs text-slate-500">No trajectory recorded for this flight.</p>;
+    return <p className="text-xs text-muted">No trajectory recorded for this flight.</p>;
   }
   const { pts, project } = fitPath(trajectory, W, H, PAD);
   const d = pts
@@ -28,7 +28,7 @@ export function TrajectoryMap({ trajectory }: { trajectory: TrailPoint[] }) {
   return (
     <svg
       viewBox={`0 0 ${W} ${H}`}
-      className="w-full rounded-md border border-slate-800 bg-slate-950"
+      className="w-full border border-border bg-surface-container-lowest"
       role="img"
       aria-label="Flight trajectory map"
     >
@@ -43,7 +43,7 @@ export function TrajectoryMap({ trajectory }: { trajectory: TrailPoint[] }) {
             y1={a.y}
             x2={b.x}
             y2={b.y}
-            stroke="#334155"
+            stroke="var(--color-outline-variant)"
             strokeWidth={3}
             strokeLinecap="round"
           />
@@ -52,14 +52,14 @@ export function TrajectoryMap({ trajectory }: { trajectory: TrailPoint[] }) {
       <path
         d={d}
         fill="none"
-        stroke="#38bdf8"
+        stroke="var(--color-status-arrival)"
         strokeWidth={2}
         strokeLinejoin="round"
         strokeLinecap="round"
         vectorEffect="non-scaling-stroke"
       />
-      <circle cx={start.x} cy={start.y} r={3.5} fill="#22c55e" />
-      <circle cx={end.x} cy={end.y} r={3.5} fill="#ef4444" />
+      <rect x={start.x - 3.5} y={start.y - 3.5} width={7} height={7} fill="var(--color-status-cleared)" />
+      <rect x={end.x - 3.5} y={end.y - 3.5} width={7} height={7} fill="var(--color-status-alert)" />
     </svg>
   );
 }

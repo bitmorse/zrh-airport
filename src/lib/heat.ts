@@ -1,53 +1,24 @@
 /**
- * Traffic heat scale: grey (no traffic) → amber → orange → red (busy). Used both
- * for filling runway ends and for drawing the legend gradient.
+ * Traffic heat scale — four discrete steps (no gradient, per DESIGN_1.md):
+ * quiet grey → amber → orange → busy red. The actual colours live as design tokens
+ * (`--color-heat-0..3`); this module only maps a count to the right step. Used both
+ * for filling runway ends and for the legend's stepped swatches.
  */
 
-type RGB = [number, number, number];
+/** The four scale steps, coldest → hottest, as token references. */
+export const HEAT_STEPS = [
+  "var(--color-heat-0)", // no / low traffic
+  "var(--color-heat-1)", // some
+  "var(--color-heat-2)", // busy
+  "var(--color-heat-3)", // very busy
+] as const;
 
-const STOPS: { t: number; c: RGB }[] = [
-  { t: 0.0, c: [71, 85, 105] }, // slate grey — no traffic
-  { t: 0.33, c: [234, 179, 8] }, // amber
-  { t: 0.66, c: [249, 115, 22] }, // orange
-  { t: 1.0, c: [220, 38, 38] }, // red — busy
-];
-
-/** Count at which the scale saturates to full red. */
+/** Count at which the scale saturates to the hottest step. */
 export const HEAT_MAX = 8;
 
-function lerp(a: number, b: number, t: number): number {
-  return a + (b - a) * t;
-}
-
-function colorAt(fraction: number): RGB {
-  const f = Math.max(0, Math.min(1, fraction));
-  for (let i = 1; i < STOPS.length; i++) {
-    const prev = STOPS[i - 1];
-    const next = STOPS[i];
-    if (f <= next.t) {
-      const local = (f - prev.t) / (next.t - prev.t || 1);
-      return [
-        Math.round(lerp(prev.c[0], next.c[0], local)),
-        Math.round(lerp(prev.c[1], next.c[1], local)),
-        Math.round(lerp(prev.c[2], next.c[2], local)),
-      ];
-    }
-  }
-  return STOPS[STOPS.length - 1].c;
-}
-
+/** Pick the discrete heat step for a distinct-aircraft count. */
 export function heatColor(count: number, max = HEAT_MAX): string {
-  const [r, g, b] = colorAt(count / max);
-  return `rgb(${r} ${g} ${b})`;
-}
-
-/** CSS gradient stops for the legend bar. */
-export function heatGradientCss(steps = 12): string {
-  const parts: string[] = [];
-  for (let i = 0; i <= steps; i++) {
-    const f = i / steps;
-    const [r, g, b] = colorAt(f);
-    parts.push(`rgb(${r} ${g} ${b}) ${Math.round(f * 100)}%`);
-  }
-  return `linear-gradient(90deg, ${parts.join(", ")})`;
+  const f = Math.max(0, Math.min(1, count / max));
+  const idx = Math.min(HEAT_STEPS.length - 1, Math.floor(f * HEAT_STEPS.length));
+  return HEAT_STEPS[idx];
 }

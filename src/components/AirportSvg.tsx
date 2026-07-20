@@ -9,6 +9,7 @@ import { PoiLayer } from "./PoiLayer";
 import { RunwayHeat } from "./RunwayHeat";
 import { TrailLayer } from "./TrailLayer";
 import { UserLayer } from "./UserLayer";
+import { MyLocationIcon, RefreshIcon, ZoomInIcon, ZoomOutIcon } from "./icons";
 
 function AirportSvgImpl({
   aircraft,
@@ -78,14 +79,14 @@ function AirportSvgImpl({
         aria-label={`Schematic map of ${airport.config.name} runways with live traffic`}
         {...bind}
       >
-      <defs>
-        <radialGradient id="field" cx="50%" cy="50%" r="70%">
-          <stop offset="0%" stopColor="#0f172a" />
-          <stop offset="100%" stopColor="#0b1120" />
-        </radialGradient>
-      </defs>
-
-      <rect x={0} y={0} width={SVG_W} height={SVG_H} fill="url(#field)" />
+      {/* Radar scope — the cleanest white surface (light radar per design). */}
+      <rect
+        x={0}
+        y={0}
+        width={SVG_W}
+        height={SVG_H}
+        fill="var(--color-surface-container-lowest)"
+      />
 
       {/* Range rings around the airport reference point (centre of the frame). */}
       {[0.33, 0.66, 1].map((r) => (
@@ -95,17 +96,30 @@ function AirportSvgImpl({
           cy={SVG_H / 2}
           r={(SVG_H / 2) * r}
           fill="none"
-          stroke="#1e293b"
+          stroke="var(--color-outline-variant)"
           strokeWidth={1}
           strokeDasharray="4 6"
         />
       ))}
 
       {/* North arrow. */}
-      <g transform={`translate(${SVG_W - 34} 34)`} opacity={0.8}>
-        <line x1={0} y1={16} x2={0} y2={-14} stroke="#64748b" strokeWidth={1.5} />
-        <path d="M0,-18 L4,-10 L-4,-10 Z" fill="#94a3b8" />
-        <text x={0} y={30} textAnchor="middle" fontSize={11} fill="#94a3b8">
+      <g transform={`translate(${SVG_W - 34} 34)`}>
+        <line
+          x1={0}
+          y1={16}
+          x2={0}
+          y2={-14}
+          stroke="var(--color-on-surface-variant)"
+          strokeWidth={1.5}
+        />
+        <path d="M0,-18 L4,-10 L-4,-10 Z" fill="var(--color-on-surface-variant)" />
+        <text
+          x={0}
+          y={30}
+          textAnchor="middle"
+          fontSize={11}
+          fill="var(--color-on-surface-variant)"
+        >
           N
         </text>
       </g>
@@ -143,13 +157,13 @@ function AirportSvgImpl({
 
       <div className="absolute left-2 top-2 flex flex-col gap-1">
         <ZoomButton label="Zoom in" onClick={zoomIn} disabled={zoom >= 8}>
-          +
+          <ZoomInIcon size={18} />
         </ZoomButton>
         <ZoomButton label="Zoom out" onClick={zoomOut} disabled={zoom <= 1}>
-          −
+          <ZoomOutIcon size={18} />
         </ZoomButton>
         <ZoomButton label="Reset view" onClick={reset} disabled={zoom === 1}>
-          ⟳
+          <RefreshIcon size={18} />
         </ZoomButton>
         {onLocate && (
           <ZoomButton
@@ -157,7 +171,7 @@ function AirportSvgImpl({
             onClick={onLocate}
             active={!!userPosition}
           >
-            ⌖
+            <MyLocationIcon size={18} />
           </ZoomButton>
         )}
       </div>
@@ -186,10 +200,10 @@ function ZoomButton({
       title={label}
       onClick={onClick}
       disabled={disabled}
-      className={`flex h-8 w-8 items-center justify-center rounded-md border text-lg leading-none disabled:opacity-30 ${
+      className={`flex h-8 w-8 items-center justify-center border leading-none disabled:opacity-30 ${
         active
-          ? "border-sky-500 bg-sky-600/30 text-sky-200 hover:bg-sky-600/40"
-          : "border-slate-700 bg-slate-900/80 text-slate-200 hover:bg-slate-800"
+          ? "border-primary bg-primary text-on-primary hover:bg-primary-container"
+          : "border-border bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container"
       }`}
     >
       {children}

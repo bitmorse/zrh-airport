@@ -1,5 +1,73 @@
 @import "tailwindcss";
 
+/*
+ * DESIGN_1.md — "Technical Minimalism / High-Density Information Design".
+ * Light glass-cockpit palette. Every colour and the two type faces live here as
+ * `@theme` tokens, so they surface both as Tailwind utilities (bg-surface,
+ * text-on-surface, border-border, fill-status-arrival …) AND as CSS variables
+ * (var(--color-status-arrival)) for inline SVG. Nothing downstream hardcodes hex.
+ */
+@theme {
+  /* Type — Inter frames the interface, JetBrains Mono carries all data/body. */
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
+
+  /* Surfaces / tonal tiers (structural framing; radar scope = the cleanest white). */
+  --color-surface: #f8f9fb;
+  --color-surface-dim: #d8dadc;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #f2f4f6;
+  --color-surface-container: #eceef0;
+  --color-surface-container-high: #e6e8ea;
+  --color-surface-container-highest: #e0e3e5;
+  --color-inverse-surface: #2d3133;
+  --color-inverse-on-surface: #eff1f3;
+
+  /* Foreground text. */
+  --color-on-surface: #191c1e;
+  --color-on-surface-variant: #43474f;
+  --color-muted: #737780;
+
+  /* Outlines — 1px structural borders (doc's #B0B8C1) + hairline variant. */
+  --color-outline: #737780;
+  --color-outline-variant: #c3c6d1;
+  --color-border: #b0b8c1;
+
+  /* Operational primary (deep monitoring blue) + its on-colours. */
+  --color-primary: #003366;
+  --color-on-primary: #ffffff;
+  --color-primary-container: #001e40;
+  --color-on-primary-container: #799dd6;
+
+  /* Functional status accents (flat, high-contrast signalling). */
+  --color-status-arrival: #1976d2; /* Monitoring Blue — arrivals / selection / tracked */
+  --color-status-departure: #e65100; /* Orange — departures / climbing out */
+  --color-status-cleared: #2e7d32; /* Vector Green — cleared / all-clear */
+  --color-status-alert: #d32f2f; /* Alert Red — recording / conflict / emergency */
+  --color-status-runway: #191c1e; /* On/over the runway (near-black, high contrast) */
+
+  /* Error tokens (form/validation). */
+  --color-error: #ba1a1a;
+  --color-on-error: #ffffff;
+  --color-error-container: #ffdad6;
+  --color-on-error-container: #93000a;
+
+  /* GPS user marker (distinct info blue). */
+  --color-user: #1976d2;
+
+  /* Traffic heat scale — four discrete steps (no gradient): quiet → busy. */
+  --color-heat-0: #737780;
+  --color-heat-1: #e6a700;
+  --color-heat-2: #e65100;
+  --color-heat-3: #d32f2f;
+
+  /* Spacing rhythm (4px base unit / 8px gutter / 16px safe margin / 48px strip). */
+  --spacing-unit: 4px;
+  --spacing-gutter: 8px;
+  --spacing-margin-safe: 16px;
+  --spacing-flight-strip: 48px;
+}
+
 html,
 body,
 #root {
@@ -8,11 +76,15 @@ body,
 
 body {
   margin: 0;
-  font-family:
-    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-mono);
+  background: var(--color-surface);
+  color: var(--color-on-surface);
+  /* Crisp edges for the safety-critical mono data (doc: high-contrast rendering). */
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* Aerospace-flavoured wordmark (Titillium Web has a technical/aerospace pedigree). */
+/* Interface wordmark / headline framing uses Inter. */
 .font-brand {
-  font-family: "Titillium Web", ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--font-sans);
 }

@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { CloseIcon } from "./icons";
 
 /**
  * Shared modal shell: a dimmed backdrop that closes on click/Escape, a centred panel
@@ -28,26 +29,27 @@ export function Modal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-inverse-surface/60 p-4"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-label={title}
     >
+      {/* Active overlay: high-contrast 2px border + dimming backdrop, no shadow. */}
       <div
-        className={`flex max-h-[90dvh] w-full ${maxWidth} flex-col overflow-hidden rounded-xl border border-slate-700 bg-slate-900 shadow-2xl`}
+        className={`flex max-h-[90dvh] w-full ${maxWidth} flex-col overflow-hidden border-2 border-border bg-surface-container-lowest`}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between gap-2 border-b border-slate-800 px-5 py-3">
-          <h2 className="text-lg font-semibold text-slate-100">{title}</h2>
+        <div className="flex items-center justify-between gap-2 border-b border-border px-5 py-3">
+          <h2 className="text-lg font-semibold uppercase tracking-wide text-on-surface">{title}</h2>
           <div className="flex items-center gap-2">
             {headerRight}
             <button
               onClick={onClose}
               aria-label="Close"
-              className="rounded px-2 py-0.5 text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+              className="px-2 py-0.5 text-on-surface-variant hover:bg-surface-container hover:text-on-surface"
             >
-              ✕
+              <CloseIcon size={16} />
             </button>
           </div>
         </div>

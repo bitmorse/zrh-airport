@@ -11,6 +11,7 @@ import { useSettings } from "../hooks/useSettings";
 import type { Units } from "../lib/format";
 import { formatAltitude, formatSpeed } from "../lib/format";
 import { elapsedSec, reckonAltFt } from "../lib/reckon";
+import { CloseIcon, SquareIcon } from "./icons";
 
 const PHASE_LABEL: Record<string, string> = {
   approach: "on approach",
@@ -57,7 +58,7 @@ function MotionReadout({
   }
 
   return (
-    <p className="text-[11px] text-slate-500">
+    <p className="text-[11px] text-muted">
       {assignment ? `${PHASE_LABEL[assignment.phase]} · RWY ${assignment.end}` : "in range"}
       {" · "}
       {altText}
@@ -93,8 +94,8 @@ export function FlightDetails({
   if (!item) {
     return (
       <div className="text-sm">
-        <h2 className="font-semibold text-slate-200">Flight lookup</h2>
-        <p className="mt-1 text-xs text-slate-500">
+        <h2 className="font-semibold uppercase tracking-wide text-on-surface">Flight lookup</h2>
+        <p className="mt-1 text-xs text-muted">
           Tap a plane on the map, or any movement in the boards, to see its type,
           route and live altitude — the map recentres on it and draws its track.
         </p>
@@ -113,7 +114,7 @@ export function FlightDetails({
     <div className="text-sm">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <h2 className="font-mono text-base font-semibold text-slate-100">
+          <h2 className="font-mono text-base font-semibold text-on-surface">
             {title}
           </h2>
           <MotionReadout
@@ -125,33 +126,33 @@ export function FlightDetails({
             units={units}
           />
           {(ac.type || ac.typeDesc || ac.registration) && (
-            <p className="mt-0.5 text-[11px] text-slate-400">
-              <span className="text-slate-300">
+            <p className="mt-0.5 text-[11px] text-on-surface-variant">
+              <span className="text-on-surface">
                 {ac.typeDesc ?? ac.type ?? "Unknown type"}
               </span>
               {ac.type && ac.typeDesc ? (
-                <span className="text-slate-500"> · {ac.type}</span>
+                <span className="text-muted"> · {ac.type}</span>
               ) : null}
               {ac.registration ? (
-                <span className="font-mono text-slate-500"> · {ac.registration}</span>
+                <span className="font-mono text-muted"> · {ac.registration}</span>
               ) : null}
             </p>
           )}
           {cockpitAudio && (
             <p
-              className="mt-1.5 flex w-fit items-center gap-1.5 text-[11px] text-amber-300"
+              className="mt-1.5 flex w-fit items-center gap-1.5 text-[11px] text-status-cleared"
               title="Cockpit simulation: GPWS callouts spoken as it descends (estimated from GNSS altitude). Toggle in Settings; mute in the header."
             >
-              <span aria-hidden>◉</span> cockpit audio live
+              <SquareIcon size={9} /> cockpit audio live
             </p>
           )}
         </div>
         <button
           onClick={onClear}
           aria-label="Clear selection"
-          className="shrink-0 rounded px-1.5 text-slate-500 hover:bg-slate-800 hover:text-slate-200"
+          className="shrink-0 px-1.5 text-muted hover:bg-surface-container hover:text-on-surface"
         >
-          ✕
+          <CloseIcon size={16} />
         </button>
       </div>
 
@@ -167,20 +168,20 @@ export function FlightDetails({
         ) : (
           <div className="flex flex-col gap-2">
             {(r.airlineName || r.flightIata) && (
-              <div className="text-slate-300">
+              <div className="text-on-surface">
                 {r.airlineName ?? "Unknown airline"}
                 {r.flightIata && (
-                  <span className="ml-1 text-slate-500">· {r.flightIata}</span>
+                  <span className="ml-1 text-muted">· {r.flightIata}</span>
                 )}
               </div>
             )}
             <div className="flex items-center gap-2">
               <Endpoint airport={r.origin} />
-              <span className="text-slate-500">→</span>
+              <span className="text-muted">→</span>
               <Endpoint airport={r.destination} />
             </div>
             {conflict && (
-              <p className="rounded-md bg-amber-500/10 px-2 py-1 text-[11px] leading-relaxed text-amber-300/90">
+              <p className="border-l-2 border-status-departure bg-surface-container-high px-2 py-1 text-[11px] leading-relaxed text-on-surface">
                 {conflict === "departing-inbound-route"
                   ? `Now departing ${iata} — this is the callsign's inbound leg. It's flying out (the callsign is reused for the turnaround), so this isn't the live destination.`
                   : `Now arriving ${iata} — this is the callsign's outbound leg; it may be reused for the turnaround.`}
@@ -188,7 +189,7 @@ export function FlightDetails({
             )}
           </div>
         )}
-        <p className="mt-3 text-[10px] text-slate-600">
+        <p className="mt-3 text-[10px] text-muted">
           route data · adsbdb.com — may be approximate
         </p>
       </div>
@@ -197,13 +198,13 @@ export function FlightDetails({
 }
 
 function Endpoint({ airport }: { airport: Airport | null }) {
-  if (!airport) return <span className="text-slate-500">—</span>;
+  if (!airport) return <span className="text-muted">—</span>;
   return (
     <div className="min-w-0">
-      <div className="font-mono text-sm font-semibold text-sky-300">
+      <div className="font-mono text-sm font-semibold text-status-arrival">
         {airport.iata ?? airport.icao ?? "??"}
       </div>
-      <div className="truncate text-[11px] text-slate-400">
+      <div className="truncate text-[11px] text-on-surface-variant">
         {airport.municipality ?? airport.name ?? ""}
       </div>
     </div>
@@ -211,5 +212,5 @@ function Endpoint({ airport }: { airport: Airport | null }) {
 }
 
 function Muted({ children }: { children: React.ReactNode }) {
-  return <p className="text-xs text-slate-500">{children}</p>;
+  return <p className="text-xs text-muted">{children}</p>;
 }

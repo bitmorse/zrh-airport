@@ -10,6 +10,7 @@ import { useAirport } from "../hooks/useAirport";
 import { useAtcFeeds } from "../hooks/useAtcFeeds";
 import { useAtcPlayer } from "../hooks/useAtcPlayer";
 import { formatDuration, formatEta } from "../lib/format";
+import { ExternalLinkIcon, LandingIcon, PlayIcon, StopIcon, TakeoffIcon } from "./icons";
 
 const ROLE_LABEL: Record<AtcRole, string> = {
   approach: "Approach",
@@ -63,8 +64,8 @@ export function AtcPanel({
     <div className="text-sm">
       <div className="mb-2 flex items-start justify-between gap-2">
         <div>
-          <h2 className="font-semibold text-slate-200">Listen · ATC</h2>
-          <p className="text-[11px] text-slate-500">
+          <h2 className="font-semibold uppercase tracking-wide text-on-surface">Listen · ATC</h2>
+          <p className="text-[11px] text-muted">
             bring-your-own stream · plays in your browser
           </p>
         </div>
@@ -72,23 +73,23 @@ export function AtcPanel({
           href={findFeedsUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="shrink-0 rounded border border-slate-700 px-2 py-0.5 text-[11px] text-sky-300 hover:bg-slate-800"
+          className="flex shrink-0 items-center gap-1 border border-border px-2 py-0.5 text-[11px] text-status-arrival hover:bg-surface-container"
           title={`Open LiveATC's ${config.icao} page to copy a current stream URL`}
         >
-          Find {config.iata} feeds ↗
+          Find {config.iata} feeds <ExternalLinkIcon size={12} />
         </a>
       </div>
 
       {config.frequencies && config.frequencies.length > 0 && (
-        <div className="mb-3 rounded-lg border border-slate-800 bg-slate-800/30 p-2.5">
-          <div className="mb-1 text-[11px] font-medium text-slate-400">
-            Frequencies <span className="text-slate-600">· MHz</span>
+        <div className="mb-3 border border-border bg-surface-container p-2.5">
+          <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-on-surface-variant">
+            Frequencies <span className="text-muted">· MHz</span>
           </div>
           <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px]">
             {config.frequencies.map((f) => (
               <div key={f.label} className="flex items-baseline justify-between gap-2">
-                <span className="truncate text-slate-500">{f.label}</span>
-                <span className="shrink-0 font-mono tabular-nums text-slate-200">{f.mhz}</span>
+                <span className="truncate text-muted">{f.label}</span>
+                <span className="shrink-0 font-mono tabular-nums text-on-surface">{f.mhz}</span>
               </div>
             ))}
           </div>
@@ -102,39 +103,39 @@ export function AtcPanel({
               onClick={() => player.toggle(f.role, f.url)}
               disabled={!f.url.trim()}
               aria-label={player.playingRole === f.role ? `Stop ${f.label}` : `Play ${f.label}`}
-              className={`flex h-6 w-6 shrink-0 items-center justify-center rounded text-xs ${
+              className={`flex h-6 w-6 shrink-0 items-center justify-center ${
                 player.playingRole === f.role
-                  ? "bg-red-600 text-white hover:bg-red-500"
-                  : "bg-slate-800 text-slate-200 hover:bg-slate-700"
+                  ? "bg-status-alert text-on-primary hover:bg-error"
+                  : "bg-surface-container text-on-surface-variant hover:bg-surface-container-high"
               } disabled:opacity-30`}
             >
-              {player.playingRole === f.role ? "■" : "▶"}
+              {player.playingRole === f.role ? <StopIcon size={13} /> : <PlayIcon size={13} />}
             </button>
-            <span className="w-16 shrink-0 text-xs text-slate-300">{f.label}</span>
+            <span className="w-16 shrink-0 text-xs text-on-surface-variant">{f.label}</span>
             <input
               value={f.url}
               onChange={(e) => setUrl(f.role, e.target.value)}
               placeholder="add stream URL"
               inputMode="url"
               aria-label={`${f.label} stream URL`}
-              className="min-w-0 flex-1 rounded border border-slate-700 bg-slate-800 px-2 py-1 text-[11px] text-slate-100 outline-none focus:border-sky-500"
+              className="min-w-0 flex-1 border border-border bg-surface-container-lowest px-2 py-1 text-[11px] text-on-surface outline-none focus:border-2 focus:border-primary"
             />
           </div>
         ))}
       </div>
 
-      {player.error && <p className="mt-2 text-[11px] text-red-400">{player.error}</p>}
+      {player.error && <p className="mt-2 text-[11px] text-status-alert">{player.error}</p>}
 
       {player.playingRole && (
-        <div className="mt-3 rounded-lg border border-slate-800 bg-slate-900/60 p-2.5">
-          <div className="text-xs font-semibold text-slate-200">
+        <div className="mt-3 border border-border bg-surface-container p-2.5">
+          <div className="text-xs font-semibold text-on-surface">
             {ROLE_LABEL[player.playingRole]}{" "}
-            <span className="font-normal text-slate-400">
+            <span className="font-normal text-on-surface-variant">
               · active {activeEnds.length ? activeEnds.join(" · ") : "—"}
             </span>
           </div>
 
-          <label className="mt-1.5 flex items-center gap-2 text-[11px] text-slate-500">
+          <label className="mt-1.5 flex items-center gap-2 text-[11px] text-muted">
             <span className="shrink-0">audio ~{player.delaySec}s behind</span>
             <input
               type="range"
@@ -147,26 +148,28 @@ export function AtcPanel({
             />
           </label>
 
-          <div className="mt-2 text-[11px] font-medium text-slate-400">On frequency now</div>
+          <div className="mt-2 text-[11px] font-medium uppercase tracking-wide text-on-surface-variant">On frequency now</div>
           {candidates.length === 0 ? (
-            <p className="mt-0.5 text-[11px] text-slate-500">No matching traffic right now.</p>
+            <p className="mt-0.5 text-[11px] text-muted">No matching traffic right now.</p>
           ) : (
             <ul className="mt-1 flex flex-col gap-0.5">
               {candidates.map((c) => (
                 <li key={c.hex}>
                   <button
                     onClick={() => onSelect?.(c.hex)}
-                    className="flex w-full items-center gap-2 rounded px-1 py-0.5 text-left text-xs hover:bg-slate-800"
+                    className="flex w-full items-center gap-2 px-1 py-0.5 text-left text-xs hover:bg-surface-container-high"
                   >
-                    <span aria-hidden>{c.kind === "arrival" ? "🛬" : "🛫"}</span>
-                    <span className="font-mono text-slate-200">{c.callsign}</span>
-                    <span className="text-sky-300" title={`Runway ${c.end}`}>
-                      <span className="text-[10px] font-medium uppercase tracking-wide text-sky-300/50">
+                    <span aria-hidden className="text-on-surface-variant">
+                      {c.kind === "arrival" ? <LandingIcon size={13} /> : <TakeoffIcon size={13} />}
+                    </span>
+                    <span className="font-mono text-on-surface">{c.callsign}</span>
+                    <span className="text-status-arrival" title={`Runway ${c.end}`}>
+                      <span className="text-[10px] font-medium uppercase tracking-wide text-muted">
                         RWY
                       </span>{" "}
                       {c.end}
                     </span>
-                    <span className="ml-auto tabular-nums text-slate-500">
+                    <span className="ml-auto tabular-nums text-muted">
                       {candidateNote(c, now)}
                     </span>
                   </button>
@@ -177,12 +180,12 @@ export function AtcPanel({
         </div>
       )}
 
-      <p className="mt-3 text-[10px] leading-relaxed text-slate-600">
+      <p className="mt-3 text-[10px] leading-relaxed text-muted">
         A frequency covers a controller position, not one runway — the active runways
         and the “on frequency” list are inferred from ADS-B, and the audio lags the map,
         so the match is a best guess. No stream URLs are bundled: LiveATC’s terms don’t
         permit embedding their feeds, and direct links rotate/block hotlinking. Use
-        “Find {config.iata} feeds ↗” to grab a current URL and paste it above (any
+        “Find {config.iata} feeds” to grab a current URL and paste it above (any
         Icecast/MP3 source works). Frequencies are published reference values from
         OurAirports — always confirm against current charts.
       </p>

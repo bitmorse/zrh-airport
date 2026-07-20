@@ -80,16 +80,18 @@ export function MovementsByHour({
   return (
     <div className="flex flex-col gap-2 text-sm">
       <div className="flex items-baseline justify-between gap-2">
-        <h2 className="font-semibold text-slate-200">Traffic by hour</h2>
-        <div className="flex overflow-hidden rounded-md border border-slate-700 text-[11px]">
+        <h2 className="font-semibold uppercase tracking-wide text-on-surface">Traffic by hour</h2>
+        <div className="flex overflow-hidden border border-border text-[11px]">
           {(["avg", "total"] as Mode[]).map((m) => (
             <button
               key={m}
               type="button"
               onClick={() => setMode(m)}
               aria-pressed={mode === m}
-              className={`px-2 py-0.5 ${
-                mode === m ? "bg-slate-700 text-slate-100" : "text-slate-400 hover:bg-slate-800"
+              className={`px-2 py-0.5 uppercase ${
+                mode === m
+                  ? "bg-primary text-on-primary"
+                  : "text-on-surface-variant hover:bg-surface-container"
               }`}
             >
               {m === "avg" ? "Avg/day" : "Total"}
@@ -99,20 +101,20 @@ export function MovementsByHour({
       </div>
 
       {empty ? (
-        <p className="text-xs leading-relaxed text-slate-500">
+        <p className="text-xs leading-relaxed text-muted">
           No history yet. Landings and takeoffs are counted per runway as they happen and
           stored on this device — leave the tab open to build up a typical-day profile.
         </p>
       ) : (
         <>
-          <div className="flex items-center gap-3 text-[11px] text-slate-400">
+          <div className="flex items-center gap-3 text-[11px] uppercase tracking-wide text-on-surface-variant">
             <span className="flex items-center gap-1">
-              <span className="inline-block h-2 w-2 rounded-sm bg-sky-400" /> landings
+              <span className="inline-block h-2 w-2 bg-status-arrival" /> landings
             </span>
             <span className="flex items-center gap-1">
-              <span className="inline-block h-2 w-2 rounded-sm bg-amber-400" /> takeoffs
+              <span className="inline-block h-2 w-2 bg-status-departure" /> takeoffs
             </span>
-            <span className="ml-auto text-slate-500">↕ {yUnit}</span>
+            <span className="ml-auto text-muted">↕ {yUnit}</span>
           </div>
 
           <div className="flex flex-col gap-3">
@@ -131,7 +133,7 @@ export function MovementsByHour({
         </>
       )}
 
-      <p className="text-[10px] leading-relaxed text-slate-600">
+      <p className="text-[10px] leading-relaxed text-muted">
         {empty
           ? "Stored locally · never leaves your device."
           : `${summary.landings} landings · ${summary.takeoffs} takeoffs over ${summary.days} ${
@@ -166,13 +168,13 @@ function RunwayChart({
   return (
     <div>
       <div className="mb-0.5 flex items-baseline justify-between">
-        <span className="text-xs font-semibold text-sky-300">
-          <span className="text-[10px] font-medium uppercase tracking-wide text-sky-300/50">
+        <span className="text-xs font-semibold text-status-arrival">
+          <span className="text-[10px] font-medium uppercase tracking-wide text-muted">
             RWY
           </span>{" "}
           {rw.end}
         </span>
-        <span className="text-[10px] tabular-nums text-slate-500">
+        <span className="text-[10px] tabular-nums text-muted">
           {rw.landings} ↓ · {rw.takeoffs} ↑{total}
         </span>
       </div>
@@ -185,8 +187,21 @@ function RunwayChart({
         {/* Y grid + tick labels. */}
         {ticks.map((t) => (
           <g key={t}>
-            <line x1={PLOT_L} y1={y(t)} x2={PLOT_R} y2={y(t)} stroke="#1e293b" strokeWidth={1} />
-            <text x={PLOT_L - 3} y={y(t) + 2.5} textAnchor="end" fontSize={7} fill="#64748b">
+            <line
+              x1={PLOT_L}
+              y1={y(t)}
+              x2={PLOT_R}
+              y2={y(t)}
+              stroke="var(--color-outline-variant)"
+              strokeWidth={1}
+            />
+            <text
+              x={PLOT_L - 3}
+              y={y(t) + 2.5}
+              textAnchor="end"
+              fontSize={7}
+              fill="var(--color-muted)"
+            >
               {fmtTick(t)}
             </text>
           </g>
@@ -198,8 +213,7 @@ function RunwayChart({
           y={PLOT_T}
           width={SLOT}
           height={PLOT_H}
-          fill="#334155"
-          opacity={0.4}
+          fill="var(--color-surface-container-highest)"
         />
 
         {/* Grouped landing / takeoff bars per hour. */}
@@ -208,8 +222,8 @@ function RunwayChart({
           const cx = PLOT_L + h.hour * SLOT + SLOT / 2;
           return (
             <g key={h.hour}>
-              <rect x={cx - bw - gap / 2} y={PLOT_B - barH(v.l)} width={bw} height={barH(v.l)} fill="#38bdf8" />
-              <rect x={cx + gap / 2} y={PLOT_B - barH(v.t)} width={bw} height={barH(v.t)} fill="#fbbf24" />
+              <rect x={cx - bw - gap / 2} y={PLOT_B - barH(v.l)} width={bw} height={barH(v.l)} fill="var(--color-status-arrival)" />
+              <rect x={cx + gap / 2} y={PLOT_B - barH(v.t)} width={bw} height={barH(v.t)} fill="var(--color-status-departure)" />
             </g>
           );
         })}
@@ -222,7 +236,7 @@ function RunwayChart({
             y={CH_H - 2}
             textAnchor="middle"
             fontSize={7}
-            fill="#475569"
+            fill="var(--color-muted)"
           >
             {pad(hh)}
           </text>

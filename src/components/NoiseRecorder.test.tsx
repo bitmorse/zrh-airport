@@ -31,7 +31,7 @@ describe("NoiseRecorder compact controls", () => {
     expect(btn.className).toMatch(/w-fit/); // not full-width
   });
 
-  it("renders a small '● Rec' pill (not full-width) plus Disable when armed", () => {
+  it("renders a small 'Rec' pill (not full-width) plus Disable when armed", () => {
     render(
       <NoiseRecorder
         recorder={stubRecorder({ isArmed: true })}
@@ -41,13 +41,13 @@ describe("NoiseRecorder compact controls", () => {
       />,
     );
     const rec = screen.getByRole("button", { name: /Rec/i });
-    expect(rec.textContent).toContain("● Rec");
+    expect(rec.textContent).toContain("Rec");
     expect(rec.className).toMatch(/text-xs/);
     expect(rec.className).not.toMatch(/flex-1/); // compact, not stretched
     expect(screen.getByRole("button", { name: /Disable/i })).toBeInTheDocument();
   });
 
-  it("switches the pill to '■ Stop' while recording", () => {
+  it("switches the pill to 'Stop' while recording", () => {
     render(
       <NoiseRecorder
         recorder={stubRecorder({ isArmed: true, isRecording: true })}
@@ -56,6 +56,6 @@ describe("NoiseRecorder compact controls", () => {
         onManualStop={noop}
       />,
     );
-    expect(screen.getByRole("button", { name: /Stop/i }).textContent).toContain("■ Stop");
+    expect(screen.getByRole("button", { name: /Stop/i }).textContent).toContain("Stop");
   });
 });

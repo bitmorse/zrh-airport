@@ -41,7 +41,7 @@ export function TrailLayer({
       <path
         d={d}
         fill="none"
-        stroke="#38bdf8"
+        stroke="var(--color-status-arrival)"
         strokeWidth={2.5}
         strokeOpacity={0.5}
         strokeLinejoin="round"
