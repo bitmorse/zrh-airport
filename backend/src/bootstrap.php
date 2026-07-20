@@ -15,3 +15,4 @@ require_once __DIR__ . '/Adsb.php';
 require_once __DIR__ . '/Store.php';
 require_once __DIR__ . '/Collector.php';
 require_once __DIR__ . '/Api.php';
+require_once __DIR__ . '/Cli.php';

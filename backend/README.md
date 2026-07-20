@@ -14,8 +14,8 @@ compact aggregates so the history survives and is shared across all users.
 ## Architecture
 
 ```
-NFS Scheduled Task (every 60s)                 SQLite (backend/data/stats.db)
-  php bin/collect.php LSZH                        movements  — one row per event,
+NFS Scheduled Task (every 10 min, self-loops @30s)   SQLite (backend/data/stats.db)
+  php bin/collect.php --loop 540 --every 30 LSZH   movements  — one row per event,
     ├─ Store::loadTracker()   ← detector state                pre-bucketed to local hour
     ├─ Adsb::fetchAircraftNear()  (adsb.lol → .fi → .live)  tracker    — per-aircraft memory
     ├─ Detector::detect()     → landings/takeoffs             between cron runs
@@ -62,13 +62,26 @@ Api) has a suite.
 ## Running the collector locally
 
 ```
-php backend/bin/collect.php LSZH          # one poll; prints a summary line
-php backend/bin/collect.php LSZH VTBS      # sweep several airports
+php backend/bin/collect.php LSZH                      # one poll; prints a summary line
+php backend/bin/collect.php --loop 540 --every 30 LSZH # poll every 30s for 9 min
+php backend/bin/collect.php LSZH VTBS                  # sweep several airports
 ZRH_DB=/tmp/stats.db php backend/bin/collect.php LSZH
 ```
 
-Run it ~once a minute for a while, then query the API (below). Movements only
-appear when aircraft actually land/take off during a poll.
+Movements only appear when aircraft actually land/take off during a poll, so run
+the looping form for a while, then query the API (below).
+
+### Why the loop
+
+NFS scheduled tasks fire at most about **once every 10 minutes** — far too coarse
+for movement detection (a landing sits on the runway for ~90s, so a 10-min poll
+would miss most of them). `--loop N --every M` makes one cron kick poll every `M`
+seconds for `N` seconds and then exit, so a 10-minute cron gives continuous 30s
+cadence 24/7. Keep `N` a little under the cron period (e.g. `--loop 540` for a
+10-min task) so runs don't overlap; a flock skips a kick if the previous run is
+somehow still going. The process is mostly asleep between polls (low CPU/RAU) and
+is safe to be killed mid-run — each poll commits independently and the next kick
+resumes.
 
 ## REST API
 
@@ -115,10 +128,12 @@ web docroot and exposes only the front controller:
    `config/` or `data/` do end up under the docroot, deny them (`data/.htaccess`
    already does this).
 4. **Scheduled Task** (Site → *Manage Scheduled Tasks*):
-   - Command: `ZRH_DB=/home/protected/backend/data/stats.db php /home/protected/backend/bin/collect.php LSZH`
-   - Tag: `collect`, run **every minute** (confirm the panel's minimum interval;
-     if it's coarser than 60s, accept the lower resolution — hour-bucket counts
-     tolerate it). The collector and the API must point at the **same** `ZRH_DB`.
+   - Command: `php /home/protected/backend/bin/collect.php --loop 540 --every 30 LSZH`
+   - Tag: `collect`, run at the panel's **maximum frequency** (NFS caps this at
+     ~every 10 minutes). The `--loop` makes each kick poll every 30s for 9 minutes,
+     so you get continuous cadence despite the coarse cron. No `ZRH_DB` needed in
+     the command — the default path matches the API's.
+   - If NFS kills long-running tasks, lower `--loop` (e.g. `--loop 240`); it's safe.
 5. **Dead-man's switch (optional).** Set `ZRH_HEALTHCHECK_URL` to a
    healthchecks.io ping URL in the task command; the collector pings it after a
    successful sweep so you're alerted if collection silently stops.
@@ -127,8 +142,8 @@ Then check `https://bitmorse.com/airports-api/health` returns `{"ok":true}`.
 
 ## Bandwidth & storage
 
-- Collector fetches ~15–20 KB per poll → ~30 MB/day at 60s. Well under the
-  1 GB/day limit.
+- Collector fetches ~15–20 KB per poll → ~50–60 MB/day at 30s cadence. Well under
+  the 1 GB/day limit.
 - The read API is fetched on card-open (not polled) and cached, so 100 users add
   negligible traffic.
 - Storage: aggregates only. ~60 days of movements is a few MB; `tracker` is
@@ -136,7 +151,7 @@ Then check `https://bitmorse.com/airports-api/health` returns `{"ok":true}`.
 
 ## Limitations (v1)
 
-- 60s single-poll cadence can miss a fast touch-and-go; fine for aggregate counts.
+- 30s loop cadence can miss a fast touch-and-go; fine for aggregate counts.
 - Detection is a reduced heuristic, independent of the frontend's — the two can
   drift slightly. No clearance-wait / airline / destination stats yet (the schema
   keeps `hex` per movement so those can be added without a migration).
