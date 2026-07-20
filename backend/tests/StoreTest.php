@@ -162,6 +162,35 @@ return [
         Assert::true($act['lastMs'] === null, 'null last when empty');
     },
 
+    'openReader: reads data but refuses writes (read-only API user)' => function (): void {
+        $tmp = sys_get_temp_dir() . '/zrh-ro-' . getmypid() . '.db';
+        @unlink($tmp);
+        $w = Store::open($tmp);
+        $w->insertMovements('LSZH', [mv('landing', 'a', '14', tsAt('2026-07-17 14:00:00', TZ))], TZ);
+
+        $r = Store::openReader($tmp);
+        Assert::same(1, $r->histogram('LSZH', 0)['totals']['landings'], 'reader can SELECT');
+
+        $threw = false;
+        try {
+            $r->insertMovements('LSZH', [mv('takeoff', 'b', '16', tsAt('2026-07-17 15:00:00', TZ))], TZ);
+        } catch (\Throwable $e) {
+            $threw = true;
+        }
+        Assert::true($threw, 'reader rejects writes');
+        @unlink($tmp);
+    },
+
+    'openReader: missing database throws a clear error' => function (): void {
+        $threw = false;
+        try {
+            Store::openReader('/nonexistent/zrh-nope.db');
+        } catch (\Throwable $e) {
+            $threw = str_contains($e->getMessage(), 'not found');
+        }
+        Assert::true($threw, 'clear not-found error');
+    },
+
     'poll log: prunes heartbeats older than the retention window' => function (): void {
         $s = memStore();
         $t0 = tsAt('2026-07-20 12:00:00', TZ);

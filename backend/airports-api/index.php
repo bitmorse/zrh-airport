@@ -66,7 +66,9 @@ if ($method === 'OPTIONS') {
 $airports = array_keys(json_decode((string) file_get_contents($cfg['airports']), true) ?: []);
 
 try {
-    $store = Store::open($cfg['db']);
+    // Read-only: the API only ever SELECTs, and the web user usually can't write
+    // the DB. The collector (running as the file owner) creates and writes it.
+    $store = Store::openReader($cfg['db']);
     $res = Api::handle($store, $_SERVER['REQUEST_URI'] ?? '/', $_GET, [
         'airports' => $airports,
         'nowMs' => (int) (microtime(true) * 1000),

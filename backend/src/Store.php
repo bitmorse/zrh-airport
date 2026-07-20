@@ -30,12 +30,34 @@ final class Store
         }
         $pdo = new \PDO('sqlite:' . $path);
         $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
-        // WAL keeps the read API from blocking the collector's writes.
-        $pdo->exec('PRAGMA journal_mode = WAL');
+        // Rollback-journal (DELETE), NOT WAL: on shared hosting the read-only API
+        // runs as a different, lower-privilege user that usually can't write the
+        // -wal/-shm sidecars or the data dir, which breaks WAL reads. DELETE mode
+        // lets a pure-SELECT reader work with only file-level read permission.
+        // Setting it here also converts a database left in WAL by an earlier build.
+        $pdo->exec('PRAGMA journal_mode = DELETE');
         $pdo->exec('PRAGMA busy_timeout = 5000');
         $s = new self($pdo);
         $s->migrate();
         return $s;
+    }
+
+    /**
+     * Open the database read-only for the API. Needs only read permission on the
+     * DB file (the web-server user typically can't write it), runs no migration,
+     * and refuses writes via `PRAGMA query_only`. The collector must have created
+     * the file first.
+     */
+    public static function openReader(string $path): self
+    {
+        if (!is_file($path)) {
+            throw new \RuntimeException("stats database not found: {$path}");
+        }
+        $pdo = new \PDO('sqlite:' . $path);
+        $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $pdo->exec('PRAGMA busy_timeout = 5000');
+        $pdo->exec('PRAGMA query_only = 1');
+        return new self($pdo);
     }
 
     public function migrate(): void
