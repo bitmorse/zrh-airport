@@ -1,7 +1,7 @@
 import { memo } from "react";
 import type { RunwayEnd } from "../domain/airport";
 import { useAirport } from "../hooks/useAirport";
-import { heatColor } from "../lib/heat";
+import { heatColor, HEAT_MAX_RECENT } from "../lib/heat";
 import { projectToSvg, type Point } from "../lib/projection";
 
 const BASE_WIDTH = 9;
@@ -24,7 +24,7 @@ function RunwayEndZone({
   tb: Point; // far end threshold (svg)
 }) {
   const zoneEnd = lerp(ta, tb, END_FRACTION);
-  const color = heatColor(count);
+  const color = heatColor(count, HEAT_MAX_RECENT);
 
   // Runway number painted on the surface just inside the threshold, like a real
   // runway designation marking: oriented to read from the approach (the glyphs
@@ -65,8 +65,9 @@ function RunwayEndZone({
 }
 
 /**
- * One physical runway strip with both ends heat-coloured by their 15-minute
- * distinct-aircraft counts.
+ * One physical runway strip with both ends heat-coloured by their recent movement
+ * counts (server-collected landings+takeoffs in ~the current + previous local hour),
+ * so the runway that's busy right now stands out.
  */
 function RunwayHeatImpl({
   ends,

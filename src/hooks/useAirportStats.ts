@@ -7,18 +7,25 @@ import {
 
 /**
  * Server-collected movement history for an airport, from the backend stats API.
- * Fetched on demand and cached (the API is cacheable for ~5 min) — no poll loop,
- * per the API guidance. Falls back gracefully in the UI to on-device history when
- * the server is unreachable.
+ * Cacheable (~5 min). The "today" window that drives the live heatmap passes a
+ * `refetchInterval` so "right now" stays current; the "usual" window is fetched on
+ * demand (and can be lazily `enabled`). Falls back in the UI to on-device history
+ * when the server is unreachable.
  */
-export function useAirportStats(icao: string, days = STATS_MAX_DAYS) {
+export function useAirportStats(
+  icao: string,
+  days = STATS_MAX_DAYS,
+  opts: { refetchInterval?: number | false; enabled?: boolean } = {},
+) {
+  const refetchInterval = opts.refetchInterval ?? false;
   return useQuery<AirportMovements>({
     queryKey: ["airportStats", icao, days],
     queryFn: ({ signal }) => fetchAirportMovements(icao, days, signal),
-    enabled: !!icao,
-    staleTime: 5 * 60_000, // matches the API's Cache-Control: max-age=300
+    enabled: !!icao && (opts.enabled ?? true),
+    // Keep staleTime under the poll interval so the live window actually refreshes.
+    staleTime: refetchInterval ? Math.min(5 * 60_000, refetchInterval) : 5 * 60_000,
     gcTime: 60 * 60_000,
-    refetchInterval: false, // on demand, not a poll loop
+    refetchInterval,
     refetchOnWindowFocus: false,
     retry: 1,
   });

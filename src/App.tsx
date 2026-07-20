@@ -30,7 +30,7 @@ import {
 } from "./domain/autoSelect";
 import { flightStatusLabel } from "./domain/flightStatus";
 import { heightAglFt } from "./domain/gpws";
-import { byRunway, summarize } from "./domain/movementStats";
+import { byRunway, hasActivity, recentActivityByEnd, summarize } from "./domain/movementStats";
 import * as gpwsAudio from "./lib/gpwsAudio";
 import { useAirportStats } from "./hooks/useAirportStats";
 import { AirportContext } from "./hooks/useAirport";
@@ -401,20 +401,39 @@ export default function App() {
     [traffic.aircraft],
   );
 
-  // "Traffic by hour" now shows the backend collector's 24/7 history; fall back to
-  // this device's own recorded log when the server is unreachable.
-  const stats = useAirportStats(airport.config.icao);
+  // Two windows of the backend collector's real history:
+  //  • "today" (days=1) = the actual last 24 h — drives the live map heatmap and the
+  //    card's default view; polled so "right now" stays current.
+  //  • "usual" (days=60) = the ~2-month average by hour — the card's comparison tab;
+  //    fetched lazily (only once the user opens it).
+  const [statView, setStatView] = useState<"today" | "usual">("today");
+  const todayStats = useAirportStats(airport.config.icao, 1, { refetchInterval: 3 * 60_000 });
+  const usualStats = useAirportStats(airport.config.icao, 60, { enabled: statView === "usual" });
+
   const localRunways = useMemo(() => byRunway(traffic.movementLog), [traffic.movementLog]);
   const localSummary = useMemo(() => summarize(traffic.movementLog), [traffic.movementLog]);
-  const statRunways = stats.data ? stats.data.runways : localRunways;
-  const statSummary = stats.data ? stats.data.summary : localSummary;
-  const statSourceNote = stats.data
-    ? `server · ${stats.data.windowDays}-day history`
-    : stats.isError
+
+  const activeStats = statView === "usual" ? usualStats : todayStats;
+  const statRunways = activeStats.data ? activeStats.data.runways : localRunways;
+  const statSummary = activeStats.data ? activeStats.data.summary : localSummary;
+  const statSourceNote = activeStats.data
+    ? statView === "usual"
+      ? `server · ${activeStats.data.windowDays}-day average`
+      : "server · last 24 h"
+    : activeStats.isError
       ? "device history · server unavailable"
       : localSummary.landings + localSummary.takeoffs > 0
         ? "device history"
         : undefined;
+
+  // Map heatmap: real movements per runway end in the recent window (from the "today"
+  // data), falling back to this device's own live counts when the server has nothing.
+  const heatCounts = useMemo(() => {
+    const server = todayStats.data
+      ? recentActivityByEnd(todayStats.data.runways, now, airport.config.timeZone)
+      : {};
+    return hasActivity(server) ? server : traffic.counts;
+  }, [todayStats.data, now, airport.config.timeZone, traffic.counts]);
 
   const switchAirport = useCallback(
     (icao: string) => {
@@ -578,7 +597,7 @@ export default function App() {
         <section className="relative aspect-[28/25] w-full overflow-hidden border border-border bg-surface-container-lowest lg:h-[calc(100dvh-6rem)] lg:w-auto lg:min-w-0 lg:flex-none">
           <AirportSvg
             aircraft={traffic.aircraft}
-            counts={traffic.counts}
+            counts={heatCounts}
             lastUpdated={traffic.lastUpdated}
             selectedHex={selectedHex}
             trail={selectedHex ? traffic.trailFor(selectedHex) : undefined}
@@ -627,7 +646,9 @@ export default function App() {
               summary={statSummary}
               timeZone={airport.config.timeZone}
               now={now}
-              loading={stats.isLoading && !stats.data}
+              view={statView}
+              onViewChange={setStatView}
+              loading={activeStats.isLoading && !activeStats.data}
               sourceNote={statSourceNote}
             />
           </div>

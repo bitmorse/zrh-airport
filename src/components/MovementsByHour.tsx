@@ -1,4 +1,3 @@
-import { useState } from "react";
 import {
   localHour,
   type HourStat,
@@ -6,6 +5,8 @@ import {
   type RunwayHistogram,
 } from "../domain/movementStats";
 
+/** Which window the chart shows: real last-24 h vs. the ~2-month average. */
+export type StatView = "today" | "usual";
 type Mode = "avg" | "total";
 
 // Mini-chart geometry (SVG user units; scales responsively via viewBox).
@@ -47,6 +48,8 @@ export function MovementsByHour({
   summary,
   timeZone,
   now,
+  view,
+  onViewChange,
   loading,
   sourceNote,
 }: {
@@ -54,12 +57,16 @@ export function MovementsByHour({
   summary: MovementSummary;
   timeZone?: string;
   now: number;
+  /** Real last-24 h ("today") vs. the ~2-month average ("usual"). */
+  view: StatView;
+  onViewChange: (v: StatView) => void;
   /** True while the first server fetch is in flight and there's nothing to show yet. */
   loading?: boolean;
   /** Short provenance note appended to the footer (e.g. "server · 60-day history"). */
   sourceNote?: string;
 }) {
-  const [mode, setMode] = useState<Mode>("avg");
+  // "Today" shows the raw last-24 h counts; "Usual" averages per observed day.
+  const mode: Mode = view === "usual" ? "avg" : "total";
   const nowHour = localHour(now, timeZone).hour;
 
   const valueOf = (h: HourStat) =>
@@ -77,7 +84,7 @@ export function MovementsByHour({
   }
   const axisMax = niceMax(rawMax);
   const ticks = [0, axisMax / 2, axisMax];
-  const yUnit = mode === "avg" ? "movements / day" : "movements (total)";
+  const yUnit = view === "usual" ? "movements / day" : "movements · last 24 h";
 
   const empty = summary.landings === 0 && summary.takeoffs === 0;
   const tz = timeZone?.split("/").pop()?.replace(/_/g, " ");
@@ -87,19 +94,19 @@ export function MovementsByHour({
       <div className="flex items-baseline justify-between gap-2">
         <h2 className="font-semibold uppercase tracking-wide text-on-surface">Traffic by hour</h2>
         <div className="flex overflow-hidden border border-border text-[11px]">
-          {(["avg", "total"] as Mode[]).map((m) => (
+          {(["today", "usual"] as StatView[]).map((v) => (
             <button
-              key={m}
+              key={v}
               type="button"
-              onClick={() => setMode(m)}
-              aria-pressed={mode === m}
+              onClick={() => onViewChange(v)}
+              aria-pressed={view === v}
               className={`px-2 py-0.5 uppercase ${
-                mode === m
+                view === v
                   ? "bg-primary text-on-primary"
                   : "text-on-surface-variant hover:bg-surface-container"
               }`}
             >
-              {m === "avg" ? "Avg/day" : "Total"}
+              {v === "today" ? "Today" : "Usual"}
             </button>
           ))}
         </div>

@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { byRunway, summarize, type MovementLog } from "../domain/movementStats";
-import { MovementsByHour } from "./MovementsByHour";
+import { MovementsByHour, type StatView } from "./MovementsByHour";
 
 const NOW = Date.UTC(2026, 6, 20, 12, 0, 0);
 
@@ -19,36 +19,59 @@ const emptySummary = { landings: 0, takeoffs: 0, days: 0 };
 
 afterEach(cleanup);
 
+function renderMbh(view: StatView, onViewChange: (v: StatView) => void = () => {}, tz = "UTC") {
+  return render(
+    <MovementsByHour
+      runways={runways}
+      summary={summary}
+      timeZone={tz}
+      now={NOW}
+      view={view}
+      onViewChange={onViewChange}
+    />,
+  );
+}
+
 describe("MovementsByHour", () => {
   it("shows an empty state before any history is collected", () => {
-    render(<MovementsByHour runways={[]} summary={emptySummary} timeZone="UTC" now={NOW} />);
+    render(
+      <MovementsByHour
+        runways={[]}
+        summary={emptySummary}
+        timeZone="UTC"
+        now={NOW}
+        view="today"
+        onViewChange={() => {}}
+      />,
+    );
     expect(screen.getByText("Traffic by hour")).toBeInTheDocument();
     expect(screen.getByText(/No history yet/i)).toBeInTheDocument();
   });
 
-  it("renders one chart per runway with a labelled, ticked Y axis and a summary", () => {
-    render(
-      <MovementsByHour runways={runways} summary={summary} timeZone="Europe/Zurich" now={NOW} />,
-    );
+  it("renders one chart per runway with a labelled Y axis and a summary", () => {
+    renderMbh("usual", () => {}, "Europe/Zurich");
 
     // A separate chart per runway end (busiest first) — split, not aggregated.
     expect(screen.getByRole("img", { name: /Runway 28/i })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: /Runway 16/i })).toBeInTheDocument();
     expect(screen.getAllByText("RWY").length).toBeGreaterThanOrEqual(2);
 
-    // Y axis: a units label and numeric ticks (0 appears on every chart).
+    // "Usual" view averages per day.
     expect(screen.getByText(/movements \/ day/)).toBeInTheDocument();
     expect(screen.getAllByText("0").length).toBeGreaterThanOrEqual(1);
 
-    // Overall summary across runways: 7 landings, 7 takeoffs, 2 days.
     expect(screen.getByText(/7 landings · 7 takeoffs over 2 days/)).toBeInTheDocument();
     expect(screen.getByText(/Zurich local time/)).toBeInTheDocument();
   });
 
-  it("toggles the Y axis between average-per-day and all-time totals", () => {
-    render(<MovementsByHour runways={runways} summary={summary} timeZone="UTC" now={NOW} />);
-    expect(screen.getByText(/movements \/ day/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Total" }));
-    expect(screen.getByText(/movements \(total\)/)).toBeInTheDocument();
+  it("defaults to Today (real last-24 h counts) and reports the view change", () => {
+    const onViewChange = vi.fn();
+    renderMbh("today", onViewChange);
+    expect(screen.getByText(/movements · last 24 h/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Today" })).toHaveAttribute("aria-pressed", "true");
+
+    // Controlled toggle: clicking "Usual" asks the parent to switch.
+    fireEvent.click(screen.getByRole("button", { name: "Usual" }));
+    expect(onViewChange).toHaveBeenCalledWith("usual");
   });
 });

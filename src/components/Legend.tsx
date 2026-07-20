@@ -1,4 +1,4 @@
-import { HEAT_MAX, HEAT_STEPS } from "../lib/heat";
+import { HEAT_MAX_RECENT, HEAT_STEPS } from "../lib/heat";
 import { PlaneIcon } from "./icons";
 
 /** Explains the heat scale and the plane-phase colours. */
@@ -7,7 +7,7 @@ export function Legend() {
     <div className="flex flex-col gap-3 text-xs text-on-surface-variant">
       <div>
         <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-on-surface">
-          Aircraft in last 15 min
+          Runway activity now
         </div>
         {/* Discrete stepped swatches (no gradient, per design). */}
         <div
@@ -20,9 +20,9 @@ export function Legend() {
           ))}
         </div>
         <div className="mt-1 flex justify-between text-[10px] text-muted">
-          <span>0</span>
-          <span>{Math.round(HEAT_MAX / 2)}</span>
-          <span>{HEAT_MAX}+</span>
+          <span>quiet</span>
+          <span>{Math.round(HEAT_MAX_RECENT / 2)}</span>
+          <span>{HEAT_MAX_RECENT}+ / hr</span>
         </div>
       </div>
 

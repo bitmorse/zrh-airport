@@ -146,6 +146,35 @@ export function byRunway(log: MovementLog): RunwayHistogram[] {
   return result;
 }
 
+/**
+ * Recent movements per runway end for the live map heatmap: landings+takeoffs in the
+ * current local hour plus the previous one (a ~1–2 h window that reflects the runway
+ * config in use right now without the top-of-hour dip a single bucket would have).
+ * `runways` are the backend's `days=1` histograms (real last-24 h). Pure.
+ */
+export function recentActivityByEnd(
+  runways: RunwayHistogram[],
+  nowMs: number,
+  timeZone?: string,
+): Record<string, number> {
+  const h = localHour(nowMs, timeZone).hour;
+  const prev = (h + 23) % 24;
+  const out: Record<string, number> = {};
+  for (const rw of runways) {
+    const cur = rw.hours[h];
+    const before = rw.hours[prev];
+    out[rw.end] =
+      (cur?.landings ?? 0) + (cur?.takeoffs ?? 0) + (before?.landings ?? 0) + (before?.takeoffs ?? 0);
+  }
+  return out;
+}
+
+/** True when a counts map has any activity at all (else the caller should fall back). */
+export function hasActivity(counts: Record<string, number>): boolean {
+  for (const v of Object.values(counts)) if (v > 0) return true;
+  return false;
+}
+
 /** Totals across the whole log (pure). */
 export function summarize(log: MovementLog): MovementSummary {
   const days = new Set<string>();
