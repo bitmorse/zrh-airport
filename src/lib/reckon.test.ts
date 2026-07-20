@@ -17,12 +17,20 @@ describe("reckonPosition", () => {
     expect(p.lon).toBeGreaterThan(start.lon); // track 090° → moves east
   });
 
-  it("returns the raw position on the ground, when stopped, or with no poll time", () => {
+  it("returns the raw position when slow-taxiing, stopped, or with no poll time", () => {
     const raw = { lat: 47.4, lon: 8.5 };
-    expect(reckonPosition(ac({ onGround: true }), 1000, 99_000)).toEqual(raw);
+    expect(reckonPosition(ac({ onGround: true, gs: 12 }), 1000, 99_000)).toEqual(raw); // taxi
     expect(reckonPosition(ac({ gs: 0 }), 1000, 99_000)).toEqual(raw);
     expect(reckonPosition(ac({ track: null }), 1000, 99_000)).toEqual(raw);
     expect(reckonPosition(ac(), null, 99_000)).toEqual(raw);
+  });
+
+  it("advances a fast aircraft on the ground (takeoff/landing roll) along its track", () => {
+    const start = ac({ onGround: true, gs: 95 }); // ~176 km/h — clearly rolling
+    const p = reckonPosition(start, 1000, 1000 + 4_000); // 4 s later
+    const expected = 95 * KT_TO_MS * 4; // metres down the runway
+    expect(haversineMeters({ lat: start.lat, lon: start.lon }, p)).toBeCloseTo(expected, -1);
+    expect(p.lon).toBeGreaterThan(start.lon); // track 090° → moves east
   });
 
   it("caps extrapolation so a stalled feed doesn't fling the aircraft away", () => {

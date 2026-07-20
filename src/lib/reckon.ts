@@ -9,12 +9,18 @@ import { destinationPoint, type LatLon } from "./geo";
 const KT_TO_MS = 0.514444;
 const M_TO_NM = 1 / 1852;
 const MAX_EXTRAPOLATE_S = 60; // stop dead-reckoning if the feed stalls
+// Above this groundspeed a plane on the ground is rolling (takeoff/landing), not
+// taxiing — reckon it so a departure glides down the runway instead of freezing.
+// Below it we hold position: slow taxi tracks are noisy and would jitter.
+const GROUND_RECKON_MIN_KT = 30;
 
 /**
  * The aircraft's estimated position now, advanced along its track at groundspeed
  * since the last poll. The single source of truth shared by the plane glyph and its
- * trajectory trail, so the trail's leading end always meets the icon. On the ground,
- * stationary, or without a track/poll time it returns the raw position.
+ * trajectory trail, so the trail's leading end always meets the icon. Airborne traffic
+ * always reckons; ground traffic reckons only once it's rolling fast (a takeoff/landing
+ * roll), so a 95 kt departure animates while a slow taxi holds still. Stationary, or
+ * without a track/poll time, it returns the raw position.
  */
 export function reckonPosition(
   ac: Pick<Aircraft, "lat" | "lon" | "onGround" | "gs" | "track" | "seenPos">,
@@ -22,7 +28,13 @@ export function reckonPosition(
   nowMs: number,
 ): LatLon {
   const pos = { lat: ac.lat, lon: ac.lon };
-  if (ac.onGround || ac.gs == null || ac.gs <= 0 || ac.track == null || lastUpdated == null) {
+  if (
+    ac.gs == null ||
+    ac.gs <= 0 ||
+    ac.track == null ||
+    lastUpdated == null ||
+    (ac.onGround && ac.gs < GROUND_RECKON_MIN_KT) // slow taxi — hold position (noisy)
+  ) {
     return pos;
   }
   const ageSec = Math.min(

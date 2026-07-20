@@ -30,6 +30,7 @@ import {
 } from "./domain/autoSelect";
 import { heightAglFt } from "./domain/gpws";
 import { byRunway, summarize } from "./domain/movementStats";
+import * as gpwsAudio from "./lib/gpwsAudio";
 import { useAirportStats } from "./hooks/useAirportStats";
 import { AirportContext } from "./hooks/useAirport";
 import { useWatchedFlights } from "./hooks/useWatchedFlights";
@@ -475,9 +476,13 @@ export default function App() {
             <span className="text-xs font-semibold tabular-nums">{score}</span>
           </button>
           <button
-            onClick={() =>
-              recorder.isRecording ? flashMicHint() : updateSettings({ muted: !settings.muted })
-            }
+            onClick={() => {
+              // A tap is a user gesture — unlock/resume the audio context here so the
+              // first unmute (and any later tap) primes mobile Safari for playback.
+              gpwsAudio.unlock();
+              if (recorder.isRecording) flashMicHint();
+              else updateSettings({ muted: !settings.muted });
+            }}
             aria-label={effectiveMuted ? "Unmute cockpit audio" : "Mute cockpit audio"}
             aria-pressed={!effectiveMuted}
             aria-disabled={recorder.isRecording}

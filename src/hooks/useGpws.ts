@@ -7,6 +7,7 @@ import {
   type GpwsCue,
   type GpwsState,
 } from "../domain/gpws";
+import * as gpwsAudio from "../lib/gpwsAudio";
 import { useAirport } from "./useAirport";
 import type { AircraftWithAssignment } from "./useLiveTraffic";
 
@@ -50,14 +51,12 @@ export function useGpws(
   const lastEst = useRef(0);
   const state = useRef<GpwsState>(createGpwsState(Number.POSITIVE_INFINITY));
   const stateHex = useRef<string | null>(null); // aircraft the state machine is armed for
-  const audio = useRef<Map<string, HTMLAudioElement>>(new Map());
-  const queue = useRef<string[]>([]);
-  const current = useRef<HTMLAudioElement | null>(null);
 
   // Live gates, read by the persistent loop without re-subscribing.
   const targetHex = useRef<string | null>(null);
   targetHex.current = active && item ? item.ac.hex : null;
   const audibleRef = useRef(audible);
+  const wasAudible = useRef(audible);
   audibleRef.current = audible;
 
   const [callout, setCallout] = useState<string | null>(null);
@@ -68,16 +67,11 @@ export function useGpws(
     clearTimer.current = setTimeout(() => setCallout(null), 3500);
   });
 
-  // Warm the callout audio cache once the sim is active (one <audio> per cue).
+  // Decode the callout clips once the sim is active (a no-op where Web Audio isn't
+  // available, e.g. tests — the visual readout still fires).
   useEffect(() => {
-    if (!active || typeof Audio === "undefined") return;
-    for (const c of GPWS_SCHEDULE) {
-      if (!audio.current.has(c.url)) {
-        const a = new Audio(c.url);
-        a.preload = "auto";
-        audio.current.set(c.url, a);
-      }
-    }
+    if (!active) return;
+    gpwsAudio.load(GPWS_SCHEDULE.map((c) => c.url));
   }, [active]);
 
   // Refresh the dead-reckoning base from each poll, and re-arm the state machine ONLY
@@ -88,15 +82,11 @@ export function useGpws(
     const { ac } = item;
     const agl = heightAglFt(ac, fieldElevationFt, geoidFt ?? 0);
     if (stateHex.current !== ac.hex) {
-      // Genuinely new aircraft — fresh approach: re-arm and drop the old plane's queue.
+      // Genuinely new aircraft — fresh approach: re-arm and cut the old plane's callouts.
       state.current = createGpwsState(agl);
       stateHex.current = ac.hex;
       lastEst.current = agl;
-      queue.current = [];
-      if (current.current) {
-        current.current.pause();
-        current.current = null;
-      }
+      gpwsAudio.stopAll();
     }
     base.current = {
       agl,
@@ -109,35 +99,14 @@ export function useGpws(
 
   // The one and only playback loop. Created once, cleared only on unmount.
   useEffect(() => {
-    // Play the next queued callout, chaining to the next when it ends. A no-op while
-    // something is already speaking — that's what prevents callouts overlapping.
-    const playNext = () => {
-      if (current.current) return;
-      const url = queue.current.shift();
-      if (!url) return;
-      const a = audio.current.get(url);
-      if (!a) {
-        playNext();
-        return;
-      }
-      current.current = a;
-      a.currentTime = 0;
-      const onDone = () => {
-        a.removeEventListener("ended", onDone);
-        current.current = null;
-        playNext();
-      };
-      a.addEventListener("ended", onDone);
-      void a.play().catch(() => {
-        a.removeEventListener("ended", onDone);
-        current.current = null;
-        playNext();
-      });
-    };
-
     const id = setInterval(() => {
-      // No active target (deselected / sim off): stop advancing, but let any in-flight
-      // clip finish on its own via the `ended` chain — never cut it here.
+      // Muted / recording just went into effect: cut any scheduled callouts once (not
+      // every tick). The visual readout keeps running regardless.
+      if (!audibleRef.current && wasAudible.current) gpwsAudio.stopAll();
+      wasAudible.current = audibleRef.current;
+
+      // No active target (deselected / sim off): stop advancing. Scheduled callouts on
+      // the audio clock finish on their own — never cut here.
       const tgt = targetHex.current;
       if (!tgt || stateHex.current !== tgt) return;
 
@@ -149,27 +118,14 @@ export function useGpws(
       const cues = gpwsAdvance(state.current, { aglFt: est, descending, onGround: b.onGround });
       for (const c of cues) {
         flashCallout.current(calloutLabel(c)); // data-layer readout, even when muted
-        if (audibleRef.current) queue.current.push(c.url);
-      }
-
-      if (audibleRef.current) {
-        playNext();
-      } else if (current.current) {
-        // Muted / recording: silence audio (the OS mutes it anyway) but keep the readout.
-        current.current.pause();
-        current.current = null;
-        queue.current = [];
+        if (audibleRef.current) gpwsAudio.play(c.url); // serialised on the audio clock
       }
     }, 400);
 
     return () => {
       clearInterval(id);
       if (clearTimer.current) clearTimeout(clearTimer.current);
-      if (current.current) {
-        current.current.pause();
-        current.current = null;
-      }
-      queue.current = [];
+      gpwsAudio.stopAll();
     };
   }, []);
 
