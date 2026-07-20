@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
+import type { Aircraft } from "../data/adsb";
 import { type Airport } from "../data/flightInfo";
+import type { RunwayAssignment } from "../domain/assignRunway";
 import { useAirport } from "../hooks/useAirport";
 import { useFlightRoute } from "../hooks/useFlightRoute";
 import { useGpws } from "../hooks/useGpws";
 import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
+import { useRafNow } from "../hooks/useNow";
 import { useSettings } from "../hooks/useSettings";
+import type { Units } from "../lib/format";
 import { formatAltitude, formatSpeed } from "../lib/format";
 import { elapsedSec, reckonAltFt } from "../lib/reckon";
 
@@ -15,25 +19,72 @@ const PHASE_LABEL: Record<string, string> = {
 };
 
 /**
+ * The phase / altitude / speed line, dead-reckoned and refreshed at ~10 Hz so it
+ * reads live. Shows both heights above field, labelled to disambiguate: GNSS
+ * (geometric — what the GPWS uses) and baro (pressure altitude, offset on
+ * non-standard-pressure days). Speed stays stepwise — ADS-B carries no acceleration.
+ */
+function MotionReadout({
+  ac,
+  assignment,
+  lastUpdated,
+  fieldElevationFt,
+  geoidFt,
+  units,
+}: {
+  ac: Aircraft;
+  assignment: RunwayAssignment | null;
+  lastUpdated: number | null;
+  fieldElevationFt: number;
+  geoidFt: number;
+  units: Units;
+}) {
+  const now = useRafNow(100);
+  const elapsed = elapsedSec(lastUpdated, now);
+  const reckon = (base: number | null, extra = 0) =>
+    base == null ? null : Math.max(0, reckonAltFt(base, ac.verticalRateFpm, elapsed) - extra);
+
+  let altText: string;
+  if (ac.onGround) {
+    altText = formatAltitude(0, units);
+  } else {
+    const gnss = reckon(ac.altGeomFt, fieldElevationFt + geoidFt);
+    const baro = reckon(ac.altFt, fieldElevationFt);
+    const parts: string[] = [];
+    if (gnss != null) parts.push(`${formatAltitude(gnss, units)} GNSS`);
+    if (baro != null) parts.push(`${formatAltitude(baro, units)} baro`);
+    altText = parts.length ? parts.join(" · ") : "—";
+  }
+
+  return (
+    <p className="text-[11px] text-slate-500">
+      {assignment ? `${PHASE_LABEL[assignment.phase]} · RWY ${assignment.end}` : "in range"}
+      {" · "}
+      {altText}
+      {" · "}
+      {ac.gs != null ? formatSpeed(ac.gs, units) : "—"}
+    </p>
+  );
+}
+
+/**
  * Details for the selected aircraft: airline, flight number and route, looked up
  * from the callsign via adsbdb (cached by TanStack Query). Falls back gracefully
  * when a callsign isn't in the database.
  */
 export function FlightDetails({
   item,
-  now,
   lastUpdated,
   onClear,
 }: {
   item: AircraftWithAssignment | null;
-  now: number;
   lastUpdated: number | null;
   onClear: () => void;
 }) {
   const callsign = item?.ac.flight ?? null;
   const route = useFlightRoute(callsign);
   const [{ units }] = useSettings();
-  const { fieldElevationFt } = useAirport().config;
+  const { fieldElevationFt, geoidFt } = useAirport().config;
   const [gpws, setGpws] = useState(false);
   // Reset the toggle whenever the selection changes.
   useEffect(() => setGpws(false), [item?.ac.hex]);
@@ -54,15 +105,6 @@ export function FlightDetails({
   const { ac, assignment } = item;
   const title = ac.flight ?? ac.hex.toUpperCase();
   const r = route.data;
-  // Dead-reckon the altitude from vertical rate so it ticks live between polls.
-  const aglFt =
-    ac.onGround || ac.altFt == null
-      ? 0
-      : Math.max(
-          0,
-          reckonAltFt(ac.altFt, ac.verticalRateFpm, elapsedSec(lastUpdated, now)) -
-            fieldElevationFt,
-        );
 
   return (
     <div className="text-sm">
@@ -71,14 +113,14 @@ export function FlightDetails({
           <h2 className="font-mono text-base font-semibold text-slate-100">
             {title}
           </h2>
-          <p className="text-[11px] text-slate-500">
-            {assignment
-              ? `${PHASE_LABEL[assignment.phase]} · RWY ${assignment.end}`
-              : "in range"}
-            {" · "}
-            {formatAltitude(aglFt, units)} ·{" "}
-            {ac.gs != null ? formatSpeed(ac.gs, units) : "—"}
-          </p>
+          <MotionReadout
+            ac={ac}
+            assignment={assignment}
+            lastUpdated={lastUpdated}
+            fieldElevationFt={fieldElevationFt}
+            geoidFt={geoidFt ?? 0}
+            units={units}
+          />
           {(ac.type || ac.typeDesc || ac.registration) && (
             <p className="mt-0.5 text-[11px] text-slate-400">
               <span className="text-slate-300">
