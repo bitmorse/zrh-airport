@@ -225,7 +225,10 @@ export function useLiveTraffic(settings: Settings, airport: Airport): LiveTraffi
       if (query.state.data?.needsFastPoll) return FAST_POLL_MS;
       return Math.max(10, settings.pollSeconds) * 1000;
     },
-    refetchOnWindowFocus: false,
+    // Refetch immediately when the tab is refocused/revealed (the interval is paused
+    // while hidden, so otherwise you'd stare at stale data until the next tick).
+    // `staleTime` keeps a quick glance-away-and-back from firing a redundant fetch.
+    refetchOnWindowFocus: true,
     staleTime: 3_000,
     retry: 1,
   });
