@@ -26,6 +26,15 @@ function mv(string $kind, string $hex, string $end, int $ts): array
     return ['kind' => $kind, 'hex' => $hex, 'end' => $end, 'ts' => $ts];
 }
 
+/** A tracker row with the fields Store persists. */
+function trk(int $onground, ?string $lastEnd = null, int $seen = 1): array
+{
+    return [
+        'onground' => $onground, 'alt_agl' => null, 'seen' => $seen,
+        'takeoff_at' => null, 'landing_at' => null, 'last_end' => $lastEnd,
+    ];
+}
+
 /** A normalised weather row (as Weather::normalise emits), with sane defaults. */
 function wx(int $tsMs, array $over = []): array
 {
@@ -209,6 +218,63 @@ return [
         $s->recordPoll($t0);
         $act = $s->pollActivity($t0 - 24 * 3_600_000); // wide window
         Assert::same(1, $act['count'], '3h-old heartbeat pruned');
+    },
+
+    'tracker: round-trips last_end (approach-end memory)' => function (): void {
+        $s = memStore();
+        $s->saveTracker('LSZH', ['a' => trk(0, '28')]);
+        Assert::same('28', $s->loadTracker('LSZH')['a']['last_end'], 'last_end persisted');
+    },
+
+    'commitCycle: persists movements and tracker together' => function (): void {
+        $s = memStore();
+        $ts = tsAt('2026-07-17 14:00:00', TZ);
+        $s->commitCycle('LSZH', [mv('landing', 'a', '14', $ts)], ['a' => trk(1, '14')], TZ);
+        Assert::same(1, $s->histogram('LSZH', 0)['totals']['landings'], 'movement persisted');
+        Assert::same('14', $s->loadTracker('LSZH')['a']['last_end'], 'tracker persisted');
+    },
+
+    'commitCycle: a failure rolls back BOTH movements and tracker (atomic)' => function (): void {
+        $s = memStore();
+        $threw = false;
+        try {
+            // kind=null violates NOT NULL; the whole cycle must roll back.
+            $s->commitCycle('LSZH',
+                [['kind' => null, 'hex' => 'a', 'end' => '14', 'ts' => tsAt('2026-07-17 14:00:00', TZ)]],
+                ['a' => trk(1, '14')],
+                TZ);
+        } catch (\Throwable $e) {
+            $threw = true;
+        }
+        Assert::true($threw, 'commitCycle threw');
+        Assert::same(0, $s->histogram('LSZH', 0)['totals']['landings'], 'no movement leaked');
+        Assert::count(0, $s->loadTracker('LSZH'), 'tracker rolled back too');
+    },
+
+    'migrate: adds new columns to a pre-existing old-schema DB without data loss' => function (): void {
+        $pdo = new PDO('sqlite::memory:');
+        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        // Simulate the previously-deployed schema (no last_end; only the original
+        // weather fields), with a row in each.
+        $pdo->exec('CREATE TABLE tracker (icao TEXT, hex TEXT, onground INT, alt_agl REAL, seen INT, takeoff_at INT, landing_at INT, PRIMARY KEY(icao,hex))');
+        $pdo->exec("INSERT INTO tracker (icao,hex,onground,seen) VALUES ('LSZH','old',0,123)");
+        $pdo->exec('CREATE TABLE weather (icao TEXT, ts_utc INT, local_date TEXT, local_hour INT, wind_dir INT, wind_kt REAL, gust_kt REAL, temp_c REAL, precip_mm REAL, visibility_m REAL, cloud_pct REAL, pressure_hpa REAL, fetched_at INT, PRIMARY KEY(icao,ts_utc))');
+        $pdo->exec("INSERT INTO weather (icao,ts_utc,local_date,local_hour,wind_dir,fetched_at) VALUES ('LSZH',1000,'2026-07-20',12,240,1000)");
+
+        $s = new Store($pdo);
+        $s->migrate();
+
+        $trkCols = $pdo->query('PRAGMA table_info(tracker)')->fetchAll(PDO::FETCH_COLUMN, 1);
+        Assert::true(in_array('last_end', $trkCols, true), 'tracker.last_end added');
+        $wxCols = $pdo->query('PRAGMA table_info(weather)')->fetchAll(PDO::FETCH_COLUMN, 1);
+        Assert::true(in_array('humidity_pct', $wxCols, true), 'weather.humidity_pct added');
+        Assert::true(in_array('pressure_msl_hpa', $wxCols, true), 'weather.pressure_msl_hpa added');
+
+        // Old rows survived and read back through the new accessors.
+        Assert::same(0, $s->loadTracker('LSZH')['old']['onground'], 'old tracker row intact');
+        $w = $s->weather('LSZH', 0);
+        Assert::same(240, $w[0]['windDir'], 'old weather row intact via new read');
+        Assert::true($w[0]['humidityPct'] === null, 'new field null for the old row');
     },
 
     'migrate: creates the weather table' => function (): void {

@@ -123,6 +123,29 @@ return [
         Assert::same(404, $r['status']);
     },
 
+    'etag is a weak validator (body has generatedAt not in the seed)' => function (): void {
+        $r = Api::handle(apiStore(), '/api/v1/LSZH/movements', [], apiOpts());
+        Assert::true(str_starts_with($r['headers']['ETag'] ?? '', 'W/"'), 'weak ETag');
+    },
+
+    'db-missing: /health answers (degraded), data endpoints return empty' => function (): void {
+        // Cold start: no DB yet. The API must not 500 — /health is how you diagnose it.
+        $h = Api::handle(null, '/api/v1/health', [], apiOpts());
+        Assert::same(200, $h['status'], 'health up');
+        $hb = json_decode($h['body'], true);
+        Assert::true($hb['ok'] === true, 'ok');
+        Assert::true($hb['db'] === false, 'db:false signals not-provisioned');
+        Assert::same(0, $hb['polls10m'], 'no polls');
+
+        $m = Api::handle(null, '/api/v1/LSZH/movements', [], apiOpts());
+        Assert::same(200, $m['status'], 'movements empty, not 500');
+        Assert::count(0, json_decode($m['body'], true)['ends'], 'empty ends');
+
+        $w = Api::handle(null, '/api/v1/LSZH/weather', [], apiOpts());
+        Assert::same(200, $w['status'], 'weather empty, not 500');
+        Assert::count(0, json_decode($w['body'], true)['hours'], 'empty hours');
+    },
+
     'summary: returns headline stats' => function (): void {
         $r = Api::handle(apiStore(), '/api/v1/LSZH/summary', [], apiOpts());
         Assert::same(200, $r['status']);

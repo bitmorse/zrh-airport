@@ -16,22 +16,25 @@ namespace Zrh;
 final class Weather
 {
     private const BASE_URL = 'https://api.open-meteo.com/v1/forecast';
-    private const HOURLY = 'temperature_2m,precipitation,wind_speed_10m,wind_direction_10m,'
-        . 'wind_gusts_10m,visibility,cloud_cover,surface_pressure';
     private const TIMEOUT_S = 8;
 
     /**
-     * @return array<int,array{tsMs:int,windDir:?int,windKt:?float,gustKt:?float,tempC:?float,precipMm:?float,visibilityM:?float,cloudPct:?float,pressureHpa:?float}>
+     * Fetch hourly weather around $center. `$pastDays` sets how far back to
+     * request (Open-Meteo allows up to 92) — larger values let a restart backfill
+     * any gap left by downtime.
+     *
+     * @return array<int,array<string,mixed>> normalised rows keyed by WEATHER_FIELDS apiKeys + tsMs
      */
-    public static function fetchHourly(array $center, ?callable $httpGet = null): array
+    public static function fetchHourly(array $center, int $pastDays = 1, ?callable $httpGet = null): array
     {
         $httpGet ??= [self::class, 'curlGet'];
+        $hourly = implode(',', array_column(Store::WEATHER_FIELDS, 3));
         $url = self::BASE_URL . '?' . http_build_query([
             'latitude' => $center['lat'],
             'longitude' => $center['lon'],
-            'hourly' => self::HOURLY,
+            'hourly' => $hourly,
             'wind_speed_unit' => 'kn',
-            'past_days' => 1,
+            'past_days' => max(1, $pastDays),
             'forecast_days' => 2,
             'timezone' => 'UTC',
         ]);
@@ -51,24 +54,17 @@ final class Weather
         if (!is_array($h) || !isset($h['time']) || !is_array($h['time'])) {
             return [];
         }
-        $times = $h['time'];
         $rows = [];
-        foreach ($times as $i => $time) {
+        foreach ($h['time'] as $i => $time) {
             $tsMs = self::hourToMs((string) $time);
             if ($tsMs === null) {
                 continue;
             }
-            $rows[] = [
-                'tsMs' => $tsMs,
-                'windDir' => self::intAt($h, 'wind_direction_10m', $i),
-                'windKt' => self::floatAt($h, 'wind_speed_10m', $i),
-                'gustKt' => self::floatAt($h, 'wind_gusts_10m', $i),
-                'tempC' => self::floatAt($h, 'temperature_2m', $i),
-                'precipMm' => self::floatAt($h, 'precipitation', $i),
-                'visibilityM' => self::floatAt($h, 'visibility', $i),
-                'cloudPct' => self::floatAt($h, 'cloud_cover', $i),
-                'pressureHpa' => self::floatAt($h, 'surface_pressure', $i),
-            ];
+            $row = ['tsMs' => $tsMs];
+            foreach (Store::WEATHER_FIELDS as [$col, $type, $apiKey, $source, $isInt]) {
+                $row[$apiKey] = $isInt ? self::intAt($h, $source, $i) : self::floatAt($h, $source, $i);
+            }
+            $rows[] = $row;
         }
         return $rows;
     }

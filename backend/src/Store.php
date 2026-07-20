@@ -36,7 +36,7 @@ final class Store
         // lets a pure-SELECT reader work with only file-level read permission.
         // Setting it here also converts a database left in WAL by an earlier build.
         $pdo->exec('PRAGMA journal_mode = DELETE');
-        $pdo->exec('PRAGMA busy_timeout = 5000');
+        $pdo->exec('PRAGMA busy_timeout = 15000');
         $s = new self($pdo);
         $s->migrate();
         return $s;
@@ -55,7 +55,7 @@ final class Store
         }
         $pdo = new \PDO('sqlite:' . $path);
         $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
-        $pdo->exec('PRAGMA busy_timeout = 5000');
+        $pdo->exec('PRAGMA busy_timeout = 15000');
         $pdo->exec('PRAGMA query_only = 1');
         return new self($pdo);
     }
@@ -85,6 +85,7 @@ final class Store
                 seen       INTEGER NOT NULL,
                 takeoff_at INTEGER,
                 landing_at INTEGER,
+                last_end   TEXT,
                 PRIMARY KEY (icao, hex)
             );
         SQL);
@@ -94,24 +95,71 @@ final class Store
         $this->pdo->exec('CREATE INDEX IF NOT EXISTS idx_poll_ts ON poll_log(ts_utc)');
         // Hourly weather, one row per (airport, hour), upserted so forecasts refine
         // toward actuals. Bucketed to airport-local hour to line up with movements.
-        $this->pdo->exec(<<<'SQL'
-            CREATE TABLE IF NOT EXISTS weather (
-                icao         TEXT    NOT NULL,
-                ts_utc       INTEGER NOT NULL,
-                local_date   TEXT    NOT NULL,
-                local_hour   INTEGER NOT NULL,
-                wind_dir     INTEGER,
-                wind_kt      REAL,
-                gust_kt      REAL,
-                temp_c       REAL,
-                precip_mm    REAL,
-                visibility_m REAL,
-                cloud_pct    REAL,
-                pressure_hpa REAL,
-                fetched_at   INTEGER NOT NULL,
-                PRIMARY KEY (icao, ts_utc)
-            );
-        SQL);
+        // The full field set (not just wind) so the record is mineable later.
+        $cols = implode(",\n                ", array_map(
+            static fn ($f) => sprintf('%-18s %s', $f[0], $f[1]),
+            self::WEATHER_FIELDS,
+        ));
+        $this->pdo->exec(
+            "CREATE TABLE IF NOT EXISTS weather (\n"
+            . "                icao       TEXT    NOT NULL,\n"
+            . "                ts_utc     INTEGER NOT NULL,\n"
+            . "                local_date TEXT    NOT NULL,\n"
+            . "                local_hour INTEGER NOT NULL,\n"
+            . "                {$cols},\n"
+            . "                fetched_at INTEGER NOT NULL,\n"
+            . "                PRIMARY KEY (icao, ts_utc)\n"
+            . "            );"
+        );
+
+        // Idempotent column adds for databases created by an earlier schema.
+        $this->addColumnIfMissing('tracker', 'last_end', 'TEXT');
+        foreach (self::WEATHER_FIELDS as [$name, $type]) {
+            $this->addColumnIfMissing('weather', $name, $type);
+        }
+    }
+
+    /**
+     * Canonical weather field spec — the single source of truth shared by the
+     * schema, the upsert/read here, and Weather (the Open-Meteo request +
+     * normalise). Each entry: [sqlColumn, sqlType, apiKey, openMeteoKey, isInt].
+     * The original wind/temp/precip/cloud/pressure set plus the broadened
+     * aviation set so the record captures "entire weather", not just wind.
+     */
+    public const WEATHER_FIELDS = [
+        ['wind_dir', 'INTEGER', 'windDir', 'wind_direction_10m', true],
+        ['wind_kt', 'REAL', 'windKt', 'wind_speed_10m', false],
+        ['gust_kt', 'REAL', 'gustKt', 'wind_gusts_10m', false],
+        ['temp_c', 'REAL', 'tempC', 'temperature_2m', false],
+        ['precip_mm', 'REAL', 'precipMm', 'precipitation', false],
+        ['visibility_m', 'REAL', 'visibilityM', 'visibility', false],
+        ['cloud_pct', 'REAL', 'cloudPct', 'cloud_cover', false],
+        ['pressure_hpa', 'REAL', 'pressureHpa', 'surface_pressure', false],
+        ['humidity_pct', 'REAL', 'humidityPct', 'relative_humidity_2m', false],
+        ['dew_point_c', 'REAL', 'dewPointC', 'dew_point_2m', false],
+        ['apparent_temp_c', 'REAL', 'apparentTempC', 'apparent_temperature', false],
+        ['rain_mm', 'REAL', 'rainMm', 'rain', false],
+        ['showers_mm', 'REAL', 'showersMm', 'showers', false],
+        ['snowfall_cm', 'REAL', 'snowfallCm', 'snowfall', false],
+        ['snow_depth_m', 'REAL', 'snowDepthM', 'snow_depth', false],
+        ['weather_code', 'INTEGER', 'weatherCode', 'weather_code', true],
+        ['pressure_msl_hpa', 'REAL', 'pressureMslHpa', 'pressure_msl', false],
+        ['cloud_low_pct', 'REAL', 'cloudLowPct', 'cloud_cover_low', false],
+        ['cloud_mid_pct', 'REAL', 'cloudMidPct', 'cloud_cover_mid', false],
+        ['cloud_high_pct', 'REAL', 'cloudHighPct', 'cloud_cover_high', false],
+        ['wind_kt_80m', 'REAL', 'windKt80m', 'wind_speed_80m', false],
+        ['wind_dir_80m', 'INTEGER', 'windDir80m', 'wind_direction_80m', true],
+        ['cape', 'REAL', 'cape', 'cape', false],
+        ['freezing_level_m', 'REAL', 'freezingLevelM', 'freezing_level_height', false],
+        ['precip_prob_pct', 'INTEGER', 'precipProbPct', 'precipitation_probability', true],
+    ];
+
+    private function addColumnIfMissing(string $table, string $col, string $type): void
+    {
+        $existing = $this->pdo->query("PRAGMA table_info({$table})")->fetchAll(\PDO::FETCH_COLUMN, 1);
+        if (!in_array($col, $existing, true)) {
+            $this->pdo->exec("ALTER TABLE {$table} ADD COLUMN {$col} {$type}");
+        }
     }
 
     private const POLL_RETENTION_MS = 2 * 3_600_000; // keep ~2h of heartbeats
@@ -144,39 +192,31 @@ final class Store
         if ($movements === []) {
             return 0;
         }
-        $tz = new \DateTimeZone($timeZone);
-        $stmt = $this->pdo->prepare(
-            'INSERT INTO movements (icao, ts_utc, local_date, local_hour, kind, rwy_end, hex, source)
-             VALUES (:icao, :ts, :date, :hour, :kind, :end, :hex, :source)'
-        );
-        $this->pdo->beginTransaction();
-        try {
-            foreach ($movements as $m) {
-                $b = self::localBucket((int) $m['ts'], $tz);
-                $stmt->execute([
-                    ':icao' => $icao,
-                    ':ts' => (int) $m['ts'],
-                    ':date' => $b['date'],
-                    ':hour' => $b['hour'],
-                    ':kind' => $m['kind'],
-                    ':end' => $m['end'],
-                    ':hex' => $m['hex'] ?? null,
-                    ':source' => $source,
-                ]);
-            }
-            $this->pdo->commit();
-        } catch (\Throwable $e) {
-            $this->pdo->rollBack();
-            throw $e;
-        }
+        $this->tx(fn () => $this->writeMovements($icao, $movements, new \DateTimeZone($timeZone), $source));
         return count($movements);
     }
 
-    /** @return array<string,array{onground:int,alt_agl:?float,seen:int,takeoff_at:?int,landing_at:?int}> */
+    /**
+     * Persist a poll's movements AND the updated detector tracker in ONE
+     * transaction, so a failure can never leave a movement committed without its
+     * cooldown/state (which caused the same event to re-count every poll).
+     */
+    public function commitCycle(string $icao, array $movements, array $tracker, string $timeZone, string $source = 'collector'): int
+    {
+        $this->tx(function () use ($icao, $movements, $tracker, $timeZone, $source) {
+            $this->writeTracker($icao, $tracker);
+            if ($movements !== []) {
+                $this->writeMovements($icao, $movements, new \DateTimeZone($timeZone), $source);
+            }
+        });
+        return count($movements);
+    }
+
+    /** @return array<string,array{onground:int,alt_agl:?float,seen:int,takeoff_at:?int,landing_at:?int,last_end:?string}> */
     public function loadTracker(string $icao): array
     {
         $stmt = $this->pdo->prepare(
-            'SELECT hex, onground, alt_agl, seen, takeoff_at, landing_at FROM tracker WHERE icao = ?'
+            'SELECT hex, onground, alt_agl, seen, takeoff_at, landing_at, last_end FROM tracker WHERE icao = ?'
         );
         $stmt->execute([$icao]);
         $out = [];
@@ -187,6 +227,7 @@ final class Store
                 'seen' => (int) $r['seen'],
                 'takeoff_at' => $r['takeoff_at'] === null ? null : (int) $r['takeoff_at'],
                 'landing_at' => $r['landing_at'] === null ? null : (int) $r['landing_at'],
+                'last_end' => $r['last_end'] === null ? null : (string) $r['last_end'],
             ];
         }
         return $out;
@@ -195,28 +236,59 @@ final class Store
     /** Replace this airport's tracker wholesale (rows absent from $tracker are dropped). */
     public function saveTracker(string $icao, array $tracker): void
     {
+        $this->tx(fn () => $this->writeTracker($icao, $tracker));
+    }
+
+    /** Run $fn inside a transaction, rolling back and rethrowing on any error. */
+    private function tx(callable $fn): void
+    {
         $this->pdo->beginTransaction();
         try {
-            $this->pdo->prepare('DELETE FROM tracker WHERE icao = ?')->execute([$icao]);
-            $stmt = $this->pdo->prepare(
-                'INSERT INTO tracker (icao, hex, onground, alt_agl, seen, takeoff_at, landing_at)
-                 VALUES (:icao, :hex, :onground, :alt_agl, :seen, :takeoff_at, :landing_at)'
-            );
-            foreach ($tracker as $hex => $st) {
-                $stmt->execute([
-                    ':icao' => $icao,
-                    ':hex' => (string) $hex,
-                    ':onground' => (int) $st['onground'],
-                    ':alt_agl' => $st['alt_agl'] ?? null,
-                    ':seen' => (int) $st['seen'],
-                    ':takeoff_at' => $st['takeoff_at'] ?? null,
-                    ':landing_at' => $st['landing_at'] ?? null,
-                ]);
-            }
+            $fn();
             $this->pdo->commit();
         } catch (\Throwable $e) {
-            $this->pdo->rollBack();
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
             throw $e;
+        }
+    }
+
+    /** Insert movement rows (assumes an open transaction). */
+    private function writeMovements(string $icao, array $movements, \DateTimeZone $tz, string $source): void
+    {
+        $stmt = $this->pdo->prepare(
+            'INSERT INTO movements (icao, ts_utc, local_date, local_hour, kind, rwy_end, hex, source)
+             VALUES (:icao, :ts, :date, :hour, :kind, :end, :hex, :source)'
+        );
+        foreach ($movements as $m) {
+            $b = self::localBucket((int) $m['ts'], $tz);
+            $stmt->execute([
+                ':icao' => $icao, ':ts' => (int) $m['ts'], ':date' => $b['date'], ':hour' => $b['hour'],
+                ':kind' => $m['kind'], ':end' => $m['end'], ':hex' => $m['hex'] ?? null, ':source' => $source,
+            ]);
+        }
+    }
+
+    /** Replace the tracker rows for one airport (assumes an open transaction). */
+    private function writeTracker(string $icao, array $tracker): void
+    {
+        $this->pdo->prepare('DELETE FROM tracker WHERE icao = ?')->execute([$icao]);
+        $stmt = $this->pdo->prepare(
+            'INSERT INTO tracker (icao, hex, onground, alt_agl, seen, takeoff_at, landing_at, last_end)
+             VALUES (:icao, :hex, :onground, :alt_agl, :seen, :takeoff_at, :landing_at, :last_end)'
+        );
+        foreach ($tracker as $hex => $st) {
+            $stmt->execute([
+                ':icao' => $icao,
+                ':hex' => (string) $hex,
+                ':onground' => (int) $st['onground'],
+                ':alt_agl' => $st['alt_agl'] ?? null,
+                ':seen' => (int) $st['seen'],
+                ':takeoff_at' => $st['takeoff_at'] ?? null,
+                ':landing_at' => $st['landing_at'] ?? null,
+                ':last_end' => $st['last_end'] ?? null,
+            ]);
         }
     }
 
@@ -231,11 +303,10 @@ final class Store
     // ---- weather ----
 
     /**
-     * Upsert hourly weather rows (as Weather::normalise emits). One row per
-     * (icao, hour); re-fetching an hour refines it in place. Bucketed to the
-     * airport-local hour at write time, like movements.
-     *
-     * @param array<int,array{tsMs:int,windDir:?int,windKt:?float,gustKt:?float,tempC:?float,precipMm:?float,visibilityM:?float,cloudPct:?float,pressureHpa:?float}> $rows
+     * Upsert hourly weather rows (as Weather::normalise emits, keyed by the apiKey
+     * of WEATHER_FIELDS). One row per (icao, hour); re-fetching refines it in place.
+     * Uses INSERT..ON CONFLICT where available (SQLite ≥ 3.24), else a
+     * delete-then-insert fallback so old SQLite doesn't silently drop weather.
      */
     public function upsertWeather(string $icao, array $rows, string $timeZone, int $fetchedAtMs): int
     {
@@ -243,43 +314,44 @@ final class Store
             return 0;
         }
         $tz = new \DateTimeZone($timeZone);
-        $stmt = $this->pdo->prepare(
-            'INSERT INTO weather (icao, ts_utc, local_date, local_hour, wind_dir, wind_kt,
-                gust_kt, temp_c, precip_mm, visibility_m, cloud_pct, pressure_hpa, fetched_at)
-             VALUES (:icao, :ts, :date, :hour, :wdir, :wkt, :gust, :temp, :precip, :vis, :cloud, :press, :fetched)
-             ON CONFLICT(icao, ts_utc) DO UPDATE SET
-                local_date = excluded.local_date, local_hour = excluded.local_hour,
-                wind_dir = excluded.wind_dir, wind_kt = excluded.wind_kt,
-                gust_kt = excluded.gust_kt, temp_c = excluded.temp_c,
-                precip_mm = excluded.precip_mm, visibility_m = excluded.visibility_m,
-                cloud_pct = excluded.cloud_pct, pressure_hpa = excluded.pressure_hpa,
-                fetched_at = excluded.fetched_at'
-        );
-        $this->pdo->beginTransaction();
-        try {
+        $cols = array_column(self::WEATHER_FIELDS, 0);         // sql columns
+        $keys = array_column(self::WEATHER_FIELDS, 2);         // apiKeys (row keys)
+
+        $allCols = array_merge(['icao', 'ts_utc', 'local_date', 'local_hour'], $cols, ['fetched_at']);
+        $placeholders = implode(', ', array_map(static fn ($c) => ':' . $c, $allCols));
+        $insert = 'INSERT INTO weather (' . implode(', ', $allCols) . ") VALUES ({$placeholders})";
+
+        if (self::supportsUpsert()) {
+            $set = implode(', ', array_map(
+                static fn ($c) => "{$c} = excluded.{$c}",
+                array_merge(['local_date', 'local_hour'], $cols, ['fetched_at']),
+            ));
+            $sql = $insert . ' ON CONFLICT(icao, ts_utc) DO UPDATE SET ' . $set;
+        } else {
+            $sql = null; // fallback: delete the hour first, then plain insert
+        }
+
+        $this->tx(function () use ($rows, $icao, $tz, $fetchedAtMs, $cols, $keys, $insert, $sql) {
+            $stmt = $this->pdo->prepare($sql ?? $insert);
+            $del = $sql === null
+                ? $this->pdo->prepare('DELETE FROM weather WHERE icao = ? AND ts_utc = ?')
+                : null;
             foreach ($rows as $r) {
                 $b = self::localBucket((int) $r['tsMs'], $tz);
-                $stmt->execute([
-                    ':icao' => $icao,
-                    ':ts' => (int) $r['tsMs'],
-                    ':date' => $b['date'],
-                    ':hour' => $b['hour'],
-                    ':wdir' => $r['windDir'] ?? null,
-                    ':wkt' => $r['windKt'] ?? null,
-                    ':gust' => $r['gustKt'] ?? null,
-                    ':temp' => $r['tempC'] ?? null,
-                    ':precip' => $r['precipMm'] ?? null,
-                    ':vis' => $r['visibilityM'] ?? null,
-                    ':cloud' => $r['cloudPct'] ?? null,
-                    ':press' => $r['pressureHpa'] ?? null,
-                    ':fetched' => $fetchedAtMs,
-                ]);
+                if ($del !== null) {
+                    $del->execute([$icao, (int) $r['tsMs']]);
+                }
+                $params = [
+                    ':icao' => $icao, ':ts_utc' => (int) $r['tsMs'],
+                    ':local_date' => $b['date'], ':local_hour' => $b['hour'],
+                    ':fetched_at' => $fetchedAtMs,
+                ];
+                foreach ($cols as $i => $col) {
+                    $params[':' . $col] = $r[$keys[$i]] ?? null;
+                }
+                $stmt->execute($params);
             }
-            $this->pdo->commit();
-        } catch (\Throwable $e) {
-            $this->pdo->rollBack();
-            throw $e;
-        }
+        });
         return count($rows);
     }
 
@@ -289,29 +361,32 @@ final class Store
      */
     public function weather(string $icao, int $sinceMs): array
     {
-        $stmt = $this->pdo->prepare(
-            'SELECT ts_utc, local_date, local_hour, wind_dir, wind_kt, gust_kt, temp_c,
-                    precip_mm, visibility_m, cloud_pct, pressure_hpa
-             FROM weather WHERE icao = ? AND ts_utc >= ? ORDER BY ts_utc'
-        );
+        $cols = array_column(self::WEATHER_FIELDS, 0);
+        $select = 'SELECT ts_utc, local_date, local_hour, ' . implode(', ', $cols)
+            . ' FROM weather WHERE icao = ? AND ts_utc >= ? ORDER BY ts_utc';
+        $stmt = $this->pdo->prepare($select);
         $stmt->execute([$icao, $sinceMs]);
         $out = [];
         foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
-            $out[] = [
+            $row = [
                 'tsUtc' => (int) $r['ts_utc'],
                 'localDate' => (string) $r['local_date'],
                 'localHour' => (int) $r['local_hour'],
-                'windDir' => $r['wind_dir'] === null ? null : (int) $r['wind_dir'],
-                'windKt' => $r['wind_kt'] === null ? null : (float) $r['wind_kt'],
-                'gustKt' => $r['gust_kt'] === null ? null : (float) $r['gust_kt'],
-                'tempC' => $r['temp_c'] === null ? null : (float) $r['temp_c'],
-                'precipMm' => $r['precip_mm'] === null ? null : (float) $r['precip_mm'],
-                'visibilityM' => $r['visibility_m'] === null ? null : (float) $r['visibility_m'],
-                'cloudPct' => $r['cloud_pct'] === null ? null : (float) $r['cloud_pct'],
-                'pressureHpa' => $r['pressure_hpa'] === null ? null : (float) $r['pressure_hpa'],
             ];
+            foreach (self::WEATHER_FIELDS as [$col, $type, $apiKey]) {
+                $v = $r[$col];
+                $row[$apiKey] = $v === null ? null : ($type === 'INTEGER' ? (int) $v : (float) $v);
+            }
+            $out[] = $row;
         }
         return $out;
+    }
+
+    /** True if the runtime SQLite supports INSERT..ON CONFLICT (≥ 3.24, 2018). */
+    private function supportsUpsert(): bool
+    {
+        $v = (string) $this->pdo->query('SELECT sqlite_version()')->fetchColumn();
+        return version_compare($v, '3.24.0', '>=');
     }
 
     /** Delete weather hours strictly older than $cutoffMs; returns rows removed. */

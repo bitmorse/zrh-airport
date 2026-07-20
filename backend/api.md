@@ -28,9 +28,10 @@ per runway) collected around the clock by the backend collector.
 Responses are cacheable and change at most once per collector cycle:
 
 - `Cache-Control: public, max-age=300`
-- `ETag: "<hash>"` — fingerprints the **data only** (not the wall clock), so an
-  unchanged dataset returns the same tag. Send it back via `If-None-Match` to get
-  a cheap `304 Not Modified`.
+- `ETag: W/"<hash>"` — a **weak** validator fingerprinting the **data only** (not
+  the wall clock), so an unchanged dataset returns the same tag even though the
+  body's `generatedAt` differs. Send it back via `If-None-Match` for a cheap
+  `304 Not Modified`.
 
 Fetch **on demand** (e.g. when the Stats card opens), not on a poll loop.
 
@@ -50,6 +51,7 @@ GET /airports-api/health
 ```json
 {
   "ok": true,
+  "db": true,
   "polls10m": 18,
   "lastPollMs": 1784550112745,
   "lastPollAgoS": 22,
@@ -60,6 +62,7 @@ GET /airports-api/health
 | Field | Type | Meaning |
 |-------|------|---------|
 | `ok` | bool | API is up |
+| `db` | bool | Whether the stats database exists yet. `false` on a cold start before the collector's first run — the API stays up (empty data), it isn't an outage |
 | `polls10m` | int | Poll cycles recorded in the last 10 minutes |
 | `lastPollMs` | int \| null | Most recent poll, epoch ms UTC; `null` if none |
 | `lastPollAgoS` | int \| null | Seconds since the last poll |
@@ -228,8 +231,20 @@ GET /airports-api/LSZH/weather?days=2
 | `hours[].tempC` | float \| null | Temperature, °C |
 | `hours[].precipMm` | float \| null | Precipitation, mm |
 | `hours[].visibilityM` | float \| null | Visibility, metres |
-| `hours[].cloudPct` | float \| null | Cloud cover, % |
-| `hours[].pressureHpa` | float \| null | Surface pressure, hPa |
+| `hours[].cloudPct` | float \| null | Total cloud cover, % |
+| `hours[].pressureHpa` | float \| null | Surface (station) pressure, hPa |
+| `hours[].pressureMslHpa` | float \| null | Mean-sea-level pressure (≈ QNH), hPa |
+| `hours[].humidityPct` | float \| null | Relative humidity, % |
+| `hours[].dewPointC` | float \| null | Dew point, °C |
+| `hours[].apparentTempC` | float \| null | Apparent ("feels-like") temperature, °C |
+| `hours[].rainMm` / `showersMm` | float \| null | Rain / showers, mm |
+| `hours[].snowfallCm` / `snowDepthM` | float \| null | Snowfall (cm) / snow depth (m) |
+| `hours[].weatherCode` | int \| null | WMO weather code (fog / rain / snow / thunderstorm …) |
+| `hours[].cloudLowPct` / `cloudMidPct` / `cloudHighPct` | float \| null | Cloud cover by layer, % |
+| `hours[].windKt80m` / `windDir80m` | float / int \| null | Wind aloft at 80 m (knots / degrees) |
+| `hours[].cape` | float \| null | Convective available potential energy, J/kg |
+| `hours[].freezingLevelM` | float \| null | Freezing-level height, m |
+| `hours[].precipProbPct` | int \| null | Precipitation probability, % (forecast hours) |
 | `windowDays` | int | Past window after clamping; forecast hours are always included |
 | `generatedAt` | int | Server time, epoch ms UTC |
 

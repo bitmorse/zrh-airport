@@ -39,16 +39,23 @@ final class Collector
         $aircraft = $fetchAircraft();
 
         $res = Detector::detect($airport, $tracker, $aircraft, $nowMs, $cooldownMs);
-        $inserted = $store->insertMovements($icao, $res['movements'], $tz);
-        $store->saveTracker($icao, $res['tracker']);
-        $pruned = $store->pruneMovements($icao, $nowMs - $retentionDays * self::DAY_MS);
+        // Movements + tracker in ONE transaction: a partial write would otherwise
+        // re-count the same event every poll (movement kept, cooldown/state lost).
+        $store->commitCycle($icao, $res['movements'], $res['tracker'], $tz);
+        $pruned = $store->pruneMovements($icao, $nowMs - self::guardRetention($retentionDays, self::RETENTION_DAYS) * self::DAY_MS);
 
         return [
             'movements' => count($res['movements']),
-            'inserted' => $inserted,
+            'inserted' => count($res['movements']),
             'tracked' => count($res['tracker']),
             'pruned' => $pruned,
         ];
+    }
+
+    /** Never let a missing/zero retention config prune the whole table. */
+    private static function guardRetention(int $days, int $fallback): int
+    {
+        return $days >= 1 ? $days : $fallback;
     }
 
     /** Number of days of hourly weather kept (see the plan: longer than movements). */
@@ -73,7 +80,7 @@ final class Collector
 
         $rows = $fetchWeather();
         $written = $store->upsertWeather($icao, $rows, $tz, $nowMs);
-        $store->pruneWeather($icao, $nowMs - $retentionDays * self::DAY_MS);
+        $store->pruneWeather($icao, $nowMs - self::guardRetention($retentionDays, self::WEATHER_RETENTION_DAYS) * self::DAY_MS);
 
         return $written;
     }
