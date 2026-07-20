@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { useAirport } from "../hooks/useAirport";
 import type { LatLon } from "../lib/geo";
 import { metersToSvg, projectToSvg, SVG_H, SVG_W } from "../lib/projection";
@@ -13,7 +14,7 @@ const DOT_STROKE = "var(--color-surface-container-lowest)";
  * with the map. When the user is outside the mapped area the marker is clamped to the
  * nearest edge and dimmed, and the ring is omitted.
  */
-export function UserLayer({
+function UserLayerImpl({
   userPos,
   heading,
   radiusM,
@@ -61,3 +62,7 @@ export function UserLayer({
     </g>
   );
 }
+
+// Memoised so a poll / selection / locate re-render of the map doesn't rebuild the
+// user marker; it re-renders only when the GPS fix or device heading changes.
+export const UserLayer = memo(UserLayerImpl);

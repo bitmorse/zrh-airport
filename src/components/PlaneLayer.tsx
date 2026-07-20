@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
 import { useSmoothClock } from "../hooks/useSmoothClock";
 import { reckonPosition } from "../lib/reckon";
@@ -8,7 +9,7 @@ import { Plane } from "./Plane";
  * advanced along its track at its groundspeed so the icons glide smoothly instead
  * of jumping. Positions snap back to truth on the next poll.
  */
-export function PlaneLayer({
+function PlaneLayerImpl({
   aircraft,
   lastUpdated,
   selectedHex,
@@ -34,3 +35,7 @@ export function PlaneLayer({
     </g>
   );
 }
+
+// Memoised so unrelated map re-renders (GPS/heading/selection/locate) don't rebuild
+// every plane; its own smooth-clock drives the dead-reckoning animation.
+export const PlaneLayer = memo(PlaneLayerImpl);

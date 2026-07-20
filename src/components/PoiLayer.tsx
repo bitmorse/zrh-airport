@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { useAirport } from "../hooks/useAirport";
 import { usePois } from "../hooks/usePois";
 import { projectToSvg, SVG_H, SVG_W } from "../lib/projection";
@@ -11,7 +12,7 @@ const PAD = 12;
  * edge and dimmed, so it's still indicated rather than silently missing.
  * Non-interactive (pointer events pass through to the map for drag/zoom).
  */
-export function PoiLayer() {
+function PoiLayerImpl() {
   const { pois } = usePois();
   const { arp } = useAirport().config;
   return (
@@ -55,3 +56,7 @@ export function PoiLayer() {
     </g>
   );
 }
+
+// Memoised (no props) — re-renders only when the POI store changes, never from a
+// map re-render.
+export const PoiLayer = memo(PoiLayerImpl);

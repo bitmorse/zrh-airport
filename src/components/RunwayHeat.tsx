@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { RunwayEnd } from "../domain/airport";
 import { useAirport } from "../hooks/useAirport";
 import { heatColor } from "../lib/heat";
@@ -67,7 +68,7 @@ function RunwayEndZone({
  * One physical runway strip with both ends heat-coloured by their 15-minute
  * distinct-aircraft counts.
  */
-export function RunwayHeat({
+function RunwayHeatImpl({
   ends,
   counts,
 }: {
@@ -96,3 +97,7 @@ export function RunwayHeat({
     </g>
   );
 }
+
+// Memoised: `ends` is stable per airport, so this re-renders only when its counts
+// change (a poll) — not on every unrelated map re-render.
+export const RunwayHeat = memo(RunwayHeatImpl);

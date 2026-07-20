@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { Aircraft } from "../data/adsb";
 import { useAirport } from "../hooks/useAirport";
 import { useSmoothClock } from "../hooks/useSmoothClock";
@@ -14,7 +15,7 @@ type TrailAircraft = Pick<Aircraft, "lat" | "lon" | "onGround" | "gs" | "track" 
  * to the moving icon instead of lagging a poll behind. Non-interactive; under the
  * glyphs.
  */
-export function TrailLayer({
+function TrailLayerImpl({
   points,
   ac,
   lastUpdated,
@@ -50,3 +51,7 @@ export function TrailLayer({
     </g>
   );
 }
+
+// Memoised: only re-render on selection/poll changes; its own smooth-clock animates
+// the leading end, independent of unrelated map re-renders.
+export const TrailLayer = memo(TrailLayerImpl);
