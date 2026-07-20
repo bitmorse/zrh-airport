@@ -8,7 +8,7 @@ import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
 import { FlightDetails } from "./FlightDetails";
 
 // GPWS drives audio; stub it. Route lookup is mocked (mutable) to avoid the network.
-vi.mock("../hooks/useGpws", () => ({ useGpws: () => {} }));
+vi.mock("../hooks/useGpws", () => ({ useGpws: () => ({ callout: null }) }));
 const h = vi.hoisted(() => ({ route: null as unknown }));
 vi.mock("../hooks/useFlightRoute", () => ({
   useFlightRoute: () => ({ data: h.route, isLoading: false, isError: false }),
@@ -48,7 +48,13 @@ function item(verticalRateFpm: number): AircraftWithAssignment {
 function renderCard(it: AircraftWithAssignment) {
   return render(
     <AirportContext.Provider value={AP}>
-      <FlightDetails item={it} lastUpdated={1_000_000} cockpitAudio={false} onClear={() => {}} />
+      <FlightDetails
+        item={it}
+        lastUpdated={1_000_000}
+        cockpitActive={false}
+        cockpitAudio={false}
+        onClear={() => {}}
+      />
     </AirportContext.Provider>,
   );
 }

@@ -317,8 +317,10 @@ export default function App() {
       : null;
   const stale = ageSec != null && ageSec > Math.max(90, settings.pollSeconds * 2);
 
-  // Cockpit audio is off while the mic is recording (the OS mutes/reroutes playback
-  // then), so GPWS callouts don't get half-swallowed mid-approach.
+  // Cockpit sim runs the GPWS state machine + on-screen callout readout; audio only
+  // plays when not muted and not recording (the OS mutes/reroutes playback then), so
+  // callouts don't get half-swallowed mid-approach.
+  const cockpitActive = settings.cockpitSim;
   const cockpitAudio = settings.cockpitSim && !settings.muted && !recorder.isRecording;
   const effectiveMuted = settings.muted || recorder.isRecording;
 
@@ -581,6 +583,7 @@ export default function App() {
             <FlightDetails
               item={selectedAircraft}
               lastUpdated={traffic.lastUpdated}
+              cockpitActive={cockpitActive}
               cockpitAudio={cockpitAudio}
               onClear={clearSelection}
             />

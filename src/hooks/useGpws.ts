@@ -1,40 +1,76 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   GPWS_SCHEDULE,
   createGpwsState,
   gpwsAdvance,
   heightAglFt,
+  type GpwsCue,
   type GpwsState,
 } from "../domain/gpws";
 import { useAirport } from "./useAirport";
 import type { AircraftWithAssignment } from "./useLiveTraffic";
 
+/** Human-readable callout label (raw feet / word) — unit-independent, for the readout. */
+function calloutLabel(c: GpwsCue): string {
+  if (c.key === "minimums") return "MINIMUMS";
+  if (c.key === "retard") return "RETARD";
+  return c.key; // the number, e.g. "100"
+}
+
+export interface GpwsReadout {
+  /** The most recent callout label (e.g. "100"), cleared a few seconds after it fires. */
+  callout: string | null;
+}
+
 /**
- * Plays GPWS altitude callouts (real recordings) for the selected aircraft while
- * `enabled`. ADS-B polls are seconds apart, so we dead-reckon height between them
- * from the vertical rate and tick a few times a second, driving a latching state
- * machine that speaks each callout once per approach (incl. minimums / retard),
- * only while descending and airborne. The checkbox that flips `enabled` is the user
- * gesture that unlocks audio playback.
+ * GPWS altitude callouts for the selected aircraft. The playback engine is a single
+ * persistent loop that is NEVER torn down by UI churn — selecting/unselecting the same
+ * aircraft, toggling mute/record, or opening/closing panels does not cut an in-flight
+ * callout or drop the queue. State is tracked in refs; the latching state machine is
+ * only re-armed when the tracked aircraft actually changes (a different hex) or the
+ * aircraft climbs back above the go-around gate.
+ *
+ * Two independent gates:
+ *   - `active`  (cockpit sim on): run the state machine and surface each callout as a
+ *     visual readout — even while muted/recording, so the data layer is observable
+ *     without relying on the audio cue.
+ *   - `audible` (active, not muted, not recording): actually play the recorded audio.
+ *
+ * ADS-B polls are seconds apart, so we dead-reckon height between them from the vertical
+ * rate and tick a few times a second; callouts are spoken strictly one at a time.
  */
-export function useGpws(item: AircraftWithAssignment | null, enabled: boolean): void {
+export function useGpws(
+  item: AircraftWithAssignment | null,
+  { active, audible }: { active: boolean; audible: boolean },
+): GpwsReadout {
   const { fieldElevationFt, geoidFt } = useAirport().config;
+
+  // Persistent engine state (survives every render / selection change).
   const base = useRef({ agl: 0, ts: 0, vrFps: 0, onGround: false, hex: "" });
   const lastEst = useRef(0);
   const state = useRef<GpwsState>(createGpwsState(Number.POSITIVE_INFINITY));
+  const stateHex = useRef<string | null>(null); // aircraft the state machine is armed for
   const audio = useRef<Map<string, HTMLAudioElement>>(new Map());
-  // Callouts are spoken strictly one at a time: cues queue up and each plays only
-  // once the previous has finished, so they never overlap ("retard" then "ten", not
-  // on top of each other). `current` is the clip playing right now, if any.
   const queue = useRef<string[]>([]);
   const current = useRef<HTMLAudioElement | null>(null);
-  // Track the enabled edge so re-enabling (e.g. recording stopped / unmuted) starts a
-  // fresh countdown rather than resuming a stale `announced` set.
-  const prevEnabled = useRef(false);
 
-  // Warm the callout audio cache when enabled (one <audio> per cue).
+  // Live gates, read by the persistent loop without re-subscribing.
+  const targetHex = useRef<string | null>(null);
+  targetHex.current = active && item ? item.ac.hex : null;
+  const audibleRef = useRef(audible);
+  audibleRef.current = audible;
+
+  const [callout, setCallout] = useState<string | null>(null);
+  const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flashCallout = useRef((label: string) => {
+    setCallout(label);
+    if (clearTimer.current) clearTimeout(clearTimer.current);
+    clearTimer.current = setTimeout(() => setCallout(null), 3500);
+  });
+
+  // Warm the callout audio cache once the sim is active (one <audio> per cue).
   useEffect(() => {
-    if (!enabled || typeof Audio === "undefined") return;
+    if (!active || typeof Audio === "undefined") return;
     for (const c of GPWS_SCHEDULE) {
       if (!audio.current.has(c.url)) {
         const a = new Audio(c.url);
@@ -42,21 +78,25 @@ export function useGpws(item: AircraftWithAssignment | null, enabled: boolean): 
         audio.current.set(c.url, a);
       }
     }
-  }, [enabled]);
+  }, [active]);
 
-  // Refresh the dead-reckoning base whenever a new poll delivers fresh data, and
-  // (re)start the state machine when the selected aircraft changes.
+  // Refresh the dead-reckoning base from each poll, and re-arm the state machine ONLY
+  // when the tracked aircraft actually changes. A brief deselect + reselect of the same
+  // hex leaves `stateHex` intact, so playback resumes instead of restarting/cutting.
   useEffect(() => {
-    if (!enabled || !item) {
-      prevEnabled.current = enabled;
-      return;
-    }
+    if (!active || !item) return; // deselected/inactive — leave the engine untouched
     const { ac } = item;
     const agl = heightAglFt(ac, fieldElevationFt, geoidFt ?? 0);
-    // Re-arm on a new aircraft, or when cockpit audio was just turned back on.
-    if (base.current.hex !== ac.hex || !prevEnabled.current) {
+    if (stateHex.current !== ac.hex) {
+      // Genuinely new aircraft — fresh approach: re-arm and drop the old plane's queue.
       state.current = createGpwsState(agl);
+      stateHex.current = ac.hex;
       lastEst.current = agl;
+      queue.current = [];
+      if (current.current) {
+        current.current.pause();
+        current.current = null;
+      }
     }
     base.current = {
       agl,
@@ -65,15 +105,12 @@ export function useGpws(item: AircraftWithAssignment | null, enabled: boolean): 
       onGround: ac.onGround,
       hex: ac.hex,
     };
-    prevEnabled.current = true;
-  }, [enabled, item, fieldElevationFt, geoidFt]);
+  }, [active, item, fieldElevationFt, geoidFt]);
 
-  const activeHex = enabled && item ? item.ac.hex : null;
+  // The one and only playback loop. Created once, cleared only on unmount.
   useEffect(() => {
-    if (!activeHex) return;
-
-    // Play the next queued callout, then chain to the one after it when it ends.
-    // A no-op while something is already speaking — that's what prevents overlap.
+    // Play the next queued callout, chaining to the next when it ends. A no-op while
+    // something is already speaking — that's what prevents callouts overlapping.
     const playNext = () => {
       if (current.current) return;
       const url = queue.current.shift();
@@ -99,25 +136,42 @@ export function useGpws(item: AircraftWithAssignment | null, enabled: boolean): 
     };
 
     const id = setInterval(() => {
+      // No active target (deselected / sim off): stop advancing, but let any in-flight
+      // clip finish on its own via the `ended` chain — never cut it here.
+      const tgt = targetHex.current;
+      if (!tgt || stateHex.current !== tgt) return;
+
       const b = base.current;
       const est = b.agl + b.vrFps * ((Date.now() - b.ts) / 1000);
       const descending = est < lastEst.current - 1; // net descent, ignore tiny noise
       lastEst.current = est;
-      for (const c of gpwsAdvance(state.current, { aglFt: est, descending, onGround: b.onGround })) {
-        queue.current.push(c.url);
+
+      const cues = gpwsAdvance(state.current, { aglFt: est, descending, onGround: b.onGround });
+      for (const c of cues) {
+        flashCallout.current(calloutLabel(c)); // data-layer readout, even when muted
+        if (audibleRef.current) queue.current.push(c.url);
       }
-      playNext();
+
+      if (audibleRef.current) {
+        playNext();
+      } else if (current.current) {
+        // Muted / recording: silence audio (the OS mutes it anyway) but keep the readout.
+        current.current.pause();
+        current.current = null;
+        queue.current = [];
+      }
     }, 400);
 
     return () => {
       clearInterval(id);
-      // New aircraft / disarmed: drop pending callouts and cut any in progress so a
-      // stale approach never bleeds into the next.
-      queue.current = [];
+      if (clearTimer.current) clearTimeout(clearTimer.current);
       if (current.current) {
         current.current.pause();
         current.current = null;
       }
+      queue.current = [];
     };
-  }, [activeHex]);
+  }, []);
+
+  return { callout };
 }

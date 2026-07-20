@@ -76,12 +76,15 @@ function MotionReadout({
 export function FlightDetails({
   item,
   lastUpdated,
+  cockpitActive,
   cockpitAudio,
   onClear,
 }: {
   item: AircraftWithAssignment | null;
   lastUpdated: number | null;
-  /** Cockpit-sim GPWS is on (cockpit sim enabled, not muted, and not recording). */
+  /** Cockpit sim is enabled — run the GPWS state machine + show the callout readout. */
+  cockpitActive: boolean;
+  /** GPWS audio may play (sim on, not muted, not recording). */
   cockpitAudio: boolean;
   onClear: () => void;
 }) {
@@ -89,7 +92,7 @@ export function FlightDetails({
   const route = useFlightRoute(callsign);
   const [{ units }] = useSettings();
   const { iata, icao, fieldElevationFt, geoidFt } = useAirport().config;
-  useGpws(item, cockpitAudio);
+  const { callout } = useGpws(item, { active: cockpitActive, audible: cockpitAudio });
 
   if (!item) {
     return (
@@ -136,6 +139,14 @@ export function FlightDetails({
               {ac.registration ? (
                 <span className="font-mono text-muted"> · {ac.registration}</span>
               ) : null}
+            </p>
+          )}
+          {callout && (
+            <p
+              className="mt-1.5 w-fit bg-status-alert px-1.5 py-0.5 font-mono text-[11px] font-bold uppercase tracking-wide text-on-primary"
+              title="GPWS callout just triggered (from the estimated height above field — the data layer, independent of the audio)"
+            >
+              GPWS: {callout}!
             </p>
           )}
         </div>
