@@ -171,7 +171,8 @@ export default function App() {
   return (
     <AirportContext.Provider value={airport}>
     <div className="flex min-h-dvh flex-col bg-slate-950 text-slate-100">
-      <header className="flex items-center justify-between gap-3 border-b border-slate-800 px-4 py-2.5">
+      <header className="border-b border-slate-800 px-4 py-2.5">
+        <div className="mx-auto flex w-full max-w-[1800px] items-center justify-between gap-3">
         <div className="relative">
           <button
             onClick={() => setAirportMenu((o) => !o)}
@@ -266,6 +267,7 @@ export default function App() {
             ⚙︎
           </button>
         </div>
+        </div>
       </header>
 
       {/* Quick glance: next landing + departures. Above the map on mobile; on
@@ -283,8 +285,8 @@ export default function App() {
         />
       </div>
 
-      <main className="flex flex-1 flex-col gap-4 p-4 lg:flex-row">
-        <section className="relative aspect-[28/25] w-full overflow-hidden rounded-xl border border-slate-800 bg-slate-900/40 lg:aspect-auto lg:min-h-[60vh] lg:flex-1">
+      <main className="mx-auto flex w-full max-w-[1800px] flex-1 flex-col gap-4 p-4 lg:flex-row lg:items-start lg:justify-center">
+        <section className="relative aspect-[28/25] w-full overflow-hidden rounded-xl border border-slate-800 bg-slate-900/40 lg:h-[calc(100dvh-6rem)] lg:w-auto lg:min-w-0 lg:flex-none">
           <AirportSvg
             aircraft={traffic.aircraft}
             counts={traffic.counts}
