@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Aircraft } from "../data/adsb";
 import { type Airport } from "../data/flightInfo";
 import type { RunwayAssignment } from "../domain/assignRunway";
+import { fieldRelation, routeConflict } from "../domain/routeCheck";
 import { useAirport } from "../hooks/useAirport";
 import { useFlightRoute } from "../hooks/useFlightRoute";
 import { useGpws } from "../hooks/useGpws";
@@ -84,7 +85,7 @@ export function FlightDetails({
   const callsign = item?.ac.flight ?? null;
   const route = useFlightRoute(callsign);
   const [{ units }] = useSettings();
-  const { fieldElevationFt, geoidFt } = useAirport().config;
+  const { iata, icao, fieldElevationFt, geoidFt } = useAirport().config;
   const [gpws, setGpws] = useState(false);
   // Reset the toggle whenever the selection changes.
   useEffect(() => setGpws(false), [item?.ac.hex]);
@@ -105,6 +106,9 @@ export function FlightDetails({
   const { ac, assignment } = item;
   const title = ac.flight ?? ac.hex.toUpperCase();
   const r = route.data;
+  // Cross-check the scheduled route against the live direction: a plane departing
+  // our field while the route ends here is flying the callsign's inbound leg.
+  const conflict = routeConflict(r, iata, icao, fieldRelation(ac, assignment));
 
   return (
     <div className="text-sm">
@@ -181,6 +185,13 @@ export function FlightDetails({
               <span className="text-slate-500">→</span>
               <Endpoint airport={r.destination} />
             </div>
+            {conflict && (
+              <p className="rounded-md bg-amber-500/10 px-2 py-1 text-[11px] leading-relaxed text-amber-300/90">
+                {conflict === "departing-inbound-route"
+                  ? `Now departing ${iata} — this is the callsign's inbound leg. It's flying out (the callsign is reused for the turnaround), so this isn't the live destination.`
+                  : `Now arriving ${iata} — this is the callsign's outbound leg; it may be reused for the turnaround.`}
+              </p>
+            )}
           </div>
         )}
         <p className="mt-3 text-[10px] text-slate-600">
