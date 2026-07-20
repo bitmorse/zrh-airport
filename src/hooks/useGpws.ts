@@ -23,6 +23,9 @@ export function useGpws(item: AircraftWithAssignment | null, enabled: boolean): 
   const lastEst = useRef(0);
   const state = useRef<GpwsState>(createGpwsState(Number.POSITIVE_INFINITY));
   const audio = useRef<Map<string, HTMLAudioElement>>(new Map());
+  // Track the enabled edge so re-enabling (e.g. recording stopped / unmuted) starts a
+  // fresh countdown rather than resuming a stale `announced` set.
+  const prevEnabled = useRef(false);
 
   // Warm the callout audio cache when enabled (one <audio> per cue).
   useEffect(() => {
@@ -39,10 +42,14 @@ export function useGpws(item: AircraftWithAssignment | null, enabled: boolean): 
   // Refresh the dead-reckoning base whenever a new poll delivers fresh data, and
   // (re)start the state machine when the selected aircraft changes.
   useEffect(() => {
-    if (!enabled || !item) return;
+    if (!enabled || !item) {
+      prevEnabled.current = enabled;
+      return;
+    }
     const { ac } = item;
     const agl = heightAglFt(ac, fieldElevationFt, geoidFt ?? 0);
-    if (base.current.hex !== ac.hex) {
+    // Re-arm on a new aircraft, or when cockpit audio was just turned back on.
+    if (base.current.hex !== ac.hex || !prevEnabled.current) {
       state.current = createGpwsState(agl);
       lastEst.current = agl;
     }
@@ -53,6 +60,7 @@ export function useGpws(item: AircraftWithAssignment | null, enabled: boolean): 
       onGround: ac.onGround,
       hex: ac.hex,
     };
+    prevEnabled.current = true;
   }, [enabled, item, fieldElevationFt, geoidFt]);
 
   const activeHex = enabled && item ? item.ac.hex : null;

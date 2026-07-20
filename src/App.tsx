@@ -41,6 +41,7 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [showRecorder, setShowRecorder] = useState(false);
+  const [micHint, setMicHint] = useState(false);
   const [airportMenu, setAirportMenu] = useState(false);
   const [selectedHex, setSelectedHex] = useState<string | null>(null);
   const now = useNow(1000);
@@ -142,6 +143,11 @@ export default function App() {
     setLocateNonce((n) => n + 1); // recenter on the user, even if already shown
   }, []);
 
+  const flashMicHint = useCallback(() => {
+    setMicHint(true);
+    window.setTimeout(() => setMicHint(false), 3000);
+  }, []);
+
   // Latest aircraft list, read at save time to enrich a measurement by hex.
   const aircraftRef = useRef(traffic.aircraft);
   aircraftRef.current = traffic.aircraft;
@@ -217,6 +223,11 @@ export default function App() {
       ? Math.max(0, Math.round((now - traffic.lastUpdated) / 1000))
       : null;
   const stale = ageSec != null && ageSec > Math.max(90, settings.pollSeconds * 2);
+
+  // Cockpit audio is off while the mic is recording (the OS mutes/reroutes playback
+  // then), so GPWS callouts don't get half-swallowed mid-approach.
+  const cockpitAudio = settings.cockpitSim && !settings.muted && !recorder.isRecording;
+  const effectiveMuted = settings.muted || recorder.isRecording;
 
   const activeCount = useMemo(
     () => traffic.aircraft.filter((a) => a.assignment).length,
@@ -301,17 +312,28 @@ export default function App() {
             <span className="text-xs font-semibold tabular-nums">{score}</span>
           </button>
           <button
-            onClick={() => updateSettings({ muted: !settings.muted })}
-            aria-label={settings.muted ? "Unmute cockpit audio" : "Mute cockpit audio"}
-            aria-pressed={!settings.muted}
-            title={settings.muted ? "Cockpit audio muted — tap to unmute" : "Mute cockpit audio"}
-            className={`rounded-lg border p-1.5 hover:bg-slate-800 ${
-              settings.muted
-                ? "border-slate-700 text-slate-400"
-                : "border-sky-500 bg-sky-600/20 text-sky-200"
+            onClick={() =>
+              recorder.isRecording ? flashMicHint() : updateSettings({ muted: !settings.muted })
+            }
+            aria-label={effectiveMuted ? "Unmute cockpit audio" : "Mute cockpit audio"}
+            aria-pressed={!effectiveMuted}
+            aria-disabled={recorder.isRecording}
+            title={
+              recorder.isRecording
+                ? "Cockpit audio is off while recording — stop recording to listen"
+                : settings.muted
+                  ? "Cockpit audio muted — tap to unmute"
+                  : "Mute cockpit audio"
+            }
+            className={`rounded-lg border p-1.5 ${
+              recorder.isRecording
+                ? "cursor-not-allowed border-slate-700 text-slate-500 opacity-50"
+                : effectiveMuted
+                  ? "border-slate-700 text-slate-400 hover:bg-slate-800"
+                  : "border-sky-500 bg-sky-600/20 text-sky-200 hover:bg-slate-800"
             }`}
           >
-            {settings.muted ? "🔇" : "🔊"}
+            {effectiveMuted ? "🔇" : "🔊"}
           </button>
           <button
             onClick={() => setShowRecorder(true)}
@@ -336,6 +358,12 @@ export default function App() {
         </div>
         </div>
       </header>
+
+      {micHint && (
+        <div className="fixed right-4 top-14 z-40 rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-200 shadow-lg">
+          Turn off recording first to hear cockpit audio.
+        </div>
+      )}
 
       {/* Quick glance: next landing + departures. Above the map on mobile; on
           desktop it moves to the top of the sidebar (see below). */}
@@ -390,6 +418,7 @@ export default function App() {
             <FlightDetails
               item={selectedAircraft}
               lastUpdated={traffic.lastUpdated}
+              cockpitAudio={cockpitAudio}
               onClear={clearSelection}
             />
           </div>

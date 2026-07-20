@@ -48,7 +48,7 @@ function item(verticalRateFpm: number): AircraftWithAssignment {
 function renderCard(it: AircraftWithAssignment) {
   return render(
     <AirportContext.Provider value={AP}>
-      <FlightDetails item={it} lastUpdated={1_000_000} onClear={() => {}} />
+      <FlightDetails item={it} lastUpdated={1_000_000} cockpitAudio={false} onClear={() => {}} />
     </AirportContext.Provider>,
   );
 }

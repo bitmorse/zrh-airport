@@ -75,19 +75,20 @@ function MotionReadout({
 export function FlightDetails({
   item,
   lastUpdated,
+  cockpitAudio,
   onClear,
 }: {
   item: AircraftWithAssignment | null;
   lastUpdated: number | null;
+  /** Cockpit-sim GPWS is on (cockpit sim enabled, not muted, and not recording). */
+  cockpitAudio: boolean;
   onClear: () => void;
 }) {
   const callsign = item?.ac.flight ?? null;
   const route = useFlightRoute(callsign);
-  const [{ units, cockpitSim, muted }] = useSettings();
+  const [{ units }] = useSettings();
   const { iata, icao, fieldElevationFt, geoidFt } = useAirport().config;
-  // Cockpit simulation plays GPWS for the selected flight, unless globally muted.
-  const cockpitLive = cockpitSim && !muted;
-  useGpws(item, cockpitLive);
+  useGpws(item, cockpitAudio);
 
   if (!item) {
     return (
@@ -136,7 +137,7 @@ export function FlightDetails({
               ) : null}
             </p>
           )}
-          {cockpitLive && (
+          {cockpitAudio && (
             <p
               className="mt-1.5 flex w-fit items-center gap-1.5 text-[11px] text-amber-300"
               title="Cockpit simulation: GPWS callouts spoken as it descends (estimated from GNSS altitude). Toggle in Settings; mute in the header."
