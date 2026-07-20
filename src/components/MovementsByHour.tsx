@@ -1,17 +1,47 @@
 import { useState } from "react";
 import {
-  hourlyHistogram,
+  byRunway,
   localHour,
   summarize,
+  type HourStat,
   type MovementLog,
+  type RunwayHistogram,
 } from "../domain/movementStats";
 
 type Mode = "avg" | "total";
 
+// Mini-chart geometry (SVG user units; scales responsively via viewBox).
+const CH_W = 240;
+const CH_H = 74;
+const GUT_L = 22; // left gutter for the Y axis (tick labels)
+const PAD_T = 6;
+const PAD_B = 12; // bottom room for the hour axis
+const PLOT_L = GUT_L;
+const PLOT_R = CH_W - 4;
+const PLOT_W = PLOT_R - PLOT_L;
+const PLOT_T = PAD_T;
+const PLOT_B = CH_H - PAD_B;
+const PLOT_H = PLOT_B - PLOT_T;
+const SLOT = PLOT_W / 24;
+
+const pad = (h: number) => String(h).padStart(2, "0");
+const fmtTick = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(1));
+
+/** Round a max up to a clean axis bound (1, 2, 2.5, 5, 10, …). */
+function niceMax(v: number): number {
+  if (v <= 0) return 1;
+  const pow = Math.pow(10, Math.floor(Math.log10(v)));
+  const n = v / pow;
+  const step = n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10;
+  return step * pow;
+}
+
 /**
- * "Traffic by hour": a popular-times–style chart of landings vs. takeoffs bucketed
- * by the airport's local hour-of-day, built from history collected on this device.
- * Toggle between a typical day (average per observed day) and all-time totals.
+ * "Traffic by hour": a popular-times–style chart of landings vs. takeoffs, **one
+ * small-multiple per runway end**, bucketed by the airport's local hour-of-day from
+ * history collected on this device. Every runway shares a Y scale (labelled, with
+ * ticks) so busy and quiet ends are directly comparable. Toggle a typical day
+ * (average per observed day) vs. all-time totals.
  */
 export function MovementsByHour({
   log,
@@ -23,21 +53,26 @@ export function MovementsByHour({
   now: number;
 }) {
   const [mode, setMode] = useState<Mode>("avg");
-  const hist = hourlyHistogram(log);
+  const runways = byRunway(log);
   const summary = summarize(log);
   const nowHour = localHour(now, timeZone).hour;
 
-  const valueOf = (h: (typeof hist)[number]) =>
+  const valueOf = (h: HourStat) =>
     mode === "avg"
-      ? {
-          l: h.days ? h.landings / h.days : 0,
-          t: h.days ? h.takeoffs / h.days : 0,
-        }
+      ? { l: h.days ? h.landings / h.days : 0, t: h.days ? h.takeoffs / h.days : 0 }
       : { l: h.landings, t: h.takeoffs };
 
-  const max = Math.max(1, ...hist.map((h) => Math.max(valueOf(h).l, valueOf(h).t)));
-  const barPct = (v: number) => (v <= 0 ? 0 : Math.max(6, (v / max) * 100));
-  const fmt = (v: number) => (mode === "avg" ? v.toFixed(v < 10 ? 1 : 0) : String(v));
+  // Shared Y bound across all runways so their bars are comparable.
+  let rawMax = 0;
+  for (const rw of runways) {
+    for (const h of rw.hours) {
+      const v = valueOf(h);
+      rawMax = Math.max(rawMax, v.l, v.t);
+    }
+  }
+  const axisMax = niceMax(rawMax);
+  const ticks = [0, axisMax / 2, axisMax];
+  const yUnit = mode === "avg" ? "movements / day" : "movements (total)";
 
   const empty = summary.landings === 0 && summary.takeoffs === 0;
   const tz = timeZone?.split("/").pop()?.replace(/_/g, " ");
@@ -65,8 +100,8 @@ export function MovementsByHour({
 
       {empty ? (
         <p className="text-xs leading-relaxed text-slate-500">
-          No history yet. Landings and takeoffs are counted as they happen and stored on
-          this device — leave the tab open to build up a typical-day profile.
+          No history yet. Landings and takeoffs are counted per runway as they happen and
+          stored on this device — leave the tab open to build up a typical-day profile.
         </p>
       ) : (
         <>
@@ -77,44 +112,20 @@ export function MovementsByHour({
             <span className="flex items-center gap-1">
               <span className="inline-block h-2 w-2 rounded-sm bg-amber-400" /> takeoffs
             </span>
+            <span className="ml-auto text-slate-500">↕ {yUnit}</span>
           </div>
 
-          <div className="flex h-24 items-end gap-px" role="img" aria-label="Movements by hour of day">
-            {hist.map((h) => {
-              const v = valueOf(h);
-              const isNow = h.hour === nowHour;
-              const title =
-                mode === "avg"
-                  ? `${pad(h.hour)}:00 — ${fmt(v.l)} landings · ${fmt(v.t)} takeoffs per day (${h.days} ${h.days === 1 ? "day" : "days"})`
-                  : `${pad(h.hour)}:00 — ${h.landings} landings · ${h.takeoffs} takeoffs`;
-              return (
-                <div
-                  key={h.hour}
-                  title={title}
-                  className={`flex h-full flex-1 flex-col justify-end rounded-sm ${
-                    isNow ? "bg-slate-700/40" : ""
-                  }`}
-                >
-                  <div className="flex h-full items-end justify-center gap-[1px] px-[1px]">
-                    <span
-                      className="w-1/2 rounded-t-[1px] bg-sky-400"
-                      style={{ height: `${barPct(v.l)}%` }}
-                    />
-                    <span
-                      className="w-1/2 rounded-t-[1px] bg-amber-400"
-                      style={{ height: `${barPct(v.t)}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="flex justify-between px-[1px] text-[9px] tabular-nums text-slate-600">
-            {hist.map((h) => (
-              <span key={h.hour} className="flex-1 text-center">
-                {h.hour % 6 === 0 ? pad(h.hour) : ""}
-              </span>
+          <div className="flex flex-col gap-3">
+            {runways.map((rw) => (
+              <RunwayChart
+                key={rw.end}
+                rw={rw}
+                mode={mode}
+                axisMax={axisMax}
+                ticks={ticks}
+                nowHour={nowHour}
+                valueOf={valueOf}
+              />
             ))}
           </div>
         </>
@@ -131,4 +142,92 @@ export function MovementsByHour({
   );
 }
 
-const pad = (h: number) => String(h).padStart(2, "0");
+function RunwayChart({
+  rw,
+  mode,
+  axisMax,
+  ticks,
+  nowHour,
+  valueOf,
+}: {
+  rw: RunwayHistogram;
+  mode: Mode;
+  axisMax: number;
+  ticks: number[];
+  nowHour: number;
+  valueOf: (h: HourStat) => { l: number; t: number };
+}) {
+  const y = (v: number) => PLOT_B - (v / axisMax) * PLOT_H;
+  const barH = (v: number) => (v <= 0 ? 0 : Math.max(1.5, PLOT_B - y(v)));
+  const bw = SLOT * 0.36;
+  const gap = SLOT * 0.12;
+  const total = mode === "avg" && rw.days ? "" : ` · ${rw.landings + rw.takeoffs}`;
+
+  return (
+    <div>
+      <div className="mb-0.5 flex items-baseline justify-between">
+        <span className="text-xs font-semibold text-sky-300">
+          <span className="text-[10px] font-medium uppercase tracking-wide text-sky-300/50">
+            RWY
+          </span>{" "}
+          {rw.end}
+        </span>
+        <span className="text-[10px] tabular-nums text-slate-500">
+          {rw.landings} ↓ · {rw.takeoffs} ↑{total}
+        </span>
+      </div>
+      <svg
+        viewBox={`0 0 ${CH_W} ${CH_H}`}
+        className="w-full"
+        role="img"
+        aria-label={`Runway ${rw.end} landings and takeoffs by local hour`}
+      >
+        {/* Y grid + tick labels. */}
+        {ticks.map((t) => (
+          <g key={t}>
+            <line x1={PLOT_L} y1={y(t)} x2={PLOT_R} y2={y(t)} stroke="#1e293b" strokeWidth={1} />
+            <text x={PLOT_L - 3} y={y(t) + 2.5} textAnchor="end" fontSize={7} fill="#64748b">
+              {fmtTick(t)}
+            </text>
+          </g>
+        ))}
+
+        {/* Current local hour. */}
+        <rect
+          x={PLOT_L + nowHour * SLOT}
+          y={PLOT_T}
+          width={SLOT}
+          height={PLOT_H}
+          fill="#334155"
+          opacity={0.4}
+        />
+
+        {/* Grouped landing / takeoff bars per hour. */}
+        {rw.hours.map((h) => {
+          const v = valueOf(h);
+          const cx = PLOT_L + h.hour * SLOT + SLOT / 2;
+          return (
+            <g key={h.hour}>
+              <rect x={cx - bw - gap / 2} y={PLOT_B - barH(v.l)} width={bw} height={barH(v.l)} fill="#38bdf8" />
+              <rect x={cx + gap / 2} y={PLOT_B - barH(v.t)} width={bw} height={barH(v.t)} fill="#fbbf24" />
+            </g>
+          );
+        })}
+
+        {/* Hour axis ticks. */}
+        {[0, 6, 12, 18].map((hh) => (
+          <text
+            key={hh}
+            x={PLOT_L + hh * SLOT + SLOT / 2}
+            y={CH_H - 2}
+            textAnchor="middle"
+            fontSize={7}
+            fill="#475569"
+          >
+            {pad(hh)}
+          </text>
+        ))}
+      </svg>
+    </div>
+  );
+}

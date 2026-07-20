@@ -5,6 +5,12 @@ import { MovementsByHour } from "./MovementsByHour";
 
 const NOW = Date.UTC(2026, 6, 20, 12, 0, 0);
 
+const log: MovementLog = {
+  "2026-07-20T14": { "28": { l: 2, t: 1 }, "16": { l: 0, t: 3 } },
+  "2026-07-19T14": { "28": { l: 4, t: 3 } },
+  "2026-07-20T09": { "28": { l: 1, t: 0 } },
+};
+
 afterEach(cleanup);
 
 describe("MovementsByHour", () => {
@@ -14,31 +20,27 @@ describe("MovementsByHour", () => {
     expect(screen.getByText(/No history yet/i)).toBeInTheDocument();
   });
 
-  it("renders the chart and a summary once there is history", () => {
-    const log: MovementLog = {
-      "2026-07-20T14": { l: 2, t: 1 },
-      "2026-07-19T14": { l: 4, t: 3 },
-      "2026-07-20T09": { l: 1, t: 0 },
-    };
+  it("renders one chart per runway with a labelled, ticked Y axis and a summary", () => {
     render(<MovementsByHour log={log} timeZone="Europe/Zurich" now={NOW} />);
 
-    // Legend + a summary line totalling 7 landings, 4 takeoffs over 2 days.
-    expect(screen.getByText("landings")).toBeInTheDocument();
-    expect(screen.getByText(/7 landings · 4 takeoffs over 2 days/)).toBeInTheDocument();
-    expect(screen.getByText(/Zurich local time/)).toBeInTheDocument();
+    // A separate chart per runway end (busiest first) — split, not aggregated.
+    expect(screen.getByRole("img", { name: /Runway 28/i })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /Runway 16/i })).toBeInTheDocument();
+    expect(screen.getAllByText("RWY").length).toBeGreaterThanOrEqual(2);
 
-    // A per-hour bar carries an accessible title with the counts.
-    expect(screen.getByTitle(/14:00 —/)).toBeInTheDocument();
+    // Y axis: a units label and numeric ticks (0 appears on every chart).
+    expect(screen.getByText(/movements \/ day/)).toBeInTheDocument();
+    expect(screen.getAllByText("0").length).toBeGreaterThanOrEqual(1);
+
+    // Overall summary across runways: 7 landings, 7 takeoffs, 2 days.
+    expect(screen.getByText(/7 landings · 7 takeoffs over 2 days/)).toBeInTheDocument();
+    expect(screen.getByText(/Zurich local time/)).toBeInTheDocument();
   });
 
-  it("toggles between average-per-day and all-time totals", () => {
-    const log: MovementLog = { "2026-07-20T14": { l: 2, t: 1 }, "2026-07-19T14": { l: 4, t: 3 } };
+  it("toggles the Y axis between average-per-day and all-time totals", () => {
     render(<MovementsByHour log={log} timeZone="UTC" now={NOW} />);
-
-    // Default: average per day → the 14:00 bar reads "per day".
-    expect(screen.getByTitle(/^14:00 —.*per day/)).toBeInTheDocument();
+    expect(screen.getByText(/movements \/ day/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Total" }));
-    // Totals mode → the 14:00 bar shows the summed 6 landings · 4 takeoffs.
-    expect(screen.getByTitle("14:00 — 6 landings · 4 takeoffs")).toBeInTheDocument();
+    expect(screen.getByText(/movements \(total\)/)).toBeInTheDocument();
   });
 });

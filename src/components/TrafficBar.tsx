@@ -9,7 +9,9 @@ import { elapsedSec } from "../lib/reckon";
 const secondaryOf = (...parts: (string | null | undefined)[]) =>
   parts.filter(Boolean).join(" · ") || undefined;
 
-const DEP_ORDER: Record<DeparturePhase, number> = { roll: 0, holding: 1, climb: 2 };
+// Cleared (roll) and climbing aircraft are the live action — show them ahead of
+// aircraft still waiting at the hold, and drop waiting rows first when space is tight.
+const DEP_ORDER: Record<DeparturePhase, number> = { roll: 0, climb: 1, holding: 2 };
 const MAX_DEP_ROWS = 3;
 const FLASH_SHOW_MS = 6000; // flash an approach gate for ~6 s after the crossing
 
