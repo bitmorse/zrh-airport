@@ -73,7 +73,7 @@ function AirportSvgImpl({
       <svg
         ref={svgRef}
         viewBox={viewBox}
-        className="h-full w-full"
+        className="h-full w-full select-none"
         style={{ touchAction: "none", cursor: isDragging ? "grabbing" : "grab" }}
         role="img"
         aria-label={`Schematic map of ${airport.config.name} runways with live traffic`}
