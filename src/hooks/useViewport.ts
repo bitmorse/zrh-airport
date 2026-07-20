@@ -295,7 +295,13 @@ export function useViewport(
     (target: Pt) => animateTo(fitPoints([target], REVEAL_MAX_ZOOM)),
     [animateTo],
   );
-  const isTargetVisible = useCallback((target: Pt) => isPointVisible(viewRef.current, target), []);
+  // Tighter reveal framing puts the target near the box edge (it's a bounding
+  // extreme), so use a small inset here — only re-reveal when it's genuinely
+  // slipping off, not the instant it nears the edge (avoids drift churn).
+  const isTargetVisible = useCallback(
+    (target: Pt) => isPointVisible(viewRef.current, target, 0.03),
+    [],
+  );
 
   return {
     viewBox: viewBoxString(view),

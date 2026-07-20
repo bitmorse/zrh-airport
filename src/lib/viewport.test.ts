@@ -109,7 +109,8 @@ describe("fitPoints", () => {
       [{ x: SVG_W / 2, y: SVG_H / 2 }, { x: SVG_W * 0.55, y: SVG_H / 2 }],
       REVEAL_MAX_ZOOM,
     );
-    expect(v.zoom).toBeGreaterThan(3);
+    // Tight margins → the airport fills the frame (was ~5 with the old 20% margin).
+    expect(v.zoom).toBeGreaterThan(8);
     expect(v.zoom).toBeLessThanOrEqual(REVEAL_MAX_ZOOM);
   });
 });

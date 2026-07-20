@@ -16,7 +16,7 @@ export const DEFAULT_ZOOM = 4;
  * current zoom) lets a reveal adapt in *both* directions — zoom in on a near-field
  * target, out on a distant one.
  */
-export const REVEAL_MAX_ZOOM = 12;
+export const REVEAL_MAX_ZOOM = 14;
 
 export interface ViewState {
   zoom: number;
@@ -113,7 +113,7 @@ export function isPointVisible(
 export function fitPoints(
   points: { x: number; y: number }[],
   maxZoom = MAX_ZOOM,
-  marginFrac = 0.2,
+  marginFrac = 0.1,
 ): ViewState {
   if (points.length === 0) return normalizeView({ zoom: DEFAULT_ZOOM, cx: 0.5, cy: 0.5 });
   let minX = Infinity;
@@ -126,8 +126,10 @@ export function fitPoints(
     minY = Math.min(minY, p.y);
     maxY = Math.max(maxY, p.y);
   }
-  const mx = Math.max((maxX - minX) * marginFrac, SVG_W * 0.06);
-  const my = Math.max((maxY - minY) * marginFrac, SVG_H * 0.06);
+  // A small breathing margin: proportional to the span, with a modest floor so a
+  // single-point / near-coincident fit still frames tightly (no big white border).
+  const mx = Math.max((maxX - minX) * marginFrac, SVG_W * 0.03);
+  const my = Math.max((maxY - minY) * marginFrac, SVG_H * 0.03);
   const w = maxX - minX + 2 * mx;
   const h = maxY - minY + 2 * my;
   const fitZoom = Math.min(SVG_W / w, SVG_H / h);
