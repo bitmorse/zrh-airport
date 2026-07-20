@@ -11,7 +11,7 @@ import { useSettings } from "../hooks/useSettings";
 import type { Units } from "../lib/format";
 import { formatAltitude, formatSpeed } from "../lib/format";
 import { elapsedSec, reckonAltFt } from "../lib/reckon";
-import { CloseIcon, SquareIcon } from "./icons";
+import { CloseIcon } from "./icons";
 
 const PHASE_LABEL: Record<string, string> = {
   approach: "on approach",
@@ -136,14 +136,6 @@ export function FlightDetails({
               {ac.registration ? (
                 <span className="font-mono text-muted"> · {ac.registration}</span>
               ) : null}
-            </p>
-          )}
-          {cockpitAudio && (
-            <p
-              className="mt-1.5 flex w-fit items-center gap-1.5 text-[11px] text-status-cleared"
-              title="Cockpit simulation: GPWS callouts spoken as it descends (estimated from GNSS altitude). Toggle in Settings; mute in the header."
-            >
-              <SquareIcon size={9} /> cockpit audio live
             </p>
           )}
         </div>
