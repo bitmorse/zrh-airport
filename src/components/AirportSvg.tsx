@@ -94,7 +94,13 @@ function AirportSvgImpl({
 
       <PoiLayer />
 
-      {trail && <TrailLayer points={trail} />}
+      {trail && (
+        <TrailLayer
+          points={trail}
+          ac={aircraft.find((a) => a.ac.hex === selectedHex)?.ac}
+          lastUpdated={lastUpdated}
+        />
+      )}
 
       <PlaneLayer
         aircraft={aircraft}
