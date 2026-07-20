@@ -12,16 +12,18 @@ import type { Arrival } from "./predictions";
 /** Only auto-select after the user has left the selection empty this long. */
 export const AUTO_IDLE_MS = 60_000;
 
-const STABILIZED_AGL_FT = 1000; // at/below the stabilise gate ⇒ short final / landing
+const FULL_COUNTDOWN_AGL_FT = 1000; // still at/above the stabilise gate ⇒ full GPWS run ahead
 const FINAL_MAX_ETA_S = 300; // "on final" cutoff (~5 min); further out isn't imminent
 const STOP_KT = 10; // rolled out to a near-stop
 
 /**
  * The most interesting flight to track, by priority:
- *   0 stabilized / short final / rolling out (arrival at/below 1000 ft AGL),
- *   1 on final (arrival within ~5 min),
+ *   0 arrival on final still at/above the 1000 ft stabilise gate — the whole GPWS
+ *     countdown is still ahead, so the auto-tracked landing plays out fully,
+ *   1 arrival on short final (airborne, below 1000 ft — partial countdown left),
  *   2 cleared for takeoff / rolling (departure "roll"),
- *   3 climbing out (departure "climb").
+ *   3 climbing out (departure "climb"),
+ *   4 arrival rolling out on the ground (just landed).
  * Ties break toward the nearest event (soonest arrival, lowest climb). Returns the
  * hex, or null when nothing is imminent.
  */
@@ -42,11 +44,14 @@ export function pickInteresting(
   };
 
   for (const a of arrivals) {
+    if (a.etaSeconds > FINAL_MAX_ETA_S) continue; // distant inbound — not imminent
     const ac = acByHex.get(a.hex);
     if (!ac) continue;
-    const agl = ac.onGround ? 0 : heightAglFt(ac, fieldElevationFt, geoidFt);
-    if (agl <= STABILIZED_AGL_FT) consider(a.hex, 0, a.etaSeconds);
-    else if (a.etaSeconds <= FINAL_MAX_ETA_S) consider(a.hex, 1, a.etaSeconds);
+    const agl = heightAglFt(ac, fieldElevationFt, geoidFt);
+    // Bias toward a plane still high enough that the full countdown is ahead, rather
+    // than grabbing the one already at touchdown (little GPWS left to hear).
+    const tier = ac.onGround ? 4 : agl >= FULL_COUNTDOWN_AGL_FT ? 0 : 1;
+    consider(a.hex, tier, a.etaSeconds);
   }
   for (const d of departures) {
     if (d.phase === "roll") consider(d.hex, 2, 0);

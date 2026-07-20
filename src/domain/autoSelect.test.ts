@@ -63,6 +63,17 @@ describe("pickInteresting", () => {
     expect(pickInteresting([arr("a1", 200)], [dep("d1", "roll")], aircraft, 0, 0)).toBe("a1");
   });
 
+  it("prefers a higher arrival (fuller GPWS) over one already on short final", () => {
+    const aircraft = [ac({ hex: "high", altFt: 1500 }), ac({ hex: "low", altFt: 400 })];
+    // "low" is sooner, but "high" still has the full countdown ahead ⇒ pick it.
+    expect(pickInteresting([arr("high", 70), arr("low", 30)], [], aircraft, 0, 0)).toBe("high");
+  });
+
+  it("deprioritises a rolled-out (on-ground) arrival below one still airborne on final", () => {
+    const aircraft = [ac({ hex: "rollout", onGround: true }), ac({ hex: "final", altFt: 400 })];
+    expect(pickInteresting([arr("rollout", 0), arr("final", 40)], [], aircraft, 0, 0)).toBe("final");
+  });
+
   it("falls to roll, then to the lowest climber, when no arrival is imminent", () => {
     expect(
       pickInteresting([], [dep("d1", "roll"), dep("d2", "climb")], [ac({ hex: "d2", altFt: 800 })], 0, 0),
