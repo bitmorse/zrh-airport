@@ -1,0 +1,4 @@
+# The SQLite database and its WAL/SHM sidecars are runtime state — never commit.
+*
+!.gitignore
+!.htaccess
