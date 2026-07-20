@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   fitPoints,
   isPointVisible,
@@ -51,11 +51,12 @@ export function useViewport(svgRef: React.RefObject<SVGSVGElement | null>): View
   );
 
   const viewRef = useRef(view);
-  viewRef.current = view;
   const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pointers = useRef(new Map<number, Pt>());
   const dragLast = useRef<Pt | null>(null);
   const pinchDist = useRef<number | null>(null);
+  // Bounding rect captured at gesture start, reused per move (avoids layout reads).
+  const dragRect = useRef<DOMRect | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
   const schedulePersist = useCallback(
@@ -68,13 +69,34 @@ export function useViewport(svgRef: React.RefObject<SVGSVGElement | null>): View
     [update],
   );
 
-  const apply = useCallback(
+  // Move the viewport imperatively — a DOM attribute write, no React render. Used on
+  // every pan/pinch pointermove so dragging never reconciles the (heavy, unmemoized)
+  // SVG layer tree. `viewRef` is the live source of truth between renders.
+  const applyDom = useCallback(
     (next: ViewState) => {
-      setView(next);
+      viewRef.current = next;
+      svgRef.current?.setAttribute("viewBox", viewBoxString(next));
       schedulePersist(next);
     },
-    [schedulePersist],
+    [svgRef, schedulePersist],
   );
+
+  // Commit to React state too — for discrete ops (wheel, buttons, focus/center) and at
+  // gesture end, where a single render is fine and keeps `zoom` (button state) in sync.
+  const apply = useCallback(
+    (next: ViewState) => {
+      applyDom(next);
+      setView(next);
+    },
+    [applyDom],
+  );
+
+  // Keep the DOM viewBox pinned to the live ref after every render, so a stray
+  // re-render mid-gesture (e.g. a traffic poll) can't snap the view back to the stale
+  // state value before the next paint.
+  useLayoutEffect(() => {
+    svgRef.current?.setAttribute("viewBox", viewBoxString(viewRef.current));
+  });
 
   // Clear any pending persist on unmount so it can't fire after teardown.
   useEffect(
@@ -103,6 +125,7 @@ export function useViewport(svgRef: React.RefObject<SVGSVGElement | null>): View
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     const el = svgRef.current;
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    dragRect.current = el?.getBoundingClientRect() ?? null; // reused for the whole gesture
     try {
       el?.setPointerCapture?.(e.pointerId);
     } catch {
@@ -124,8 +147,10 @@ export function useViewport(svgRef: React.RefObject<SVGSVGElement | null>): View
       const el = svgRef.current;
       if (!el || !pointers.current.has(e.pointerId)) return;
       pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      const rect = el.getBoundingClientRect();
+      const rect = dragRect.current ?? el.getBoundingClientRect();
 
+      // Pan/pinch go through `applyDom` (imperative viewBox write, no re-render), so
+      // dragging never reconciles the map's SVG layer tree — the source of the lag.
       if (pointers.current.size >= 2 && pinchDist.current) {
         const [a, b] = [...pointers.current.values()];
         const dist = Math.hypot(b.x - a.x, b.y - a.y);
@@ -136,7 +161,7 @@ export function useViewport(svgRef: React.RefObject<SVGSVGElement | null>): View
         if (Number.isFinite(factor) && factor > 0) {
           const fx = (midX - rect.left) / rect.width;
           const fy = (midY - rect.top) / rect.height;
-          apply(zoomAtPoint(viewRef.current, factor, fx, fy));
+          applyDom(zoomAtPoint(viewRef.current, factor, fx, fy));
         }
         return;
       }
@@ -145,10 +170,10 @@ export function useViewport(svgRef: React.RefObject<SVGSVGElement | null>): View
         const dxFrac = -(e.clientX - dragLast.current.x) / rect.width;
         const dyFrac = -(e.clientY - dragLast.current.y) / rect.height;
         dragLast.current = { x: e.clientX, y: e.clientY };
-        apply(panBy(viewRef.current, dxFrac, dyFrac));
+        applyDom(panBy(viewRef.current, dxFrac, dyFrac));
       }
     },
-    [svgRef, apply],
+    [svgRef, applyDom],
   );
 
   const endPointer = useCallback((e: React.PointerEvent) => {
@@ -161,7 +186,10 @@ export function useViewport(svgRef: React.RefObject<SVGSVGElement | null>): View
     if (pointers.current.size < 2) pinchDist.current = null;
     if (pointers.current.size === 0) {
       dragLast.current = null;
+      dragRect.current = null;
       setIsDragging(false);
+      // Sync React state to the final imperative position (updates `zoom`, etc.).
+      setView(viewRef.current);
     } else {
       // Resume single-finger panning from the remaining pointer.
       const rem = [...pointers.current.values()][0];
