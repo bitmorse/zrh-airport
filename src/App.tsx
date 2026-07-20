@@ -9,9 +9,19 @@ import { StatsModal } from "./components/StatsModal";
 import { SettingsModal } from "./components/SettingsModal";
 import { snapshotAircraft, type AircraftSnapshot } from "./data/adsb";
 import { AIRPORTS, airportConfigByIcao } from "./data/airports";
-import { addNoiseEvent, type NoiseEvent } from "./data/noiseStore";
+import {
+  addNoiseEvent,
+  type NoiseCandidate,
+  type NoiseEvent,
+  type NoiseObserverPoint,
+} from "./data/noiseStore";
 import { totalPoints } from "./data/watchStore";
 import { buildAirport } from "./domain/airport";
+import {
+  attributeCandidates,
+  CAPTURE_RADIUS_M,
+  type AttributionAircraft,
+} from "./domain/attribution";
 import { AUTO_IDLE_MS, pickInteresting, shouldRelease } from "./domain/autoSelect";
 import { byRunway, summarize } from "./domain/movementStats";
 import { useAirportStats } from "./hooks/useAirportStats";
@@ -156,44 +166,124 @@ export default function App() {
     window.setTimeout(() => setMicHint(false), 3000);
   }, []);
 
-  // Latest aircraft list, read at save time to enrich a measurement by hex.
+  // Read at save time (without re-creating saveNoise): the live aircraft list, the
+  // per-aircraft trail accessor, and the field elevation.
   const aircraftRef = useRef(traffic.aircraft);
   aircraftRef.current = traffic.aircraft;
+  const trailForRef = useRef(traffic.trailFor);
+  trailForRef.current = traffic.trailFor;
+  const fieldElevRef = useRef(airport.config.fieldElevationFt);
+  fieldElevRef.current = airport.config.fieldElevationFt;
+
+  // The observer's GPS track over the current recording, so each candidate's distance
+  // series is measured against where the user actually was moment-to-moment. Reset on
+  // the rising edge of recording; appended as fixes arrive.
+  const observerTrackRef = useRef<NoiseObserverPoint[]>([]);
+  const wasRecordingRef = useRef(false);
+  // The user's manual choice of primary label during a recording (applied at save).
+  const [manualPrimary, setManualPrimary] = useState<string | null>(null);
+  const manualPrimaryRef = useRef<string | null>(null);
+  manualPrimaryRef.current = manualPrimary;
+  useEffect(() => {
+    if (recorder.isRecording && !wasRecordingRef.current) {
+      observerTrackRef.current = []; // rising edge — fresh clip
+      setManualPrimary(null);
+    }
+    wasRecordingRef.current = recorder.isRecording;
+    if (recorder.isRecording && geo.position) {
+      const p = geo.position;
+      const track = observerTrackRef.current;
+      const last = track[track.length - 1];
+      if (!last || last.t !== p.ts) track.push({ t: p.ts, lat: p.lat, lon: p.lon });
+    }
+  }, [recorder.isRecording, geo.position]);
 
   const saveNoise = useCallback(
     (meta: NoiseMeta | null, rec: Recording, loc: GeoFix | null) => {
       if (!rec.blob) return;
-      // Prefer the snapshot taken when recording began (aircraft at the runway);
-      // fall back to a fresh lookup for manual recordings.
-      const fallback = meta?.hex
+      const end = Date.now();
+      const start = end - rec.durationMs;
+
+      // Every nearby aircraft's track over the clip window, ranked by closest approach
+      // to the observer. Seed each trail with the current fix so very short clips
+      // (10 s poll cadence) still yield at least one in-window sample.
+      const trailFor = trailForRef.current;
+      const acList: AttributionAircraft[] = aircraftRef.current.map((w) => {
+        const ac = w.ac;
+        const trail = [...trailFor(ac.hex)];
+        const last = trail[trail.length - 1];
+        if (!last || last.t < end) {
+          trail.push({ lat: ac.lat, lon: ac.lon, alt: ac.altGeomFt ?? ac.altFt, t: end });
+        }
+        return {
+          hex: ac.hex,
+          callsign: ac.flight,
+          aircraftType: ac.type,
+          aircraftTypeDesc: ac.typeDesc,
+          registration: ac.registration,
+          gsKt: ac.gs,
+          altFt: ac.altFt,
+          trackDeg: ac.track,
+          verticalRateFpm: ac.verticalRateFpm,
+          trail,
+        };
+      });
+      // Observer series over the clip; fall back to the single save-time fix.
+      const observer: NoiseObserverPoint[] =
+        observerTrackRef.current.length > 0
+          ? observerTrackRef.current.slice()
+          : loc
+            ? [{ t: start, lat: loc.lat, lon: loc.lon }]
+            : [];
+      const { candidates, primaryHex } = attributeCandidates({
+        window: { start, end },
+        observer,
+        fieldElevationFt: fieldElevRef.current,
+        aircraft: acList,
+      });
+
+      // Primary precedence: the user's live pick → nearest candidate → trigger hex.
+      const manual = manualPrimaryRef.current;
+      const pickedHex =
+        (manual && candidates.some((c) => c.hex === manual) ? manual : null) ?? primaryHex;
+      const primary = candidates.find((c) => c.hex === pickedHex) ?? null;
+
+      // When nothing was in range (no GPS / no trail), fall back to the trigger's
+      // snapshot so the clip still gets a best-effort label.
+      const fallbackAc = meta?.hex
         ? aircraftRef.current.find((a) => a.ac.hex === meta.hex)?.ac
         : undefined;
       const snap: AircraftSnapshot | null =
-        meta?.snapshot ?? (fallback ? snapshotAircraft(fallback) : null);
+        meta?.snapshot ?? (fallbackAc ? snapshotAircraft(fallbackAc) : null);
+
       const ev: NoiseEvent = {
         id: crypto.randomUUID(),
-        hex: meta?.hex ?? null,
-        callsign: meta?.callsign ?? null,
+        hex: primary?.hex ?? meta?.hex ?? null,
+        callsign: primary?.callsign ?? meta?.callsign ?? null,
         runwayEnd: meta?.end || null,
         kind: meta?.kind ?? null,
         geofenceRadiusM: meta?.geofenceRadiusM ?? null,
-        aircraftType: snap?.type ?? null,
-        aircraftTypeDesc: snap?.typeDesc ?? null,
-        registration: snap?.registration ?? null,
-        gsKt: snap?.gsKt ?? null,
-        altFt: snap?.altFt ?? null,
-        track: snap?.track ?? null,
-        verticalRateFpm: snap?.verticalRateFpm ?? null,
-        acLat: snap?.acLat ?? null,
-        acLon: snap?.acLon ?? null,
+        aircraftType: primary?.aircraftType ?? snap?.type ?? null,
+        aircraftTypeDesc: primary?.aircraftTypeDesc ?? snap?.typeDesc ?? null,
+        registration: primary?.registration ?? snap?.registration ?? null,
+        gsKt: primary?.closest.gsKt ?? snap?.gsKt ?? null,
+        altFt: primary?.closest.altFt ?? snap?.altFt ?? null,
+        track: primary?.closest.trackDeg ?? snap?.track ?? null,
+        verticalRateFpm: primary?.closest.verticalRateFpm ?? snap?.verticalRateFpm ?? null,
+        acLat: primary?.closest.acLat ?? snap?.acLat ?? null,
+        acLon: primary?.closest.acLon ?? snap?.acLon ?? null,
         heldSeconds: meta?.heldMs != null ? Math.round(meta.heldMs / 1000) : null,
         lat: loc?.lat ?? null,
         lon: loc?.lon ?? null,
         peakDbfs: rec.peakDbfs,
         avgDbfs: rec.avgDbfs,
-        startedAt: Date.now() - rec.durationMs,
+        startedAt: start,
         durationMs: rec.durationMs,
         hasAudio: true,
+        candidates,
+        observerTrack: observer,
+        primaryHex: primary?.hex ?? null,
+        captureRadiusM: CAPTURE_RADIUS_M,
       };
       void addNoiseEvent(ev, rec.blob);
     },
@@ -214,16 +304,11 @@ export default function App() {
     onComplete: (meta, rec) => saveNoise(meta, rec, geo.ref.current),
   });
 
+  // Manual recordings no longer guess a callsign — proximity attribution in saveNoise
+  // labels them from the nearest aircraft (or the user's live pick).
   const onManualStop = useCallback(
-    (rec: Recording) => {
-      // Tag a manual recording with the soonest current arrival, if any.
-      const soonest = arrivals[0];
-      const meta: NoiseMeta | null = soonest
-        ? { hex: soonest.hex, callsign: soonest.callsign, end: soonest.end, kind: "arrival" }
-        : null;
-      saveNoise(meta, rec, geo.ref.current);
-    },
-    [arrivals, saveNoise, geo.ref],
+    (rec: Recording) => saveNoise(null, rec, geo.ref.current),
+    [saveNoise, geo.ref],
   );
 
   const ageSec =
@@ -236,6 +321,54 @@ export default function App() {
   // then), so GPWS callouts don't get half-swallowed mid-approach.
   const cockpitAudio = settings.cockpitSim && !settings.muted && !recorder.isRecording;
   const effectiveMuted = settings.muted || recorder.isRecording;
+
+  // Live "who's nearest to me right now" ranking for the recorder UI — the same
+  // proximity logic used at save time, over each aircraft's current position. Updates
+  // as polls/GPS refresh. Empty without a GPS fix.
+  const liveCandidates = useMemo<NoiseCandidate[]>(() => {
+    if (!geo.position) return [];
+    const t = geo.position.ts;
+    const observer = [{ t, lat: geo.position.lat, lon: geo.position.lon }];
+    const acList: AttributionAircraft[] = traffic.aircraft.map((w) => {
+      const ac = w.ac;
+      return {
+        hex: ac.hex,
+        callsign: ac.flight,
+        aircraftType: ac.type,
+        aircraftTypeDesc: ac.typeDesc,
+        registration: ac.registration,
+        gsKt: ac.gs,
+        altFt: ac.altFt,
+        trackDeg: ac.track,
+        verticalRateFpm: ac.verticalRateFpm,
+        trail: [{ lat: ac.lat, lon: ac.lon, alt: ac.altGeomFt ?? ac.altFt, t }],
+      };
+    });
+    return attributeCandidates({
+      window: { start: t, end: t },
+      observer,
+      fieldElevationFt: airport.config.fieldElevationFt,
+      aircraft: acList,
+    }).candidates;
+  }, [traffic.aircraft, geo.position, airport.config.fieldElevationFt]);
+
+  // The primary shown live: the user's pick if still in range, else the nearest.
+  const primaryCand =
+    (manualPrimary && liveCandidates.find((c) => c.hex === manualPrimary)) ||
+    liveCandidates[0] ||
+    null;
+  const primaryCallsign = primaryCand
+    ? (primaryCand.callsign ?? primaryCand.hex.toUpperCase())
+    : activeCallsign;
+  const recorderCandidates = useMemo(
+    () =>
+      liveCandidates.map((c) => ({
+        hex: c.hex,
+        callsign: c.callsign,
+        distanceM: c.closestApproachM,
+      })),
+    [liveCandidates],
+  );
 
   const activeCount = useMemo(
     () => traffic.aircraft.filter((a) => a.assignment).length,
@@ -359,14 +492,23 @@ export default function App() {
           <button
             onClick={() => setShowRecorder(true)}
             aria-label="Microphone"
-            title="Microphone · noise recording"
-            className={`border p-1.5 hover:bg-surface-container ${
+            title={
+              recorder.isRecording
+                ? `Recording ${primaryCallsign ?? "…"} · tap to change`
+                : "Microphone · noise recording"
+            }
+            className={`flex items-center gap-1 border p-1.5 hover:bg-surface-container ${
               recorder.isRecording
                 ? "border-status-alert bg-status-alert text-on-primary"
                 : "border-border text-on-surface-variant"
             }`}
           >
             <MicOnIcon size={18} />
+            {recorder.isRecording && primaryCallsign && (
+              <span className="max-w-24 truncate font-mono text-xs font-semibold">
+                {primaryCallsign}
+              </span>
+            )}
           </button>
           <button
             onClick={() => setShowSettings(true)}
@@ -497,7 +639,10 @@ export default function App() {
       {showRecorder && (
         <RecorderModal
           recorder={recorder}
-          activeCallsign={activeCallsign}
+          primaryCallsign={primaryCallsign}
+          candidates={recorderCandidates}
+          primaryHex={primaryCand?.hex ?? null}
+          onPickPrimary={setManualPrimary}
           position={geo.position}
           onManualStop={onManualStop}
           onClose={() => setShowRecorder(false)}

@@ -4,11 +4,17 @@ import { blobToMonoPcm16 } from "./wav";
 
 /**
  * Export landing-noise measurements as a single MCAP file, fully in-browser.
- * Three timestamped channels share one timeline, openable in Foxglove Studio:
- *   /audio       → foxglove.RawAudio    (mono PCM, streamed in ~200 ms blocks
- *                                        so the Audio panel can play it back)
- *   /gps         → foxglove.LocationFix (where it was measured)
- *   /measurement → zrh.NoiseMeasurement (aircraft, runway, loudness, duration)
+ * Timestamped channels share one timeline, openable in Foxglove Studio:
+ *   /audio               → foxglove.RawAudio    (mono PCM, streamed in ~200 ms blocks
+ *                                                so the Audio panel can play it back)
+ *   /gps                 → foxglove.LocationFix (observer position over the clip)
+ *   /measurement         → zrh.NoiseMeasurement (primary aircraft, runway, loudness…)
+ *   /aircraft/{id}       → foxglove.LocationFix (each nearby aircraft's track, so
+ *                                                Foxglove Map/3D render them natively)
+ *   /aircraft/{id}/track → zrh.AircraftTrack    (same points + slant distance to user)
+ *
+ * The per-aircraft tracks preserve the full attribution picture (all candidates, not
+ * just the chosen label) for offline post-processing.
  *
  * Messages use JSON encoding with jsonschema so no protobuf toolchain is needed;
  * audio bytes are base64 (larger than protobuf, but dependency-free).
@@ -70,8 +76,25 @@ const MEASUREMENT_SCHEMA = {
   },
 };
 
+const AIRCRAFT_TRACK_SCHEMA = {
+  type: "object",
+  title: "zrh.AircraftTrack",
+  properties: {
+    timestamp: timeSchema,
+    callsign: { type: "string" },
+    hex: { type: "string" },
+    latitude: { type: "number" },
+    longitude: { type: "number" },
+    altitude: { type: "number" },
+    distance_m: { type: "number" },
+  },
+};
+
 const enc = new TextEncoder();
 const json = (obj: unknown): Uint8Array => enc.encode(JSON.stringify(obj));
+const FT_TO_M = 0.3048;
+/** MCAP topic segment from a callsign/hex (Foxglove topics are `/`-delimited). */
+const topicSeg = (s: string): string => s.trim().replace(/[^A-Za-z0-9]+/g, "_") || "unknown";
 const nsBig = (ms: number): bigint => BigInt(Math.round(ms)) * 1_000_000n;
 const toTime = (ms: number) => ({
   sec: Math.floor(ms / 1000),
@@ -137,6 +160,21 @@ export async function buildNoiseMcap(
   const gpsCh = await register("foxglove.LocationFix", LOCATION_FIX_SCHEMA, "/gps");
   const measCh = await register("zrh.NoiseMeasurement", MEASUREMENT_SCHEMA, "/measurement");
 
+  // One pair of channels per aircraft (hex), reused across events it appears in.
+  const aircraftChans = new Map<string, { fix: number; track: number }>();
+  const aircraftChannels = async (hex: string, label: string) => {
+    let ch = aircraftChans.get(hex);
+    if (!ch) {
+      const seg = topicSeg(label);
+      ch = {
+        fix: await register("foxglove.LocationFix", LOCATION_FIX_SCHEMA, `/aircraft/${seg}`),
+        track: await register("zrh.AircraftTrack", AIRCRAFT_TRACK_SCHEMA, `/aircraft/${seg}/track`),
+      };
+      aircraftChans.set(hex, ch);
+    }
+    return ch;
+  };
+
   let sequence = 0;
   const add = async (channelId: number, logTime: bigint, obj: unknown) => {
     await writer.addMessage({
@@ -151,7 +189,6 @@ export async function buildNoiseMcap(
   const sorted = [...events].sort((a, b) => a.startedAt - b.startedAt);
   for (const e of sorted) {
     const logTime = nsBig(e.startedAt);
-    const t = toTime(e.startedAt);
 
     await add(measCh, logTime, {
       callsign: e.callsign ?? "",
@@ -176,14 +213,46 @@ export async function buildNoiseMcap(
       longitude: e.lon,
     });
 
-    if (e.lat != null && e.lon != null) {
-      await add(gpsCh, logTime, {
-        timestamp: t,
+    // Observer track over the clip (a series when captured, else the single fix).
+    const obs = e.observerTrack?.length
+      ? e.observerTrack
+      : e.lat != null && e.lon != null
+        ? [{ t: e.startedAt, lat: e.lat, lon: e.lon }]
+        : [];
+    for (const o of obs) {
+      await add(gpsCh, nsBig(o.t), {
+        timestamp: toTime(o.t),
         frame_id: "gps",
-        latitude: e.lat,
-        longitude: e.lon,
+        latitude: o.lat,
+        longitude: o.lon,
         altitude: 0,
       });
+    }
+
+    // Each nearby aircraft's position + distance track (all candidates, not just the
+    // chosen primary), so attribution can be re-derived offline.
+    for (const c of e.candidates ?? []) {
+      const label = c.callsign ?? c.hex.toUpperCase();
+      const ch = await aircraftChannels(c.hex, label);
+      for (const pt of c.track) {
+        const pTime = toTime(pt.t);
+        await add(ch.fix, nsBig(pt.t), {
+          timestamp: pTime,
+          frame_id: label,
+          latitude: pt.lat,
+          longitude: pt.lon,
+          altitude: pt.alt != null ? round1(pt.alt * FT_TO_M) : 0,
+        });
+        await add(ch.track, nsBig(pt.t), {
+          timestamp: pTime,
+          callsign: c.callsign ?? "",
+          hex: c.hex,
+          latitude: pt.lat,
+          longitude: pt.lon,
+          altitude: pt.alt != null ? round1(pt.alt * FT_TO_M) : 0,
+          distance_m: round1(pt.distanceM),
+        });
+      }
     }
 
     if (e.hasAudio) {

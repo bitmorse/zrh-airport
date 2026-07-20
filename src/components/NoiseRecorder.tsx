@@ -1,6 +1,13 @@
 import type { GeoFix } from "../hooks/useGeoWatch";
 import type { NoiseRecorder as Recorder } from "../hooks/useNoiseRecorder";
-import { MicOnIcon, MyLocationIcon, SquareIcon, StopIcon } from "./icons";
+import { LandingIcon, MicOnIcon, MyLocationIcon, SquareIcon, StopIcon } from "./icons";
+
+/** A nearby aircraft the clip could be attributed to, with live distance to the user. */
+export interface RecorderCandidate {
+  hex: string;
+  callsign: string | null;
+  distanceM: number;
+}
 
 /** dBFS (≤0) → 0..100% meter width (−60 dBFS floor). */
 function meterPct(dbfs: number): number {
@@ -14,18 +21,32 @@ function meterColor(pct: number): string {
   return "var(--color-status-cleared)";
 }
 
+/** "1.2 km" / "340 m" for a candidate distance. */
+function fmtDist(m: number): string {
+  return m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`;
+}
+
 /**
  * Microphone control + live level meter. When enabled, the app auto-records the
  * noise around each predicted landing; a manual record button is also provided.
+ * While recording it names the aircraft the clip is attributed to (the nearest, by
+ * default) and lists nearby aircraft sorted by distance so you can pick the one
+ * you're actually looking at.
  */
 export function NoiseRecorder({
   recorder,
-  activeCallsign,
+  primaryCallsign,
+  candidates,
+  primaryHex,
+  onPickPrimary,
   position,
   onManualStop,
 }: {
   recorder: Recorder;
-  activeCallsign: string | null;
+  primaryCallsign: string | null;
+  candidates: RecorderCandidate[];
+  primaryHex: string | null;
+  onPickPrimary: (hex: string) => void;
   position: GeoFix | null;
   onManualStop: (rec: Awaited<ReturnType<Recorder["stopRecording"]>>) => void;
 }) {
@@ -70,7 +91,7 @@ export function NoiseRecorder({
             />
             <span className="text-xs text-on-surface-variant">
               {isRecording
-                ? `Recording ${activeCallsign ?? "…"}`
+                ? `Recording ${primaryCallsign ?? "…"}`
                 : "Listening — records aircraft inside your geofence"}
             </span>
           </div>
@@ -82,6 +103,39 @@ export function NoiseRecorder({
               style={{ width: `${pct.toFixed(0)}%`, background: meterColor(pct) }}
             />
           </div>
+
+          {/* Nearby aircraft, nearest-first, with live distance — tap to re-attribute
+              the clip to the one you're actually looking at. */}
+          {candidates.length > 0 && (
+            <div className="flex flex-col gap-0.5">
+              <div className="text-[10px] uppercase tracking-wide text-muted">
+                Nearby · tap to label
+              </div>
+              {candidates.slice(0, 6).map((c) => {
+                const isPrimary = c.hex === primaryHex;
+                return (
+                  <button
+                    key={c.hex}
+                    type="button"
+                    onClick={() => onPickPrimary(c.hex)}
+                    aria-label={`Label as ${c.callsign ?? c.hex.toUpperCase()}`}
+                    aria-pressed={isPrimary}
+                    className={`flex items-center gap-2 px-2 py-1 text-left text-xs ${
+                      isPrimary
+                        ? "bg-primary text-on-primary"
+                        : "text-on-surface-variant hover:bg-surface-container"
+                    }`}
+                  >
+                    <LandingIcon size={12} />
+                    <span className="min-w-0 flex-1 truncate font-mono">
+                      {c.callsign ?? c.hex.toUpperCase()}
+                    </span>
+                    <span className="shrink-0 tabular-nums">{fmtDist(c.distanceM)}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           <div className="flex items-center gap-1 text-[11px] text-muted">
             <MyLocationIcon size={12} />

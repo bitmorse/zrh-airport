@@ -128,7 +128,7 @@ function kinematicsLine(e: NoiseEvent, units: Units): string | null {
 }
 
 export function NoiseTable() {
-  const { events, remove, getAudio } = useNoiseEvents();
+  const { events, remove, getAudio, relabel } = useNoiseEvents();
   const [{ units }] = useSettings();
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -257,6 +257,24 @@ export function NoiseTable() {
                     <div className="text-[10px] text-muted">
                       {kinematicsLine(e, units)}
                     </div>
+                  )}
+                  {e.candidates && e.candidates.length > 1 && (
+                    <select
+                      value={e.primaryHex ?? e.hex ?? ""}
+                      onChange={(ev) => void relabel(e.id, ev.target.value)}
+                      aria-label="Relabel aircraft"
+                      className="mt-1 max-w-full border border-border bg-surface-container-lowest px-1 py-0.5 text-[10px] text-on-surface-variant outline-none focus:border-primary"
+                    >
+                      {e.candidates.map((c) => (
+                        <option key={c.hex} value={c.hex}>
+                          {(c.callsign ?? c.hex.toUpperCase()) +
+                            " · " +
+                            (c.closestApproachM >= 1000
+                              ? `${(c.closestApproachM / 1000).toFixed(1)} km`
+                              : `${Math.round(c.closestApproachM)} m`)}
+                        </option>
+                      ))}
+                    </select>
                   )}
                 </td>
                 <td className="py-1.5 pr-2 tabular-nums text-on-surface-variant">

@@ -136,3 +136,63 @@ describe("buildNoiseMcap audio blocking", () => {
     expect(rejoined[200]).toBe(-10000);
   });
 });
+
+describe("buildNoiseMcap per-candidate tracks", () => {
+  it("writes a LocationFix + AircraftTrack series per captured candidate", async () => {
+    const T = 1_700_000_000_000;
+    const withCandidates = event({
+      hasAudio: false,
+      observerTrack: [
+        { t: T, lat: 47.45, lon: 8.57 },
+        { t: T + 10_000, lat: 47.451, lon: 8.571 },
+      ],
+      candidates: [
+        {
+          hex: "abc123",
+          callsign: "SWR40L",
+          aircraftType: "A320",
+          aircraftTypeDesc: "AIRBUS A-320",
+          registration: "HB-JCA",
+          closestApproachM: 320,
+          track: [
+            { t: T, lat: 47.44, lon: 8.56, alt: 1200, distanceM: 900 },
+            { t: T + 10_000, lat: 47.445, lon: 8.565, alt: 700, distanceM: 320 },
+          ],
+          closest: {
+            t: T + 10_000,
+            gsKt: 145,
+            altFt: 700,
+            trackDeg: 283,
+            verticalRateFpm: -640,
+            acLat: 47.445,
+            acLon: 8.565,
+          },
+        },
+      ],
+    });
+    const blob = await buildNoiseMcap([withCandidates], async () => undefined);
+    const { messages } = await readMcap(blob);
+
+    const fix = messages.filter((m) => m.topic === "/aircraft/SWR40L");
+    expect(fix.length).toBe(2);
+    expect(fix.every((m) => m.schema === "foxglove.LocationFix")).toBe(true);
+
+    const track = messages.filter((m) => m.topic === "/aircraft/SWR40L/track");
+    expect(track.length).toBe(2);
+    expect(track.every((m) => m.schema === "zrh.AircraftTrack")).toBe(true);
+    const last = track[1].json as Record<string, unknown>;
+    expect(last.hex).toBe("abc123");
+    expect(last.distance_m).toBe(320);
+
+    // The observer series is written as multiple /gps fixes, not a single point.
+    expect(messages.filter((m) => m.topic === "/gps").length).toBe(2);
+  });
+
+  it("omits per-aircraft channels for legacy events without candidates", async () => {
+    const blob = await buildNoiseMcap([event({ hasAudio: false })], async () => undefined);
+    const { messages } = await readMcap(blob);
+    expect(messages.some((m) => m.topic.startsWith("/aircraft/"))).toBe(false);
+    // Legacy single-fix observer position still emitted on /gps.
+    expect(messages.filter((m) => m.topic === "/gps").length).toBe(1);
+  });
+});
