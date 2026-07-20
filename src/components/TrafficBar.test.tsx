@@ -80,6 +80,10 @@ describe("TrafficBar", () => {
         lastUpdated={NOW}
       />,
     );
+    // The leading runway number is labelled so it isn't a mystery.
+    expect(screen.getAllByText("RWY").length).toBeGreaterThan(0);
+    expect(screen.getByTitle("Runway 34 · SWR40L")).toBeInTheDocument();
+
     // Arrival row: compact "type · origin→dest"; the airline name is gone.
     expect(screen.getByText(/B77L · YYZ→ZRH/)).toBeInTheDocument();
     expect(screen.queryByText(/Air Canada/)).toBeNull();

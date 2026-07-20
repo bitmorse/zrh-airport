@@ -144,7 +144,12 @@ export function AtcPanel({
                   >
                     <span aria-hidden>{c.kind === "arrival" ? "🛬" : "🛫"}</span>
                     <span className="font-mono text-slate-200">{c.callsign}</span>
-                    <span className="text-sky-300">{c.end}</span>
+                    <span className="text-sky-300" title={`Runway ${c.end}`}>
+                      <span className="text-[10px] font-medium uppercase tracking-wide text-sky-300/50">
+                        RWY
+                      </span>{" "}
+                      {c.end}
+                    </span>
                     <span className="ml-auto tabular-nums text-slate-500">
                       {candidateNote(c, now)}
                     </span>

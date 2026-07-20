@@ -43,6 +43,7 @@ function TrafficRow({
       onClick={onClick}
       disabled={!onClick}
       aria-pressed={onClick ? !!selected : undefined}
+      title={end ? `Runway ${end}${callsign ? ` · ${callsign}` : ""}` : undefined}
       className={`relative flex w-full items-center gap-2 py-1.5 pr-3 pl-3.5 text-left hover:bg-slate-800/50 disabled:cursor-default disabled:hover:bg-transparent ${
         selected ? "bg-slate-200/[0.07]" : highlight ? "bg-amber-500/10" : ""
       }`}
@@ -59,7 +60,13 @@ function TrafficRow({
         <span className="flex-1 text-xs text-slate-500">{muted}</span>
       ) : (
         <span className="min-w-0 flex-1 truncate text-xs">
-          <span className="font-semibold text-sky-300">{end}</span>
+          {/* Label the runway so the leading number isn't a mystery. */}
+          <span className="font-semibold text-sky-300">
+            <span className="text-[10px] font-medium uppercase tracking-wide text-sky-300/50">
+              RWY
+            </span>{" "}
+            {end}
+          </span>
           <span className="font-semibold text-slate-100"> {callsign}</span>
           {secondary && <span className="text-slate-500"> · {secondary}</span>}
         </span>
