@@ -221,7 +221,8 @@ export default function App() {
         </div>
       </header>
 
-      {/* Mobile-only quick glance above the map: next landing + departures. */}
+      {/* Quick glance: next landing + departures. Above the map on mobile; on
+          desktop it moves to the top of the sidebar (see below). */}
       <div className="px-4 pt-4 lg:hidden">
         <TrafficBar
           arrivals={arrivals}
@@ -248,6 +249,21 @@ export default function App() {
         </section>
 
         <aside className="flex w-full flex-col gap-4 lg:w-72">
+          {/* Desktop-only: the glance strip lives at the top of the sidebar (on
+              mobile it sits above the map instead). */}
+          <div className="hidden lg:block">
+            <TrafficBar
+              arrivals={arrivals}
+              departures={traffic.departures}
+              aircraft={traffic.aircraft}
+              now={now}
+              lastUpdated={traffic.lastUpdated}
+              stale={stale}
+              selectedHex={selectedHex}
+              onSelect={handleSelect}
+            />
+          </div>
+
           <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
             <FlightDetails
               item={selectedAircraft}
