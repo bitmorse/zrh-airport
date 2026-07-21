@@ -1,4 +1,5 @@
 import { memo } from "react";
+import type { CurrentWind } from "../data/airportWeather";
 import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
 import { useSmoothClock } from "../hooks/useSmoothClock";
 import { reckonPosition } from "../lib/reckon";
@@ -14,11 +15,14 @@ function PlaneLayerImpl({
   lastUpdated,
   selectedHex,
   onSelect,
+  wind,
 }: {
   aircraft: AircraftWithAssignment[];
   lastUpdated: number | null;
   selectedHex?: string | null;
   onSelect?: (hex: string) => void;
+  /** Current airport wind for the optional crosswind arrows; null/undefined = off. */
+  wind?: CurrentWind | null;
 }) {
   const now = useSmoothClock(120);
   return (
@@ -30,6 +34,7 @@ function PlaneLayerImpl({
           pos={reckonPosition(item.ac, lastUpdated, now)}
           selected={item.ac.hex === selectedHex}
           onSelect={onSelect}
+          wind={wind}
         />
       ))}
     </g>

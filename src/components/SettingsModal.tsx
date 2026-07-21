@@ -60,6 +60,7 @@ export function SettingsModal({
     String(geoToDisplay(settings.geofenceRadiusM, settings.units)),
   );
   const [cockpitSim, setCockpitSim] = useState(settings.cockpitSim);
+  const [showWind, setShowWind] = useState(settings.showWind);
   const [provider, setProvider] = useState(settings.provider ?? "");
   const [apiToken, setApiToken] = useState(settings.apiToken ?? "");
 
@@ -88,6 +89,7 @@ export function SettingsModal({
       radiusNm: Math.round(clamp(nm, 5, 250)),
       geofenceRadiusM: Math.round(clamp(geoM, 300, 20000)),
       cockpitSim,
+      showWind,
       units,
       provider: provider || null,
       apiToken: apiToken.trim() || null,
@@ -208,6 +210,23 @@ export function SettingsModal({
               Hear what the pilot would hear — from ADS-B we estimate and play the cockpit
               alerts (GPWS altitude callouts) for the flight you have selected. Mute/unmute
               from the header.
+            </span>
+          </span>
+        </label>
+
+        <label className="flex items-start gap-2">
+          <input
+            type="checkbox"
+            checked={showWind}
+            onChange={(e) => setShowWind(e.target.checked)}
+            className="mt-0.5 accent-primary"
+          />
+          <span className="flex flex-col">
+            <span className="font-medium text-on-surface">Wind overlay</span>
+            <span className="text-[11px] text-muted">
+              Show the current airport wind and a small arrow on each active aircraft
+              for the crosswind pushing it sideways (dashed when it's gusty). Off by
+              default; only fetches weather while switched on.
             </span>
           </span>
         </label>

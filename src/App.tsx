@@ -40,8 +40,10 @@ import {
   summarize,
 } from "./domain/movementStats";
 import * as gpwsAudio from "./lib/gpwsAudio";
+import { currentWind } from "./data/airportWeather";
 import { useAirportRecent } from "./hooks/useAirportRecent";
 import { useAirportStats } from "./hooks/useAirportStats";
+import { useAirportWeather } from "./hooks/useAirportWeather";
 import { AirportContext } from "./hooks/useAirport";
 import { useWatchedFlights } from "./hooks/useWatchedFlights";
 import { useWatchTracker } from "./hooks/useWatchTracker";
@@ -432,6 +434,17 @@ export default function App() {
   // Rolling recent window drives the heatmap directly (smooth "now"); polled ~60 s.
   const recentStats = useAirportRecent(airport.config.icao);
 
+  // Optional wind overlay (default off): only fetches weather while switched on. The
+  // current wind is keyed to the wall-clock hour (weather is hourly) rather than the
+  // ticking second, so the object reference stays stable and the memoised map doesn't
+  // re-render every second.
+  const weather = useAirportWeather(airport.config.icao, { enabled: settings.showWind });
+  const windHourStartMs = Math.floor(now / 3600_000) * 3600_000;
+  const wind = useMemo(
+    () => (settings.showWind ? currentWind(weather.data, windHourStartMs) : null),
+    [settings.showWind, weather.data, windHourStartMs],
+  );
+
   const localRunways = useMemo(() => byRunway(traffic.movementLog), [traffic.movementLog]);
   const localSummary = useMemo(() => summarize(traffic.movementLog), [traffic.movementLog]);
 
@@ -636,6 +649,7 @@ export default function App() {
             onLocate={onLocate}
             onInteract={markUserActivity}
             onSelect={handleSelect}
+            wind={wind}
           />
         </section>
 
