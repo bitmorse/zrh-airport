@@ -1,7 +1,9 @@
 import type { LatLon } from "../lib/geo";
+import type { CurrentWind } from "../data/airportWeather";
 import { useAirport } from "../hooks/useAirport";
 import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
 import { projectToSvg, inViewport } from "../lib/projection";
+import { isGusty, windComponents } from "../lib/wind";
 import { AIRPLANE_PATH } from "./icons";
 
 // Phase colours reference the shared design tokens (no inline hex). On the runway the
@@ -20,6 +22,9 @@ const LABEL_COLOR = "var(--color-on-surface)";
 // / colours over white elsewhere — but the white runway glyph needs a dark edge.
 const HALO_LIGHT = "var(--color-surface-container-lowest)";
 const HALO_DARK = "var(--color-on-surface)";
+// Crosswind "push" arrow: a neutral environmental force, deliberately not one of the
+// arrival/departure phase colours so it reads as wind, not flight state.
+const WIND_COLOR = "var(--color-on-surface-variant)";
 
 /**
  * A single aircraft, drawn as a small plane glyph pointing along its track.
@@ -31,12 +36,15 @@ export function Plane({
   pos,
   selected,
   onSelect,
+  wind,
 }: {
   item: AircraftWithAssignment;
   /** Optional dead-reckoned position; falls back to the aircraft's last fix. */
   pos?: LatLon;
   selected?: boolean;
   onSelect?: (hex: string) => void;
+  /** Current airport wind (from the optional overlay); undefined = overlay off. */
+  wind?: CurrentWind | null;
 }) {
   const { ac, assignment } = item;
   const { arp } = useAirport().config;
@@ -55,6 +63,16 @@ export function Plane({
   const show = active || selected;
   const label = ac.flight ?? ac.hex.toUpperCase();
 
+  // Crosswind "push" arrow — only for active aircraft (near the field, where surface
+  // wind actually matters) and only when the overlay supplies wind. The trig is a few
+  // ops; nothing renders when the overlay is off, so it stays off the hot path.
+  const cross =
+    wind && active ? windComponents(heading, wind.dirDeg, wind.kt) : null;
+  const showArrow = cross !== null && cross.crossKt >= 1;
+  const gusty = wind ? isGusty(wind.kt, wind.gustKt) : false;
+  // Length grows with the crosswind (kt), clamped so a gale can't run off the glyph.
+  const arrowLen = cross ? 7 + Math.min(cross.crossKt, 30) * 0.45 : 0;
+
   return (
     <g
       transform={`translate(${pt.x.toFixed(1)} ${pt.y.toFixed(1)})`}
@@ -71,6 +89,29 @@ export function Plane({
     >
       {/* Generous, invisible tap target. */}
       <circle r={10} fill="transparent" />
+      {/* Crosswind push: an arrow from under the glyph toward the side the wind shoves
+          the aircraft, length ∝ crosswind strength, dashed when the air is gusty
+          (bumpy). Drawn first so the plane glyph sits on top. */}
+      {showArrow && cross && (
+        <g
+          transform={`rotate(${(cross.pushDeg - 90).toFixed(0)})`}
+          stroke={WIND_COLOR}
+          fill={WIND_COLOR}
+          opacity={0.85}
+          aria-hidden="true"
+        >
+          <line
+            x1={7}
+            y1={0}
+            x2={arrowLen}
+            y2={0}
+            strokeWidth={1.6}
+            strokeLinecap="round"
+            strokeDasharray={gusty ? "2 2" : undefined}
+          />
+          <path d={`M${arrowLen.toFixed(1)} 0 L${(arrowLen - 3.5).toFixed(1)} -2.4 L${(arrowLen - 3.5).toFixed(1)} 2.4 Z`} />
+        </g>
+      )}
       {/* Radar target: a sharp 1px square boundary (per design, not a circle). */}
       {selected && (
         <rect

@@ -1,10 +1,12 @@
 import { memo, useEffect, useRef } from "react";
+import type { CurrentWind } from "../data/airportWeather";
 import { useAirport } from "../hooks/useAirport";
 import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
 import { useViewport } from "../hooks/useViewport";
 import type { LatLon } from "../lib/geo";
 import { projectToSvg, SVG_W, SVG_H } from "../lib/projection";
 import { PlaneLayer } from "./PlaneLayer";
+import { WindChip } from "./WindChip";
 import { PoiLayer } from "./PoiLayer";
 import { RunwayHeat } from "./RunwayHeat";
 import { TrailLayer } from "./TrailLayer";
@@ -25,6 +27,7 @@ function AirportSvgImpl({
   onLocate,
   onInteract,
   onSelect,
+  wind,
 }: {
   aircraft: AircraftWithAssignment[];
   counts: Record<string, number>;
@@ -40,6 +43,8 @@ function AirportSvgImpl({
   /** Fired when the user directly manipulates the map (pan/zoom), to mark activity. */
   onInteract?: () => void;
   onSelect?: (hex: string) => void;
+  /** Current airport wind for the optional overlay (chip + crosswind arrows). */
+  wind?: CurrentWind | null;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const airport = useAirport();
@@ -152,6 +157,7 @@ function AirportSvgImpl({
         lastUpdated={lastUpdated}
         selectedHex={selectedHex}
         onSelect={onSelect}
+        wind={wind}
       />
 
       {userPosition && (
@@ -163,6 +169,8 @@ function AirportSvgImpl({
         />
       )}
       </svg>
+
+      {wind && <WindChip wind={wind} />}
 
       <div className="absolute left-2 top-2 flex flex-col gap-1">
         <ZoomButton label="Zoom in" onClick={zoomIn} disabled={zoom >= 8}>

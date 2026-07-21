@@ -28,6 +28,8 @@ export interface Settings {
   units: Units;
   /** Cockpit simulation: estimate & play what the pilot would hear (GPWS callouts). */
   cockpitSim: boolean;
+  /** Optional wind overlay: current-wind chip + a per-aircraft crosswind "push" arrow. */
+  showWind: boolean;
   /** Global mute for cockpit audio. Persisted; starts muted. */
   muted: boolean;
   /** Map zoom factor (1 = full extent). */
@@ -48,6 +50,7 @@ export const DEFAULT_SETTINGS: Settings = {
   apiToken: null,
   units: "metric",
   cockpitSim: true,
+  showWind: false,
   muted: true,
   zoom: DEFAULT_ZOOM,
   cx: 0.5,
