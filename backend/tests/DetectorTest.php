@@ -68,6 +68,43 @@ return [
         Assert::same('a1', $r2['movements'][0]['hex']);
     },
 
+    'landing: null-track touchdown is tagged to the approach end, not the first-listed one' => function (): void {
+        $ap = zrh();
+        // Approach to 34 (track present → the end is unambiguous while airborne).
+        $t1 = 1_500_000;
+        $r1 = Detector::detect($ap, [], [
+            ac('n1', '34', ['onGround' => false, 'altFt' => FIELD + 160, 'gs' => 140, 'verticalRateFpm' => -700]),
+        ], $t1);
+        Assert::count(0, $r1['movements'], 'still airborne');
+
+        // Touchdown on the 16/34 strip with NO track (common for surface targets).
+        // Without the approach-end memory this would wrongly tag "16" (first-listed).
+        $t2 = $t1 + 60_000;
+        $r2 = Detector::detect($ap, $r1['tracker'], [
+            ac('n1', '34', ['onGround' => true, 'gs' => 45, 'track' => null]),
+        ], $t2);
+        Assert::count(1, $r2['movements'], 'one landing');
+        Assert::same('34', $r2['movements'][0]['end'], 'tagged to the approach end 34');
+    },
+
+    'takeoff: a go-around (was airborne on approach) is NOT counted as a takeoff' => function (): void {
+        $ap = zrh();
+        // Poll 1: on approach to 16, airborne and descending.
+        $t1 = 1_600_000;
+        $r1 = Detector::detect($ap, [], [
+            ac('ga1', '16', ['onGround' => false, 'altFt' => FIELD + 400, 'gs' => 150, 'verticalRateFpm' => -600]),
+        ], $t1);
+        Assert::count(0, $r1['movements'], 'descending, nothing');
+
+        // Poll 2: goes around — now climbing, aligned, low. Was previously airborne
+        // (not a departure off the ground), so it must NOT count as a takeoff.
+        $t2 = $t1 + 60_000;
+        $r2 = Detector::detect($ap, $r1['tracker'], [
+            ac('ga1', '16', ['onGround' => false, 'altFt' => FIELD + 500, 'gs' => 160, 'verticalRateFpm' => 1800]),
+        ], $t2);
+        Assert::count(0, $r2['movements'], 'go-around is not a takeoff');
+    },
+
     'landing: not double-counted while it keeps rolling within cooldown' => function (): void {
         $ap = zrh();
         $t1 = 2_000_000;

@@ -24,4 +24,10 @@ return [
     'retentionDays' => 60,
     'defaultWindowDays' => 60,
     'maxWindowDays' => 60,
+    // Weather is hourly, so fetch it on a throttle rather than every poll.
+    'weatherEverySeconds' => 900,   // 15 min
+    'weatherRetentionDays' => 365,  // keep a year of hourly weather (tiny; for training)
+    // How many past days each fetch requests (Open-Meteo allows up to 92). >1 lets
+    // a restart/outage backfill the gap instead of leaving a permanent hole.
+    'weatherPastDays' => 7,
 ];

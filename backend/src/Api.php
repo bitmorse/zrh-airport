@@ -28,18 +28,20 @@ final class Api
      * @param array{airports:array<int,string>,nowMs:int,defaultWindowDays:int,maxWindowDays:int} $opts
      * @return array{status:int,headers:array<string,string>,body:string}
      */
-    public static function handle(Store $store, string $path, array $query, array $opts): array
+    public static function handle(?Store $store, string $path, array $query, array $opts): array
     {
         $route = self::route($path);
         if ($route === null) {
             return self::json(404, ['error' => 'not found']);
         }
+        $now = (int) $opts['nowMs'];
         if ($route === ['health']) {
-            $now = (int) $opts['nowMs'];
-            $act = $store->pollActivity($now - 10 * 60_000);
+            // Works even with no DB yet (cold start), so /health can diagnose it.
+            $act = $store !== null ? $store->pollActivity($now - 10 * 60_000) : ['count' => 0, 'lastMs' => null];
             $last = $act['lastMs'];
             return self::json(200, [
                 'ok' => true,
+                'db' => $store !== null,
                 'polls10m' => $act['count'],
                 'lastPollMs' => $last,
                 'lastPollAgoS' => $last === null ? null : (int) round(($now - $last) / 1000),
@@ -54,25 +56,30 @@ final class Api
         }
 
         $windowDays = self::windowDays($query, $opts);
-        $sinceMs = (int) $opts['nowMs'] - $windowDays * self::DAY_MS;
+        $sinceMs = $now - $windowDays * self::DAY_MS;
 
         switch ($resource) {
             case 'movements':
                 $dow = self::dow($query);
-                $data = $store->histogram($icao, $sinceMs, $dow);
+                // Empty (but well-formed) when the DB isn't provisioned yet.
+                $data = $store !== null
+                    ? $store->histogram($icao, $sinceMs, $dow)
+                    : ['icao' => $icao, 'sinceMs' => $sinceMs, 'ends' => [], 'totals' => ['landings' => 0, 'takeoffs' => 0, 'days' => 0]];
                 $data['windowDays'] = $windowDays;
                 $data['dow'] = $dow; // echo the effective weekday filter (null = all days)
                 // ETag fingerprints the data only (not the wall clock), so an
                 // unchanged dataset keeps returning the same tag → cheap 304s.
                 $seed = $data;
                 unset($seed['sinceMs']); // derived from nowMs — would perturb the tag
-                $data['generatedAt'] = (int) $opts['nowMs'];
+                $data['generatedAt'] = $now;
                 return self::json(200, $data, $seed);
 
             case 'recent':
                 $minutes = self::recentMinutes($query);
-                $sinceRecent = (int) $opts['nowMs'] - $minutes * 60_000;
-                $data = $store->recentByEnd($icao, $sinceRecent);
+                $sinceRecent = $now - $minutes * 60_000;
+                $data = $store !== null
+                    ? $store->recentByEnd($icao, $sinceRecent)
+                    : ['icao' => $icao, 'sinceMs' => $sinceRecent, 'ends' => []];
                 $data['minutes'] = $minutes;
                 $seed = $data;
                 unset($seed['sinceMs']); // wall-clock derived — keep it out of the tag
@@ -81,8 +88,22 @@ final class Api
                 return self::json(200, $data, $seed, true, 60);
 
             case 'summary':
-                $data = $store->summary($icao, $sinceMs);
+                $data = $store !== null
+                    ? $store->summary($icao, $sinceMs)
+                    : ['icao' => $icao, 'landings' => 0, 'takeoffs' => 0, 'days' => 0, 'busiestHour' => null, 'lastMovementMs' => null];
                 $data['windowDays'] = $windowDays;
+                $seed = $data;
+                $data['generatedAt'] = $now;
+                return self::json(200, $data, $seed);
+
+            case 'weather':
+                // Recent observed hours (back to the window) plus any forecast
+                // hours the collector has stored ahead of now.
+                $data = [
+                    'icao' => $icao,
+                    'hours' => $store !== null ? $store->weather($icao, $sinceMs) : [],
+                    'windowDays' => $windowDays,
+                ];
                 $seed = $data;
                 $data['generatedAt'] = (int) $opts['nowMs'];
                 return self::json(200, $data, $seed);
@@ -110,7 +131,7 @@ final class Api
         }
         if ($n >= 2) {
             $resource = strtolower($parts[$n - 1]);
-            if ($resource === 'movements' || $resource === 'summary' || $resource === 'recent') {
+            if ($resource === 'movements' || $resource === 'summary' || $resource === 'recent' || $resource === 'weather') {
                 return [$parts[$n - 2], $resource];
             }
         }
@@ -162,7 +183,9 @@ final class Api
         if ($cacheable) {
             $seed = $etagSeed === null ? $body : (json_encode($etagSeed, JSON_UNESCAPED_SLASHES) ?: $body);
             $headers['Cache-Control'] = 'public, max-age=' . $maxAge;
-            $headers['ETag'] = '"' . substr(hash('sha256', $seed), 0, 16) . '"';
+            // Weak validator: the body carries volatile fields (generatedAt/sinceMs)
+            // deliberately excluded from the seed, so it is not byte-for-byte stable.
+            $headers['ETag'] = 'W/"' . substr(hash('sha256', $seed), 0, 16) . '"';
         } else {
             $headers['Cache-Control'] = 'no-store';
         }

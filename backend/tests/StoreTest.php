@@ -26,6 +26,26 @@ function mv(string $kind, string $hex, string $end, int $ts): array
     return ['kind' => $kind, 'hex' => $hex, 'end' => $end, 'ts' => $ts];
 }
 
+/** A tracker row with the fields Store persists. */
+function trk(int $onground, ?string $lastEnd = null, int $seen = 1): array
+{
+    return [
+        'onground' => $onground, 'alt_agl' => null, 'seen' => $seen,
+        'takeoff_at' => null, 'landing_at' => null, 'last_end' => $lastEnd,
+    ];
+}
+
+/** A normalised weather row (as Weather::normalise emits), with sane defaults. */
+function wx(int $tsMs, array $over = []): array
+{
+    return array_merge([
+        'tsMs' => $tsMs,
+        'windDir' => null, 'windKt' => null, 'gustKt' => null,
+        'tempC' => null, 'precipMm' => null, 'visibilityM' => null,
+        'cloudPct' => null, 'pressureHpa' => null,
+    ], $over);
+}
+
 return [
     'migrate: creates movements and tracker tables' => function (): void {
         $s = memStore();
@@ -229,5 +249,125 @@ return [
         $s->recordPoll($t0);
         $act = $s->pollActivity($t0 - 24 * 3_600_000); // wide window
         Assert::same(1, $act['count'], '3h-old heartbeat pruned');
+    },
+
+    'tracker: round-trips last_end (approach-end memory)' => function (): void {
+        $s = memStore();
+        $s->saveTracker('LSZH', ['a' => trk(0, '28')]);
+        Assert::same('28', $s->loadTracker('LSZH')['a']['last_end'], 'last_end persisted');
+    },
+
+    'commitCycle: persists movements and tracker together' => function (): void {
+        $s = memStore();
+        $ts = tsAt('2026-07-17 14:00:00', TZ);
+        $s->commitCycle('LSZH', [mv('landing', 'a', '14', $ts)], ['a' => trk(1, '14')], TZ);
+        Assert::same(1, $s->histogram('LSZH', 0)['totals']['landings'], 'movement persisted');
+        Assert::same('14', $s->loadTracker('LSZH')['a']['last_end'], 'tracker persisted');
+    },
+
+    'commitCycle: a failure rolls back BOTH movements and tracker (atomic)' => function (): void {
+        $s = memStore();
+        $threw = false;
+        try {
+            // kind=null violates NOT NULL; the whole cycle must roll back.
+            $s->commitCycle('LSZH',
+                [['kind' => null, 'hex' => 'a', 'end' => '14', 'ts' => tsAt('2026-07-17 14:00:00', TZ)]],
+                ['a' => trk(1, '14')],
+                TZ);
+        } catch (\Throwable $e) {
+            $threw = true;
+        }
+        Assert::true($threw, 'commitCycle threw');
+        Assert::same(0, $s->histogram('LSZH', 0)['totals']['landings'], 'no movement leaked');
+        Assert::count(0, $s->loadTracker('LSZH'), 'tracker rolled back too');
+    },
+
+    'migrate: adds new columns to a pre-existing old-schema DB without data loss' => function (): void {
+        $pdo = new PDO('sqlite::memory:');
+        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        // Simulate the previously-deployed schema (no last_end; only the original
+        // weather fields), with a row in each.
+        $pdo->exec('CREATE TABLE tracker (icao TEXT, hex TEXT, onground INT, alt_agl REAL, seen INT, takeoff_at INT, landing_at INT, PRIMARY KEY(icao,hex))');
+        $pdo->exec("INSERT INTO tracker (icao,hex,onground,seen) VALUES ('LSZH','old',0,123)");
+        $pdo->exec('CREATE TABLE weather (icao TEXT, ts_utc INT, local_date TEXT, local_hour INT, wind_dir INT, wind_kt REAL, gust_kt REAL, temp_c REAL, precip_mm REAL, visibility_m REAL, cloud_pct REAL, pressure_hpa REAL, fetched_at INT, PRIMARY KEY(icao,ts_utc))');
+        $pdo->exec("INSERT INTO weather (icao,ts_utc,local_date,local_hour,wind_dir,fetched_at) VALUES ('LSZH',1000,'2026-07-20',12,240,1000)");
+
+        $s = new Store($pdo);
+        $s->migrate();
+
+        $trkCols = $pdo->query('PRAGMA table_info(tracker)')->fetchAll(PDO::FETCH_COLUMN, 1);
+        Assert::true(in_array('last_end', $trkCols, true), 'tracker.last_end added');
+        $wxCols = $pdo->query('PRAGMA table_info(weather)')->fetchAll(PDO::FETCH_COLUMN, 1);
+        Assert::true(in_array('humidity_pct', $wxCols, true), 'weather.humidity_pct added');
+        Assert::true(in_array('pressure_msl_hpa', $wxCols, true), 'weather.pressure_msl_hpa added');
+
+        // Old rows survived and read back through the new accessors.
+        Assert::same(0, $s->loadTracker('LSZH')['old']['onground'], 'old tracker row intact');
+        $w = $s->weather('LSZH', 0);
+        Assert::same(240, $w[0]['windDir'], 'old weather row intact via new read');
+        Assert::true($w[0]['humidityPct'] === null, 'new field null for the old row');
+    },
+
+    'migrate: creates the weather table' => function (): void {
+        $s = memStore();
+        $names = $s->pdo->query("SELECT name FROM sqlite_master WHERE type='table'")
+            ->fetchAll(PDO::FETCH_COLUMN);
+        Assert::true(in_array('weather', $names, true), 'weather table');
+    },
+
+    'weather: upsert stores hourly rows, bucketed to local hour, read back in order' => function (): void {
+        $s = memStore();
+        $h12 = tsAt('2026-07-20 12:00:00', 'UTC');
+        $h13 = tsAt('2026-07-20 13:00:00', 'UTC');
+        $s->upsertWeather('LSZH', [
+            wx($h13, ['windDir' => 250, 'windKt' => 12.0]),
+            wx($h12, ['windDir' => 240, 'windKt' => 8.0]),
+        ], TZ, $h13);
+
+        $rows = $s->weather('LSZH', 0);
+        Assert::count(2, $rows, 'two hours');
+        Assert::same($h12, $rows[0]['tsUtc'], 'ordered by ts ascending');
+        Assert::same(240, $rows[0]['windDir'], 'wind dir');
+        Assert::near(8.0, $rows[0]['windKt'], 1e-9, 'wind kt');
+        // 12:00 UTC is 14:00 in Zurich summer (UTC+2).
+        Assert::same(14, $rows[0]['localHour'], 'bucketed to local hour');
+    },
+
+    'weather: re-upserting the same hour updates in place (forecast refines)' => function (): void {
+        $s = memStore();
+        $h = tsAt('2026-07-20 12:00:00', 'UTC');
+        $s->upsertWeather('LSZH', [wx($h, ['windDir' => 240, 'windKt' => 8.0])], TZ, $h);
+        $s->upsertWeather('LSZH', [wx($h, ['windDir' => 300, 'windKt' => 20.0])], TZ, $h + 3_600_000);
+
+        $rows = $s->weather('LSZH', 0);
+        Assert::count(1, $rows, 'still one row for that hour');
+        Assert::same(300, $rows[0]['windDir'], 'updated wind dir');
+        Assert::near(20.0, $rows[0]['windKt'], 1e-9, 'updated wind kt');
+    },
+
+    'weather: read respects the since cutoff but includes future forecast hours' => function (): void {
+        $s = memStore();
+        $now = tsAt('2026-07-20 12:00:00', 'UTC');
+        $s->upsertWeather('LSZH', [
+            wx($now - 48 * 3_600_000, ['windDir' => 100]), // 2 days ago
+            wx($now - 1 * 3_600_000, ['windDir' => 200]),  // recent
+            wx($now + 6 * 3_600_000, ['windDir' => 300]),  // forecast
+        ], TZ, $now);
+
+        $rows = $s->weather('LSZH', $now - 24 * 3_600_000); // last 24h onward
+        Assert::count(2, $rows, 'excludes the 2-day-old hour, keeps recent + forecast');
+        Assert::same(300, $rows[count($rows) - 1]['windDir'], 'forecast hour included last');
+    },
+
+    'weather: prune drops hours older than the cutoff' => function (): void {
+        $s = memStore();
+        $now = tsAt('2026-07-20 12:00:00', 'UTC');
+        $s->upsertWeather('LSZH', [
+            wx($now - 400 * 24 * 3_600_000, ['windDir' => 100]), // ~400 days ago
+            wx($now, ['windDir' => 200]),
+        ], TZ, $now);
+        $removed = $s->pruneWeather('LSZH', $now - 365 * 24 * 3_600_000);
+        Assert::same(1, $removed, 'one old hour pruned');
+        Assert::count(1, $s->weather('LSZH', 0), 'one remains');
     },
 ];

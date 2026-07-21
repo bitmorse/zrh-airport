@@ -33,11 +33,14 @@ use Zrh\Airport;
 use Zrh\Cli;
 use Zrh\Collector;
 use Zrh\Store;
+use Zrh\Weather;
 
 /** Seconds between the daemon's "alive" summary lines (keeps the log bounded). */
 const SUMMARY_EVERY_S = 600;
 /** Backoff before exiting on a fatal error, so NFS restart-on-exit can't hot-loop. */
 const RESTART_THROTTLE_S = 15;
+/** After a fully-failed weather cycle, retry this soon instead of a full interval. */
+const WEATHER_RETRY_S = 60;
 
 $cfg = require __DIR__ . '/../config/app.php';
 $args = Cli::parseArgs($argv);
@@ -92,6 +95,9 @@ $totalMovements = 0;
 $okPolls = 0;
 $errPolls = 0;
 $lastSummary = microtime(true);
+$lastWeather = 0.0; // 0 → fetch weather on the very first cycle
+$weatherEvery = (int) ($cfg['weatherEverySeconds'] ?? 900);
+$weatherPastDays = (int) ($cfg['weatherPastDays'] ?? 1); // backfill horizon on restart/gaps
 
 do {
     $cycleStart = microtime(true);
@@ -138,6 +144,31 @@ do {
         $store->recordPoll($nowMs);
     } catch (\Throwable $e) {
         fwrite(STDERR, '[' . date('c') . "] heartbeat ERROR: " . $e->getMessage() . "\n");
+    }
+
+    // Weather is hourly — fetch it on a throttle, not every poll. Each airport is
+    // guarded so a weather hiccup never disturbs movement collection.
+    if (microtime(true) - $lastWeather >= $weatherEvery) {
+        $wxOk = 0;
+        foreach ($airports as $icao => $airport) {
+            try {
+                Collector::runWeather(
+                    $airport,
+                    $store,
+                    fn () => Weather::fetchHourly($airport->arp, $weatherPastDays),
+                    $nowMs,
+                    (int) ($cfg['weatherRetentionDays'] ?? Collector::WEATHER_RETENTION_DAYS),
+                );
+                $wxOk++;
+            } catch (\Throwable $e) {
+                fwrite(STDERR, '[' . date('c') . "] {$icao} weather ERROR: " . $e->getMessage() . "\n");
+            }
+        }
+        // Advance the throttle on success; on a total failure retry soon (don't
+        // wait the full interval before trying again).
+        $lastWeather = $wxOk > 0
+            ? microtime(true)
+            : microtime(true) - $weatherEvery + WEATHER_RETRY_S;
     }
 
     // Periodic "alive" summary keeps a long-running daemon's log bounded.

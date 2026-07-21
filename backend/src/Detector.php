@@ -54,22 +54,39 @@ final class Detector
 
             $best = self::alignedEnd($airport, (float) $ac['lat'], (float) $ac['lon'], $track);
 
+            // Remember the end an aircraft is aligned with while airborne *with a
+            // track* — that's its approach/departure end, unambiguous. It lets us
+            // attribute a touchdown to the right end even when the surface target
+            // reports no track (both ends of a strip share one centreline, so a
+            // null-track landing is otherwise a coin-flip → first-listed end).
+            $lastEnd = $prev['last_end'] ?? null;
+            if (!$onGround && $best !== null && $track !== null) {
+                $lastEnd = $best['id'];
+            }
+
             $kind = null;
+            $endId = null;
             if ($best !== null) {
+                $wasAirborne = $prev !== null && (int) $prev['onground'] === 0;
                 if (
                     !$onGround
+                    && !$wasAirborne // reject go-arounds/transits: a departure was on the ground (or unseen)
                     && $vrate !== null && (float) $vrate >= self::CLIMB_MIN_FPM
                     && $altAgl !== null && $altAgl <= self::CLIMB_MAX_AGL_FT
                     && $best['alongTrack'] >= -self::BEFORE_M
                 ) {
                     $kind = 'takeoff';
+                    $endId = $best['id']; // airborne climb-out has a track → end is unambiguous
                 } elseif (
                     $onGround
-                    && $prev !== null && (int) $prev['onground'] === 0
+                    && $wasAirborne
                     && $best['alongTrack'] >= -self::BEFORE_M
                     && $best['alongTrack'] <= $best['len']
                 ) {
                     $kind = 'landing';
+                    // Prefer the track-disambiguated end; fall back to the remembered
+                    // approach end when this touchdown poll has no track.
+                    $endId = $track !== null ? $best['id'] : ($lastEnd ?? $best['id']);
                 }
             }
 
@@ -77,10 +94,10 @@ final class Detector
             $landingAt = $prev['landing_at'] ?? null;
 
             if ($kind === 'takeoff' && self::armed($takeoffAt, $nowMs, $cooldownMs)) {
-                $movements[] = ['kind' => 'takeoff', 'hex' => $hex, 'end' => $best['id'], 'ts' => $nowMs];
+                $movements[] = ['kind' => 'takeoff', 'hex' => $hex, 'end' => $endId, 'ts' => $nowMs];
                 $takeoffAt = $nowMs;
             } elseif ($kind === 'landing' && self::armed($landingAt, $nowMs, $cooldownMs)) {
-                $movements[] = ['kind' => 'landing', 'hex' => $hex, 'end' => $best['id'], 'ts' => $nowMs];
+                $movements[] = ['kind' => 'landing', 'hex' => $hex, 'end' => $endId, 'ts' => $nowMs];
                 $landingAt = $nowMs;
             }
 
@@ -90,6 +107,7 @@ final class Detector
                 'seen' => $nowMs,
                 'takeoff_at' => $takeoffAt,
                 'landing_at' => $landingAt,
+                'last_end' => $lastEnd,
             ];
         }
 
