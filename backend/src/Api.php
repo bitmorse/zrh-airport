@@ -61,12 +61,14 @@ final class Api
         switch ($resource) {
             case 'movements':
                 $dow = self::dow($query);
+                $date = self::dateParam($query); // one local calendar day → the "today" view
                 // Empty (but well-formed) when the DB isn't provisioned yet.
                 $data = $store !== null
-                    ? $store->histogram($icao, $sinceMs, $dow)
+                    ? $store->histogram($icao, $sinceMs, $dow, $date)
                     : ['icao' => $icao, 'sinceMs' => $sinceMs, 'ends' => [], 'totals' => ['landings' => 0, 'takeoffs' => 0, 'days' => 0]];
                 $data['windowDays'] = $windowDays;
-                $data['dow'] = $dow; // echo the effective weekday filter (null = all days)
+                $data['dow'] = $dow;   // echo the effective weekday filter (null = all days)
+                $data['date'] = $date; // echo the effective single-day filter (null = windowed)
                 // ETag fingerprints the data only (not the wall clock), so an
                 // unchanged dataset keeps returning the same tag → cheap 304s.
                 $seed = $data;
@@ -146,6 +148,13 @@ final class Api
         }
         $d = (int) $query['dow'];
         return ($d >= 0 && $d <= 6) ? $d : null;
+    }
+
+    /** Optional single airport-local calendar day (Y-m-d); null when absent/malformed. */
+    private static function dateParam(array $query): ?string
+    {
+        $d = $query['date'] ?? null;
+        return is_string($d) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $d) ? $d : null;
     }
 
     /** Recent-window length in minutes, default 60, clamped to [5, 360]. */

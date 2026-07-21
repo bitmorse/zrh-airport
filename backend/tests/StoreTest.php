@@ -102,6 +102,21 @@ return [
         Assert::same(1, $h['totals']['landings'], 'only movements after cutoff');
     },
 
+    'histogram: date filters to one local calendar day (the today view)' => function (): void {
+        $s = memStore();
+        // Two days of traffic; the "today" filter must return only the named day,
+        // so hours the other day had are empty rather than wrapping in.
+        $s->insertMovements('LSZH', [
+            mv('landing', 'a', '14', tsAt('2026-07-20 22:00:00', TZ)), // yesterday 22:00
+            mv('landing', 'b', '14', tsAt('2026-07-21 08:00:00', TZ)), // today 08:00
+        ], TZ);
+        $h = $s->histogram('LSZH', 0, null, '2026-07-21');
+        Assert::same(1, $h['totals']['landings'], 'only the requested day');
+        $e = $h['ends'][0];
+        Assert::same(1, $e['hours'][8]['landings'], 'today 08:00 present');
+        Assert::same(0, $e['hours'][22]['landings'], "yesterday's 22:00 excluded (no future/wrap)");
+    },
+
     'histogram: dow filters to one local weekday' => function (): void {
         $s = memStore();
         // 2026-07-17 is a Friday (dow 5); 2026-07-18 a Saturday (dow 6).

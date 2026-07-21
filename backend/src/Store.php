@@ -401,9 +401,10 @@ final class Store
      * Per-runway-end 24-hour histogram since $sinceMs, busiest end first. Mirrors
      * the frontend's RunwayHistogram shape (src/domain/movementStats.ts). When $dow
      * (0=Sunday..6=Saturday) is given, only movements on that local weekday count —
-     * the "what it's usually like on a <weekday>" view.
+     * the "what it's usually like on a <weekday>" view. When $localDate (Y-m-d) is
+     * given, only that single airport-local calendar day counts — the "today" view.
      */
-    public function histogram(string $icao, int $sinceMs, ?int $dow = null): array
+    public function histogram(string $icao, int $sinceMs, ?int $dow = null, ?string $localDate = null): array
     {
         // local_date is the airport-local Y-m-d, so strftime('%w', …) is the local weekday.
         $sql = 'SELECT rwy_end, local_hour, kind, local_date, COUNT(*) AS c
@@ -412,6 +413,12 @@ final class Store
         if ($dow !== null) {
             $sql .= " AND strftime('%w', local_date) = ?";
             $args[] = (string) $dow;
+        }
+        if ($localDate !== null) {
+            // Restrict to one airport-local calendar day (the "today" view), so hours
+            // after "now" are genuinely empty instead of wrapping yesterday's window.
+            $sql .= ' AND local_date = ?';
+            $args[] = $localDate;
         }
         $sql .= ' GROUP BY rwy_end, local_hour, kind, local_date';
         $stmt = $this->pdo->prepare($sql);

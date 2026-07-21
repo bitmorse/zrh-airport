@@ -15,13 +15,16 @@ import {
 export function useAirportStats(
   icao: string,
   days = STATS_MAX_DAYS,
-  opts: { refetchInterval?: number | false; enabled?: boolean; dow?: number | null } = {},
+  opts: { refetchInterval?: number | false; enabled?: boolean; dow?: number | null; date?: string | null } = {},
 ) {
   const refetchInterval = opts.refetchInterval ?? false;
   const dow = opts.dow ?? null;
+  // A single local day (Y-m-d) for the "today" view. It only changes at midnight,
+  // so the query key stays stable intra-day (no churn from the ticking clock).
+  const date = opts.date ?? null;
   return useQuery<AirportMovements>({
-    queryKey: ["airportStats", icao, days, dow],
-    queryFn: ({ signal }) => fetchAirportMovements(icao, days, signal, dow),
+    queryKey: ["airportStats", icao, days, dow, date],
+    queryFn: ({ signal }) => fetchAirportMovements(icao, days, signal, dow, date),
     enabled: !!icao && (opts.enabled ?? true),
     // Keep staleTime under the poll interval so the live window actually refreshes.
     staleTime: refetchInterval ? Math.min(5 * 60_000, refetchInterval) : 5 * 60_000,

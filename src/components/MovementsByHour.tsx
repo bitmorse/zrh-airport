@@ -92,7 +92,7 @@ export function MovementsByHour({
   }
   const axisMax = niceMax(rawMax);
   const ticks = [0, axisMax / 2, axisMax];
-  const yUnit = view === "usual" ? "movements / day" : "movements · last 24 h";
+  const yUnit = view === "usual" ? "movements / day" : "movements · today";
 
   const empty = summary.landings === 0 && summary.takeoffs === 0;
   const tz = timeZone?.split("/").pop()?.replace(/_/g, " ");
