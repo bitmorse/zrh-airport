@@ -88,7 +88,8 @@ deploy-nfs-config: ## Force-push config/ (overwrites app.php + airports.json; ne
 
 # ---- frontend (SPA → bitmorse.com/airports) ----
 
-build-frontend: ## Build the SPA (tsc + vite) into ../dist  (needs `npm install` first)
+build-frontend: ## Build the SPA (tsc + vite) into ../dist (installs deps if missing)
+	cd $(FRONTEND) && [ -d node_modules ] || $(NPM) ci
 	cd $(FRONTEND) && $(NPM) run build
 
 deploy-frontend: build-frontend ## Build + deploy the SPA to bitmorse.com/airports
