@@ -10,8 +10,10 @@ import type { Arrival } from "../domain/predictions";
 import { useAirport } from "../hooks/useAirport";
 import { useAtcFeeds } from "../hooks/useAtcFeeds";
 import { formatDuration, formatEta } from "../lib/format";
-import { LandingIcon, TakeoffIcon } from "./icons";
+import { ExternalLinkIcon, LandingIcon, TakeoffIcon } from "./icons";
 import { SdrChannel } from "./SdrChannel";
+
+const SETUP_URL = "https://github.com/bitmorse/airport-sdr";
 
 const ROLE_LABEL: Record<AtcRole, string> = {
   approach: "Approach",
@@ -56,6 +58,10 @@ export function AtcPanel({
   const { server, setServer, channels, setChannel } = useAtcFeeds(config.icao);
   // The single channel currently playing (only one at a time), for the on-frequency match.
   const [activeRole, setActiveRole] = useState<AtcRole | null>(null);
+  // Channel names are set-once config, so they hide behind an editor; the default view is
+  // just the players (each self-labels with its channel + frequency).
+  const [editing, setEditing] = useState(false);
+  const configured = channels.filter((c) => c.channel.trim());
 
   const onPlaying = useCallback((role: AtcRole, playing: boolean) => {
     setActiveRole((cur) => (playing ? role : cur === role ? null : cur));
@@ -68,9 +74,20 @@ export function AtcPanel({
 
   return (
     <div className="text-sm">
-      <div className="mb-2">
-        <h2 className="font-semibold uppercase tracking-wide text-on-surface">Listen · ATC</h2>
-        <p className="text-[11px] text-muted">airport-sdr receiver · plays in your browser</p>
+      <div className="mb-2 flex items-start justify-between gap-2">
+        <div>
+          <h2 className="font-semibold uppercase tracking-wide text-on-surface">Listen · ATC</h2>
+          <p className="text-[11px] text-muted">airport-sdr receiver · plays in your browser</p>
+        </div>
+        <a
+          href={SETUP_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex shrink-0 items-center gap-1 border border-border px-2 py-0.5 text-[11px] text-status-arrival hover:bg-surface-container"
+          title="How to run your own airport-sdr receiver"
+        >
+          Set up your own <ExternalLinkIcon size={12} />
+        </a>
       </div>
 
       <label className="mb-3 flex flex-col gap-1">
@@ -103,35 +120,59 @@ export function AtcPanel({
         </div>
       )}
 
-      {server.trim() ? (
-        <div className="flex flex-col gap-3">
+      {!server.trim() ? (
+        <p className="text-[11px] text-muted">Add your receiver URL above to list its channels.</p>
+      ) : editing ? (
+        // Map each position to a channel name on the receiver. Set-once, so it's tucked away.
+        <div className="flex flex-col gap-2">
+          <div className="text-[11px] font-medium uppercase tracking-wide text-on-surface-variant">
+            Channels
+          </div>
           {channels.map((c) => (
-            <div key={c.role} className="flex flex-col gap-1.5">
-              <div className="flex items-center gap-2">
-                <span className="w-16 shrink-0 text-xs text-on-surface-variant">{c.label}</span>
-                <input
-                  value={c.channel}
-                  onChange={(e) => setChannel(c.role, e.target.value)}
-                  placeholder={`channel name (e.g. ${c.label})`}
-                  aria-label={`${c.label} channel name`}
-                  className="min-w-0 flex-1 border border-border bg-surface-container-lowest px-2 py-1 text-[11px] text-on-surface outline-none focus:border-2 focus:border-primary"
-                />
-              </div>
-              {c.channel.trim() && (
-                <SdrChannel
-                  server={server}
-                  channel={c.channel}
-                  role={c.role}
-                  label={c.label}
-                  active={activeRole === c.role}
-                  onPlaying={onPlaying}
-                />
-              )}
-            </div>
+            <label key={c.role} className="flex items-center gap-2">
+              <span className="w-16 shrink-0 text-xs text-on-surface-variant">{c.label}</span>
+              <input
+                value={c.channel}
+                onChange={(e) => setChannel(c.role, e.target.value)}
+                placeholder={`channel name (e.g. ${c.label})`}
+                aria-label={`${c.label} channel name`}
+                className="min-w-0 flex-1 border border-border bg-surface-container-lowest px-2 py-1 text-[11px] text-on-surface outline-none focus:border-2 focus:border-primary"
+              />
+            </label>
           ))}
+          <button
+            type="button"
+            onClick={() => setEditing(false)}
+            className="self-start border border-border px-2 py-0.5 text-[11px] uppercase text-on-surface-variant hover:bg-surface-container"
+          >
+            Done
+          </button>
         </div>
       ) : (
-        <p className="text-[11px] text-muted">Add your receiver URL above to list its channels.</p>
+        <div className="flex flex-col gap-3">
+          {configured.length === 0 ? (
+            <p className="text-[11px] text-muted">No channels yet — “Edit channels” to add one.</p>
+          ) : (
+            configured.map((c) => (
+              <SdrChannel
+                key={c.role}
+                server={server}
+                channel={c.channel}
+                role={c.role}
+                label={c.label}
+                active={activeRole === c.role}
+                onPlaying={onPlaying}
+              />
+            ))
+          )}
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="self-start border border-border px-2 py-0.5 text-[11px] uppercase text-on-surface-variant hover:bg-surface-container"
+          >
+            Edit channels
+          </button>
+        </div>
       )}
 
       {activeRole && (

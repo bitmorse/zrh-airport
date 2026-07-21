@@ -6,6 +6,7 @@ import { MovementsByHour, WEEKDAYS } from "./components/MovementsByHour";
 import { TrafficBar } from "./components/TrafficBar";
 import { RecorderModal } from "./components/RecorderModal";
 import { StatsModal } from "./components/StatsModal";
+import { AtcComms } from "./components/AtcComms";
 import { SettingsModal } from "./components/SettingsModal";
 import { snapshotAircraft, type AircraftSnapshot } from "./data/adsb";
 import { recentCountsByEnd } from "./data/airportStats";
@@ -674,6 +675,10 @@ export default function App() {
               onSelect={handleSelect}
             />
           </div>
+
+          {/* ATC comms: appears only when a configured receiver is reachable; plays the
+              Tower channel while the speaker is on (yields to the settings panel). */}
+          <AtcComms icao={airport.config.icao} active={!effectiveMuted && !showSettings} />
 
           <div className="border border-border bg-surface-container-low p-4">
             <FlightDetails
