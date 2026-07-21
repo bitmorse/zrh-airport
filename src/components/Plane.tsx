@@ -77,6 +77,10 @@ export function Plane({
   const arrowStart = 8;
   const arrowLen = cross ? Math.max(7, Math.min(cross.crossKt * 0.9, 24)) : 0;
   const arrowTip = arrowStart + arrowLen;
+  // The shaft stops at the arrowhead's base (the head is 5 units long), tucked one unit
+  // under it so there's no gap. Running it to the tip instead let the round line-caps —
+  // especially the wide casing — poke out past the point.
+  const shaftEnd = arrowTip - 4;
 
   return (
     <g
@@ -103,7 +107,7 @@ export function Plane({
           <line
             x1={arrowStart}
             y1={0}
-            x2={arrowTip}
+            x2={shaftEnd}
             y2={0}
             stroke={HALO_LIGHT}
             strokeWidth={3.6}
@@ -113,7 +117,7 @@ export function Plane({
           <line
             x1={arrowStart}
             y1={0}
-            x2={arrowTip}
+            x2={shaftEnd}
             y2={0}
             stroke={WIND_COLOR}
             strokeWidth={1.8}

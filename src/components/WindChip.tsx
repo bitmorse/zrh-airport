@@ -32,7 +32,9 @@ export function WindChip({ wind }: { wind: CurrentWind }) {
       <svg viewBox="-12 -12 24 24" width={22} height={22} aria-hidden="true">
         <circle cx={0} cy={0} r={11} fill="none" stroke="var(--color-outline-variant)" strokeWidth={1} />
         <g transform={`rotate(${downwindSvgDeg.toFixed(0)})`} stroke="var(--color-on-surface-variant)" fill="var(--color-on-surface-variant)">
-          <line x1={-7} y1={0} x2={7} y2={0} strokeWidth={1.6} strokeLinecap="round" />
+          {/* Shaft stops under the arrowhead base (x=2.5), not at the tip — a round cap
+              at the tip would poke past the point. */}
+          <line x1={-7} y1={0} x2={3.5} y2={0} strokeWidth={1.6} strokeLinecap="round" />
           <path d="M7 0 L2.5 -3 L2.5 3 Z" />
         </g>
       </svg>
