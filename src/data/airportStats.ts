@@ -73,9 +73,13 @@ export async function fetchAirportMovements(
   days = STATS_MAX_DAYS,
   signal?: AbortSignal,
   dow?: number | null,
+  date?: string | null,
 ): Promise<AirportMovements> {
   const dowParam = dow == null ? "" : `&dow=${dow}`;
-  const url = `${STATS_BASE_URL}/${encodeURIComponent(icao)}/movements?days=${days}${dowParam}`;
+  // A single airport-local calendar day (Y-m-d) → the "today" view, so hours after
+  // now are empty instead of the rolling-24h window wrapping yesterday's evening.
+  const dateParam = date == null ? "" : `&date=${encodeURIComponent(date)}`;
+  const url = `${STATS_BASE_URL}/${encodeURIComponent(icao)}/movements?days=${days}${dowParam}${dateParam}`;
   const res = await fetch(url, { signal, headers: { Accept: "application/json" } });
   if (!res.ok) throw new Error(`airport stats ${res.status}`);
   const data = (await res.json()) as RawMovements;

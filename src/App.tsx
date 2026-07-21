@@ -34,6 +34,7 @@ import { heightAglFt } from "./domain/gpws";
 import {
   byRunway,
   hasActivity,
+  localHour,
   localWeekday,
   recentActivityByEnd,
   summarize,
@@ -417,7 +418,13 @@ export default function App() {
   const [statView, setStatView] = useState<"today" | "usual">("today");
   // Which local weekday the "usual" tab averages (default: today's weekday).
   const [usualDow, setUsualDow] = useState<number>(() => localWeekday(Date.now(), airport.config.timeZone));
-  const todayStats = useAirportStats(airport.config.icao, 1, { refetchInterval: 3 * 60_000 });
+  // "Today" = the current airport-local calendar day, so hours after "now" stay
+  // empty instead of the rolling-24h window wrapping in yesterday's evening.
+  const todayLocalDate = localHour(now, airport.config.timeZone).date;
+  const todayStats = useAirportStats(airport.config.icao, 1, {
+    refetchInterval: 3 * 60_000,
+    date: todayLocalDate,
+  });
   const usualStats = useAirportStats(airport.config.icao, 60, {
     enabled: statView === "usual",
     dow: usualDow,

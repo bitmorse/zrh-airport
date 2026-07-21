@@ -102,6 +102,26 @@ return [
         Assert::true(json_decode($all['body'], true)['dow'] === null, 'dow null when absent');
     },
 
+    'movements: date param restricts to one local day and is echoed' => function (): void {
+        $store = apiStore(); // seeds two movements on 2026-07-17
+        $opts = apiOpts();
+        // A different day → nothing; the seeded day → the movements; echoed either way.
+        $other = Api::handle($store, '/api/v1/LSZH/movements', ['date' => '2026-07-16'], $opts);
+        $ob = json_decode($other['body'], true);
+        Assert::same('2026-07-16', $ob['date'], 'echoes the date filter');
+        Assert::same(0, $ob['totals']['landings'] + $ob['totals']['takeoffs'], 'no movements that day');
+
+        $day = Api::handle($store, '/api/v1/LSZH/movements', ['date' => '2026-07-17'], $opts);
+        $db = json_decode($day['body'], true);
+        Assert::same(1, $db['totals']['landings'], 'seeded landing on that day');
+        Assert::same(1, $db['totals']['takeoffs'], 'seeded takeoff on that day');
+    },
+
+    'movements: malformed date is ignored (null)' => function (): void {
+        $r = Api::handle(apiStore(), '/api/v1/LSZH/movements', ['date' => 'not-a-date'], apiOpts());
+        Assert::true(json_decode($r['body'], true)['date'] === null, 'bad date → null (windowed)');
+    },
+
     'recent: per-end movements in the window, busiest first' => function (): void {
         $store = apiStore();
         $opts = apiOpts();

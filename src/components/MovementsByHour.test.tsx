@@ -68,10 +68,10 @@ describe("MovementsByHour", () => {
     expect(screen.getByText(/Zurich local time/)).toBeInTheDocument();
   });
 
-  it("defaults to Today (real last-24 h counts) and reports the view change", () => {
+  it("defaults to Today (real per-day counts) and reports the view change", () => {
     const onViewChange = vi.fn();
     renderMbh("today", onViewChange);
-    expect(screen.getByText(/movements · last 24 h/)).toBeInTheDocument();
+    expect(screen.getByText(/movements · today/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Today" })).toHaveAttribute("aria-pressed", "true");
 
     // Controlled toggle: clicking "Usual" asks the parent to switch.
