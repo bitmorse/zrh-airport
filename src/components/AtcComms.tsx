@@ -56,15 +56,17 @@ export function AtcComms({ icao, active }: { icao: string; active: boolean }) {
       >
         ATC comms · Tower
       </h2>
-      <iframe
-        ref={frameRef}
-        src={embedUrl(server, channel, window.location.origin)}
-        title="Tower comms"
-        allow="autoplay"
-        width={230}
-        height={48}
-        className="max-w-full border border-border bg-surface-container-lowest"
-      />
+      <div className="flex justify-center">
+        <iframe
+          ref={frameRef}
+          src={embedUrl(server, channel, window.location.origin)}
+          title="Tower comms"
+          allow="autoplay"
+          width={230}
+          height={48}
+          className="max-w-full border border-border bg-surface-container-lowest"
+        />
+      </div>
     </div>
   );
 }

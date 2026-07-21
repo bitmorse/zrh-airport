@@ -676,10 +676,6 @@ export default function App() {
             />
           </div>
 
-          {/* ATC comms: appears only when a configured receiver is reachable; plays the
-              Tower channel while the speaker is on (yields to the settings panel). */}
-          <AtcComms icao={airport.config.icao} active={!effectiveMuted && !showSettings} />
-
           <div className="border border-border bg-surface-container-low p-4">
             <FlightDetails
               item={selectedAircraft}
@@ -690,6 +686,11 @@ export default function App() {
               onClear={clearSelection}
             />
           </div>
+
+          {/* ATC comms: appears under Flight lookup, only when a configured receiver is
+              reachable; plays the Tower channel while the speaker is on (yields to the
+              settings panel). */}
+          <AtcComms icao={airport.config.icao} active={!effectiveMuted && !showSettings} />
 
           <div className="border border-border bg-surface-container-low p-4">
             <MovementsByHour

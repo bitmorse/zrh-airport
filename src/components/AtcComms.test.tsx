@@ -28,10 +28,10 @@ describe("AtcComms", () => {
     render(<AtcComms icao="LSZH" active={false} />);
     const frame = screen.getByTitle("Tower comms") as HTMLIFrameElement;
     // Mounted (so it can connect) but parked hidden while unreachable.
-    expect(frame.parentElement).toHaveAttribute("aria-hidden", "true");
+    expect(frame.closest("[aria-hidden]")).toHaveAttribute("aria-hidden", "true");
 
     reportReady(frame);
-    expect(frame.parentElement).toHaveAttribute("aria-hidden", "false");
+    expect(frame.closest("[aria-hidden]")).toHaveAttribute("aria-hidden", "false");
     expect(screen.getByText("ATC comms · Tower")).toBeInTheDocument();
   });
 
@@ -55,7 +55,7 @@ describe("AtcComms", () => {
       expect.objectContaining({ type: "pause" }),
       DEMO,
     );
-    expect(frame.parentElement).toHaveAttribute("aria-hidden", "false");
+    expect(frame.closest("[aria-hidden]")).toHaveAttribute("aria-hidden", "false");
   });
 
   it("renders nothing for an airport with no configured receiver", () => {
