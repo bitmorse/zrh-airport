@@ -63,13 +63,20 @@ describe("AtcPanel", () => {
     expect(frame.getAttribute("src")).toContain(`${DEMO}/embed/Tower?origin=`);
     expect(frame).toHaveAttribute("allow", "autoplay");
 
-    // Unconfigured positions prompt for a channel, not a dead frame.
-    expect(screen.getAllByText("Add a channel name to listen.").length).toBe(3);
+    // Unconfigured positions show only their input — no frame, no repeated helper text.
+    expect(screen.queryByTitle(/Approach —/)).toBeNull();
 
     // No LiveATC bundling anymore.
     expect(screen.queryByRole("link", { name: /Find/i })).toBeNull();
     // Published reference frequencies still show.
     expect(screen.getByText("118.100")).toBeInTheDocument();
+  });
+
+  it("lists no channels until a receiver URL is set", () => {
+    renderPanel([], []);
+    fireEvent.change(screen.getByLabelText("Receiver URL"), { target: { value: "" } });
+    expect(screen.getByText("Add your receiver URL above to list its channels.")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Tower channel name")).toBeNull();
   });
 
   it("embeds a channel once a receiver URL and channel name are set", () => {
@@ -105,15 +112,19 @@ describe("AtcPanel", () => {
     expect(screen.queryByText(/active 34/)).toBeNull();
   });
 
-  it("surfaces the live frequency and carrier state from frame events", () => {
+  it("shows a connecting note that clears once the frame is ready", () => {
     renderPanel([], []);
     const frame = screen.getByTitle("Tower — Tower") as HTMLIFrameElement;
-    frameMessage(frame, { type: "ready", channel: "Tower", frequency: 118.1 });
-    frameMessage(frame, { type: "squelch", open: true });
-    frameMessage(frame, { type: "listeners", count: 3 });
+    expect(screen.getByText(/Connecting to receiver/)).toBeInTheDocument();
+    frameMessage(frame, { type: "ready", channel: "Tower", frequency: 118_100_000 });
+    // Once live, the frame is the display — we add no chrome of our own.
+    expect(screen.queryByText(/Connecting to receiver/)).toBeNull();
+  });
 
-    expect(screen.getByText("118.100 MHz")).toBeInTheDocument();
-    expect(screen.getByText("carrier")).toBeInTheDocument();
-    expect(screen.getByText("3 listening")).toBeInTheDocument();
+  it("surfaces a reported error (e.g. origin not allow-listed)", () => {
+    renderPanel([], []);
+    const frame = screen.getByTitle("Tower — Tower") as HTMLIFrameElement;
+    frameMessage(frame, { type: "error", code: "origin-not-allowed" });
+    expect(screen.getByText(/isn.t allow-listed on the receiver/)).toBeInTheDocument();
   });
 });

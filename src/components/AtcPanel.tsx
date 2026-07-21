@@ -103,36 +103,36 @@ export function AtcPanel({
         </div>
       )}
 
-      <div className="flex flex-col gap-3">
-        {channels.map((c) => (
-          <div key={c.role} className="flex flex-col gap-1.5">
-            <div className="flex items-center gap-2">
-              <span className="w-16 shrink-0 text-xs text-on-surface-variant">{c.label}</span>
-              <input
-                value={c.channel}
-                onChange={(e) => setChannel(c.role, e.target.value)}
-                placeholder={`channel name (e.g. ${c.label})`}
-                aria-label={`${c.label} channel name`}
-                className="min-w-0 flex-1 border border-border bg-surface-container-lowest px-2 py-1 text-[11px] text-on-surface outline-none focus:border-2 focus:border-primary"
-              />
+      {server.trim() ? (
+        <div className="flex flex-col gap-3">
+          {channels.map((c) => (
+            <div key={c.role} className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-2">
+                <span className="w-16 shrink-0 text-xs text-on-surface-variant">{c.label}</span>
+                <input
+                  value={c.channel}
+                  onChange={(e) => setChannel(c.role, e.target.value)}
+                  placeholder={`channel name (e.g. ${c.label})`}
+                  aria-label={`${c.label} channel name`}
+                  className="min-w-0 flex-1 border border-border bg-surface-container-lowest px-2 py-1 text-[11px] text-on-surface outline-none focus:border-2 focus:border-primary"
+                />
+              </div>
+              {c.channel.trim() && (
+                <SdrChannel
+                  server={server}
+                  channel={c.channel}
+                  role={c.role}
+                  label={c.label}
+                  active={activeRole === c.role}
+                  onPlaying={onPlaying}
+                />
+              )}
             </div>
-            {server.trim() && c.channel.trim() ? (
-              <SdrChannel
-                server={server}
-                channel={c.channel}
-                role={c.role}
-                label={c.label}
-                active={activeRole === c.role}
-                onPlaying={onPlaying}
-              />
-            ) : (
-              <p className="pl-[4.5rem] text-[11px] text-muted">
-                {server.trim() ? "Add a channel name to listen." : "Add a receiver URL above to listen."}
-              </p>
-            )}
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-[11px] text-muted">Add your receiver URL above to list its channels.</p>
+      )}
 
       {activeRole && (
         <div className="mt-3 border border-border bg-surface-container p-2.5">
@@ -178,15 +178,12 @@ export function AtcPanel({
       )}
 
       <p className="mt-3 text-[10px] leading-relaxed text-muted">
-        Audio comes from an <span className="font-medium">airport-sdr</span> receiver: anyone with
-        an antenna and an RTL-SDR/LimeSDR can run one and paste its URL above — each channel plays
-        in a low-latency frame straight from that receiver. A frequency covers a controller
-        position, not one runway, and the audio carries no callsign, so the active runways and the
-        “on frequency” list are inferred from ADS-B — a best guess. The receiver’s operator must
-        allow-list this site’s origin, or the frame won’t connect. The shipped Zurich demo is a
-        hobby receiver and isn’t always reachable; when it’s down each channel says so rather than
-        failing silently. Frequencies are published reference values from OurAirports — always
-        confirm against current charts.
+        Audio comes from an <span className="font-medium">airport-sdr</span> receiver — anyone with
+        an antenna and an RTL-SDR/LimeSDR can run one and paste its URL. Each channel plays straight
+        from that receiver, which must allow-list this site’s origin or the frame won’t connect.
+        Callsigns aren’t in the audio, so the active runways and “on frequency” list are inferred
+        from ADS-B — a best guess. The Zurich demo is a hobby receiver and isn’t always reachable.
+        Frequencies are OurAirports reference values — confirm against current charts.
       </p>
     </div>
   );
