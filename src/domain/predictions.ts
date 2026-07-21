@@ -1,11 +1,14 @@
 import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
 import { heightAglFt } from "./gpws";
+import { QUEUE } from "./queue";
 
 const KT_TO_MS = 0.514444;
 const M_TO_NM = 1 / 1852;
 
 const MIN_GS_KT = 40; // below this an "arrival" is more likely taxi / bad data
-const MAX_ETA_S = 12 * 60; // ignore very distant / implausible estimates
+// The single "how far out we consider arrivals" knob — same value the board queue uses,
+// so the predicted list and the shown sequence are the same set (see src/domain/queue.ts).
+const MAX_ETA_S = QUEUE.arrivalHorizonS;
 // A landing aircraft descends or holds level; a climbing one is going around or
 // overflying, not landing.
 const ARRIVAL_MAX_CLIMB_FPM = 300;

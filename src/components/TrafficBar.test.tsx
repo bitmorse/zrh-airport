@@ -151,24 +151,21 @@ describe("TrafficBar", () => {
   });
 
   it("surfaces a selected departure even when it's beyond the cap", () => {
+    // 8 equal-wait holders (stable order d0..d7); cap is 6, so d0..d5 show and d6/d7 are
+    // hidden. Selecting the hidden d7 rescues it, leaving one still hidden.
+    const deps = Array.from({ length: 8 }, (_, i) => holding(`d${i}`, `DEP${i}`, NOW));
     render(
       <TrafficBar
         arrivals={[]}
-        departures={[
-          holding("d0", "DEP0", NOW),
-          holding("d1", "DEP1", NOW),
-          holding("d2", "DEP2", NOW),
-          holding("d3", "DEP3", NOW),
-          holding("d4", "DEP4", NOW),
-        ]}
+        departures={deps}
         now={NOW}
         lastUpdated={NOW}
-        selectedHex="d4"
+        selectedHex="d7"
         onSelect={() => {}}
       />,
     );
-    expect(screen.getByText("DEP4")).toBeInTheDocument(); // shown despite the cap
-    expect(screen.getByRole("button", { pressed: true })).toHaveTextContent("DEP4");
+    expect(screen.getByText("DEP7")).toBeInTheDocument(); // shown despite the cap
+    expect(screen.getByRole("button", { pressed: true })).toHaveTextContent("DEP7");
     expect(screen.getByText("+1 more departing")).toBeInTheDocument();
   });
 
@@ -191,25 +188,37 @@ describe("TrafficBar", () => {
     expect(row).not.toHaveTextContent(/in range/);
   });
 
-  it("caps the list at 3 departures and shows a '+N more' line", () => {
-    render(
-      <TrafficBar
-        arrivals={[]}
-        departures={[
-          holding("d0", "DEP0", NOW),
-          holding("d1", "DEP1", NOW),
-          holding("d2", "DEP2", NOW),
-          holding("d3", "DEP3", NOW),
-          holding("d4", "DEP4", NOW),
-        ]}
-        now={NOW}
-        lastUpdated={NOW}
-      />,
-    );
+  it("caps the list at maxRows departures and shows a '+N more' line", () => {
+    // 8 equal-wait holders, cap is 6 → d0..d5 show, d6/d7 collapse into "+2 more".
+    const deps = Array.from({ length: 8 }, (_, i) => holding(`d${i}`, `DEP${i}`, NOW));
+    render(<TrafficBar arrivals={[]} departures={deps} now={NOW} lastUpdated={NOW} />);
     expect(screen.getByText("No inbound traffic")).toBeInTheDocument();
     expect(screen.getByText("DEP0")).toBeInTheDocument();
-    expect(screen.getByText("DEP2")).toBeInTheDocument();
-    expect(screen.queryByText("DEP3")).toBeNull();
+    expect(screen.getByText("DEP5")).toBeInTheDocument();
+    expect(screen.queryByText("DEP6")).toBeNull();
     expect(screen.getByText("+2 more departing")).toBeInTheDocument();
+  });
+
+  it("shows a full arrival sequence, not just the soonest, with a '+N more' overflow", () => {
+    // 8 arrivals within the horizon; cap is 6 → six rows + "+2 more arriving".
+    const arrs = Array.from({ length: 8 }, (_, i) => ({
+      ...arrival,
+      hex: `a${i}`,
+      callsign: `ARR${i}`,
+      etaSeconds: 30 + i * 20,
+    }));
+    render(<TrafficBar arrivals={arrs} departures={[]} now={NOW} lastUpdated={NOW} />);
+    expect(screen.getByText("ARR0")).toBeInTheDocument();
+    expect(screen.getByText("ARR5")).toBeInTheDocument();
+    expect(screen.queryByText("ARR6")).toBeNull();
+    expect(screen.getByText("+2 more arriving")).toBeInTheDocument();
+  });
+
+  it("drops arrivals beyond the queue horizon", () => {
+    const near = { ...arrival, hex: "near", callsign: "NEAR1", etaSeconds: 120 };
+    const far = { ...arrival, hex: "far", callsign: "FAR1", etaSeconds: 60 * 60 };
+    render(<TrafficBar arrivals={[near, far]} departures={[]} now={NOW} lastUpdated={NOW} />);
+    expect(screen.getByText("NEAR1")).toBeInTheDocument();
+    expect(screen.queryByText("FAR1")).toBeNull();
   });
 });

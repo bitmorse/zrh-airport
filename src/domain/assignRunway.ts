@@ -4,7 +4,11 @@ import type { Airport } from "./airport";
 
 // Tuning constants for the corridor around each runway end.
 const HALF_WIDTH_M = 1500; // max perpendicular distance from centreline
-const APPROACH_M = 28000; // corridor length before the threshold (~15 NM final)
+// Corridor length before the threshold (~15 NM final). This is the geometric outer bound
+// on where an aircraft is still "on approach" to this end; it must stay ≥ the board's
+// arrival horizon (QUEUE.arrivalHorizonS in src/domain/queue.ts), which decides how far
+// out an arrival actually enters the queue.
+const APPROACH_M = 28000;
 const DEPARTURE_M = 8000; // corridor length past the far end (initial climb)
 const TRACK_TOL_DEG = 40; // how closely track must match the runway bearing
 const MAX_ALT_FT = 7000; // ignore aircraft crossing above the approach/climb band

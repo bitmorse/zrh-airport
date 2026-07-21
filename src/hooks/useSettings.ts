@@ -16,7 +16,9 @@ export interface Settings {
   airport: string;
   /** Poll interval in seconds. */
   pollSeconds: number;
-  /** Query radius around the airport, nautical miles. */
+  /** Query radius around the airport, nautical miles. This is the feed's outer reach; it
+   *  must stay ≥ the board's arrival horizon (QUEUE.arrivalHorizonS, src/domain/queue.ts),
+   *  which governs how far out an arrival actually enters the queue. */
   radiusNm: number;
   /** Auto-recording geofence radius around the observer's GPS location, metres. */
   geofenceRadiusM: number;

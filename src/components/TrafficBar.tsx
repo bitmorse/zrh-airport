@@ -1,6 +1,7 @@
-import type { DepartureEvent, DeparturePhase } from "../domain/departures";
-import type { FlightStatus } from "../domain/flightStatus";
+import type { DepartureEvent } from "../domain/departures";
+import { flightStatusLabel, type FlightStatus } from "../domain/flightStatus";
 import type { Arrival } from "../domain/predictions";
+import { buildQueues } from "../domain/queue";
 import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
 import { useFlightRoute } from "../hooks/useFlightRoute";
 import { formatDuration, formatEta, routePairText } from "../lib/format";
@@ -11,10 +12,6 @@ import { LandingIcon, PlaneIcon, SquareIcon, TakeoffIcon } from "./icons";
 const secondaryOf = (...parts: (string | null | undefined)[]) =>
   parts.filter(Boolean).join(" · ") || undefined;
 
-// Cleared (roll) and climbing aircraft are the live action — show them ahead of
-// aircraft still waiting at the hold, and drop waiting rows first when space is tight.
-const DEP_ORDER: Record<DeparturePhase, number> = { roll: 0, climb: 1, holding: 2 };
-const MAX_DEP_ROWS = 3;
 const FLASH_SHOW_MS = 6000; // flash an approach gate for ~6 s after the crossing
 
 /** One traffic row — identical layout for arrivals and departures. */
@@ -146,12 +143,14 @@ function ArrivalRow({
 }
 
 /**
- * Compact traffic strip shown above the map on mobile: the soonest arrival plus the
- * most-imminent departures, all as one unified list of identical rows (runway ·
- * callsign · state, with a right-aligned timer). Rows are tappable to select, and the
- * currently-selected aircraft is always shown — even when it isn't the soonest
- * arrival, is a departure beyond the cap, or is merely in range — so the map
- * selection and the board never disagree.
+ * Compact traffic strip shown above the map on mobile and in the desktop sidebar: the
+ * full near-field sequence a tower/approach controller would read — every arrival due to
+ * land within the queue horizon (soonest first) followed by every aircraft lining up to
+ * depart (FIFO), all as one unified list of identical rows (runway · callsign · state,
+ * with a right-aligned timer). The queue is derived by `buildQueues`; per-side overflow
+ * past the cap collapses to a "+N more" line. Rows are tappable to select, and the
+ * selected aircraft is always shown — even beyond the cap or when it's merely in range —
+ * so the map selection and the board never disagree.
  */
 export function TrafficBar({
   arrivals,
@@ -175,70 +174,36 @@ export function TrafficBar({
   selectedStatus?: FlightStatus | null;
   onSelect?: (hex: string) => void;
 }) {
-  const soonest = arrivals[0];
   const typeByHex = new Map(aircraft.map((w) => [w.ac.hex, w.ac.type]));
-
-  // Also surface the selected arrival when it isn't the soonest one.
-  const selectedArrival =
-    selectedHex && selectedHex !== soonest?.hex
-      ? arrivals.find((a) => a.hex === selectedHex)
-      : undefined;
-
-  const deps = [...departures].sort(
-    (a, b) =>
-      DEP_ORDER[a.phase] - DEP_ORDER[b.phase] ||
-      // Within a phase, the most-advanced (fastest) first — the roll furthest along
-      // leads; nulls sort last.
-      (b.gsKt ?? -1) - (a.gsKt ?? -1),
-  );
-  const shownDeps = deps.slice(0, MAX_DEP_ROWS);
-  // Ensure a selected departure is visible even if it's beyond the cap.
-  if (selectedHex && !shownDeps.some((d) => d.hex === selectedHex)) {
-    const selDep = deps.find((d) => d.hex === selectedHex);
-    if (selDep) shownDeps.push(selDep);
-  }
-  const extra = deps.length - shownDeps.length;
-
-  // A selected aircraft that's neither the shown arrivals nor a shown departure
-  // (e.g. in range with no runway assignment yet, or an approach the predictor
-  // dropped) still gets a row so it's never invisible on the board.
-  const shownHexes = new Set(
-    [soonest?.hex, selectedArrival?.hex, ...shownDeps.map((d) => d.hex)].filter(Boolean),
-  );
-  const orphanSelected =
-    selectedHex && !shownHexes.has(selectedHex)
-      ? aircraft.find((w) => w.ac.hex === selectedHex)
-      : undefined;
+  const queues = buildQueues({ arrivals, departures, selectedHex });
+  const orphan = queues.orphanHex
+    ? aircraft.find((w) => w.ac.hex === queues.orphanHex)
+    : undefined;
 
   return (
     <div className="w-full divide-y divide-border overflow-hidden border border-border bg-surface-container-low">
-      {soonest ? (
-        <ArrivalRow
-          arrival={soonest}
-          type={typeByHex.get(soonest.hex)}
-          now={now}
-          lastUpdated={lastUpdated}
-          stale={stale}
-          selected={soonest.hex === selectedHex}
-          onSelect={onSelect}
-        />
+      {queues.arrivals.length > 0 ? (
+        queues.arrivals.map((a) => (
+          <ArrivalRow
+            key={a.hex}
+            arrival={a}
+            type={typeByHex.get(a.hex)}
+            now={now}
+            lastUpdated={lastUpdated}
+            stale={stale}
+            selected={a.hex === selectedHex}
+            onSelect={onSelect}
+          />
+        ))
       ) : (
         <TrafficRow icon={<LandingIcon size={16} />} muted="No inbound traffic" />
       )}
 
-      {selectedArrival && (
-        <ArrivalRow
-          arrival={selectedArrival}
-          type={typeByHex.get(selectedArrival.hex)}
-          now={now}
-          lastUpdated={lastUpdated}
-          stale={stale}
-          selected
-          onSelect={onSelect}
-        />
+      {queues.arrivalsMore > 0 && (
+        <div className="px-3 py-1 text-[11px] text-muted">+{queues.arrivalsMore} more arriving</div>
       )}
 
-      {shownDeps.map((d) => {
+      {queues.departures.map((d) => {
         const { secondary, time, timeClass } = depRow(d, now);
         return (
           <TrafficRow
@@ -255,45 +220,51 @@ export function TrafficBar({
         );
       })}
 
-      {orphanSelected && (
+      {queues.departuresMore > 0 && (
+        <div className="px-3 py-1 text-[11px] text-muted">+{queues.departuresMore} more departing</div>
+      )}
+
+      {orphan && (
         <TrafficRow
           icon={<PlaneIcon size={16} />}
-          end={orphanSelected.assignment?.end ?? selectedStatus?.rwy}
-          callsign={orphanSelected.ac.flight ?? orphanSelected.ac.hex.toUpperCase()}
+          end={orphan.assignment?.end ?? selectedStatus?.rwy}
+          callsign={orphan.ac.flight ?? orphan.ac.hex.toUpperCase()}
           // Meaningful phase (e.g. "just landed" / "taxiing"); omitted for an unrelated
           // airborne aircraft rather than showing a vague "tracking · in range".
           secondary={selectedStatus?.label ?? undefined}
           selected
-          onClick={() => onSelect?.(orphanSelected.ac.hex)}
+          onClick={() => onSelect?.(orphan.ac.hex)}
         />
-      )}
-
-      {extra > 0 && (
-        <div className="px-3 py-1 text-[11px] text-muted">+{extra} more departing</div>
       )}
     </div>
   );
 }
 
-/** Per-phase secondary label, right-aligned timer and its colour. */
+/**
+ * Right-aligned timer and its colour for a departure row. The state *word* comes from the
+ * shared `flightStatusLabel` (one vocabulary across the board and detail panel); this
+ * helper only owns the board's timer presentation. The departure branch of
+ * `flightStatusLabel` reads `phase` alone, so a minimal `ac` is fine here.
+ */
 function depRow(d: DepartureEvent, now: number): {
   secondary: string;
   time: string;
   timeClass: string;
 } {
+  const secondary = flightStatusLabel({ ac: { onGround: true, gs: d.gsKt ?? 0 }, departure: d }).label ?? "";
   if (d.phase === "holding") {
     return {
-      secondary: "waiting",
+      secondary,
       time: d.holdingSinceMs != null ? formatDuration((now - d.holdingSinceMs) / 1000) : "—",
       timeClass: "text-status-departure",
     };
   }
   if (d.phase === "roll") {
     return {
-      secondary: "cleared",
+      secondary,
       time: d.waitedMs != null ? formatDuration(d.waitedMs / 1000) : "now",
       timeClass: "text-status-cleared",
     };
   }
-  return { secondary: "climbing", time: "↑", timeClass: "text-on-surface-variant" };
+  return { secondary, time: "↑", timeClass: "text-on-surface-variant" };
 }
