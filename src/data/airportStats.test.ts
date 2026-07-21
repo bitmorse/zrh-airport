@@ -6,9 +6,10 @@ import {
 } from "./airportStats";
 
 function mockFetchOnce(status: number, body: unknown) {
-  const fn = vi.fn(async (_url: string) => ({
+  const fn = vi.fn(async (url: string) => ({
     ok: status >= 200 && status < 300,
     status,
+    url,
     json: async () => body,
   }));
   vi.stubGlobal("fetch", fn);

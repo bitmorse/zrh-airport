@@ -25,10 +25,11 @@ export interface GpwsCue {
   url: string;
 }
 
-// Real GPWS callout recordings (the GeoFS GPWS set). Played cross-origin via an
-// <audio> element (no CORS needed for playback); this is the one external fetch in
-// the app, only when "play GPWS" is on.
-const SND = "https://tylerbmusic.github.io/GPWS-files_geofs/";
+// Real GPWS callout recordings (the GeoFS GPWS set), vendored into public/audio/gpws/
+// so they load from the app's own origin — no third-party host, no CORS, works offline.
+// `import.meta.env.BASE_URL` honours the app's `base: "./"` so the path resolves on the
+// deployed site. See public/audio/gpws/CREDITS.txt for provenance.
+const SND = `${import.meta.env.BASE_URL}audio/gpws/`;
 
 /**
  * Approach callout schedule, high → low. "minimums" replaces the 200 ft number at the

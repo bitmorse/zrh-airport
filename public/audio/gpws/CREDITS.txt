@@ -1,0 +1,7 @@
+GPWS callout audio — the GeoFS GPWS sound set.
+
+Vendored from https://tylerbmusic.github.io/GPWS-files_geofs/ so the callouts
+load from this app's own origin (no third-party runtime dependency / CORS).
+Files: 2500, 1000, 500, 400, 300, minimum, 100, 50, 40, 30, retard, 10 (.wav).
+Used for the app's toy GPWS altitude-callout feature. Credit to the original
+GeoFS GPWS set authors.
