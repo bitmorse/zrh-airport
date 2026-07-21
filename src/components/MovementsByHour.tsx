@@ -121,16 +121,18 @@ export function MovementsByHour({
       </div>
 
       {view === "usual" && (
-        <div className="flex items-center gap-2 text-[11px]">
+        <div className="flex flex-col gap-1 text-[11px]">
           <span className="uppercase tracking-wide text-muted">Weekday</span>
-          <div className="flex flex-wrap overflow-hidden border border-border">
+          {/* Fixed 7-column grid so the days always fit on one row (no wrap) even in
+              the narrow sidebar. */}
+          <div className="grid grid-cols-7 overflow-hidden border border-border">
             {WEEKDAYS.map((label, d) => (
               <button
                 key={label}
                 type="button"
                 onClick={() => onDowChange(d)}
                 aria-pressed={dow === d}
-                className={`px-1.5 py-0.5 ${
+                className={`py-0.5 text-center ${d > 0 ? "border-l border-border" : ""} ${
                   dow === d
                     ? "bg-primary text-on-primary"
                     : "text-on-surface-variant hover:bg-surface-container"
