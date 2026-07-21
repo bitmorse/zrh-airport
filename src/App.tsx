@@ -311,7 +311,9 @@ export default function App() {
         avgDbfs: rec.avgDbfs,
         startedAt: start,
         durationMs: rec.durationMs,
-        hasAudio: true,
+        // Only claim audio when a non-empty clip was actually captured — a zero-byte
+        // recording keeps its measurement row but shows no (dead) Play/Download buttons.
+        hasAudio: rec.blob.size > 0,
         candidates,
         observerTrack: observer,
         primaryHex: primary?.hex ?? null,
@@ -552,9 +554,12 @@ export default function App() {
           </button>
           <button
             onClick={() => {
-              // A tap is a user gesture — unlock/resume the audio context here so the
-              // first unmute (and any later tap) primes mobile Safari for playback.
-              gpwsAudio.unlock();
+              // A tap is a user gesture — unlock/resume the GPWS audio context here so
+              // the first unmute primes mobile Safari. Only when the cockpit sim is on,
+              // though: with it off there's nothing to play, and creating a realtime
+              // AudioContext would needlessly contend with the mic + WAV-decode contexts
+              // (iOS caps them), which breaks measurement playback/WAV export.
+              if (settings.cockpitSim) gpwsAudio.unlock();
               if (recorder.isRecording) flashMicHint();
               else updateSettings({ muted: !settings.muted });
             }}

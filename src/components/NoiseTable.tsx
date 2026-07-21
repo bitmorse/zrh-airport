@@ -132,6 +132,7 @@ export function NoiseTable() {
   const [{ units }] = useSettings();
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [note, setNote] = useState<string | null>(null); // visible playback/export status
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const urlRef = useRef<string | null>(null);
 
@@ -159,17 +160,30 @@ export function NoiseTable() {
       return;
     }
     const blob = await getAudio(id);
-    if (!blob) return;
+    if (!blob) {
+      setNote("This clip has no saved audio.");
+      return;
+    }
+    setNote(null);
     if (urlRef.current) URL.revokeObjectURL(urlRef.current);
     const url = URL.createObjectURL(blob);
     urlRef.current = url;
     if (!audioRef.current) {
       audioRef.current = new Audio();
       audioRef.current.onended = () => setPlayingId(null);
+      audioRef.current.onerror = () => {
+        setNote("Couldn't play this clip — the browser can't decode this recording format.");
+        setPlayingId(null);
+      };
     }
     audioRef.current.src = url;
-    void audioRef.current.play();
-    setPlayingId(id);
+    try {
+      await audioRef.current.play();
+      setPlayingId(id);
+    } catch (err) {
+      setNote(`Couldn't play this clip: ${(err as Error)?.message ?? "playback was blocked"}.`);
+      setPlayingId(null);
+    }
   }
 
   if (events.length === 0) {
@@ -187,14 +201,22 @@ export function NoiseTable() {
 
   async function download(e: NoiseEvent) {
     const blob = await getAudio(e.id);
-    if (!blob) return;
+    if (!blob) {
+      setNote("This clip has no saved audio to download.");
+      return;
+    }
+    setNote(null);
     let out = blob;
     let ext = audioExt(blob.type);
     try {
       out = await blobToWav(blob); // universally playable
       ext = "wav";
-    } catch {
-      /* fall back to the native recording format */
+    } catch (err) {
+      // Surface it instead of silently shipping an undecodable file; still give them
+      // the original recording, labelled with its real format.
+      setNote(
+        `Couldn't convert to WAV (${(err as Error)?.message ?? "decode failed"}) — downloaded the original ${ext.toUpperCase()} instead.`,
+      );
     }
     const name = (e.callsign ?? e.hex ?? "clip").replace(/\s+/g, "");
     downloadBlob(out, `zrh-${name}-${hhmm(e.startedAt).replace(":", "")}.${ext}`);
@@ -223,6 +245,11 @@ export function NoiseTable() {
           </button>
         </div>
       </div>
+      {note && (
+        <p role="status" className="mb-2 text-[11px] leading-relaxed text-status-alert">
+          {note}
+        </p>
+      )}
       <div className="overflow-x-auto">
         <table className="w-full text-left text-xs">
           <thead className="uppercase tracking-wide text-muted">

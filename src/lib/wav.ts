@@ -60,15 +60,33 @@ function audioBufferToWav(buffer: AudioBuffer): Blob {
   return new Blob([header, pcm], { type: "audio/wav" });
 }
 
-let decodeCtx: AudioContext | null = null;
-
+/**
+ * Decode a compressed clip to PCM. Uses a short-lived `OfflineAudioContext` — a
+ * BaseAudioContext that is NOT subject to the platform's realtime-AudioContext cap
+ * (iOS limits those, and Web Audio grabs the single audio session), so decoding never
+ * contends with the GPWS/mic realtime contexts or throws at the limit. Falls back to a
+ * realtime context (closed straight after) only where `OfflineAudioContext` is absent.
+ */
 async function decode(blob: Blob): Promise<AudioBuffer> {
-  const Ctor =
-    window.AudioContext ??
-    (window as unknown as { webkitAudioContext: typeof AudioContext })
-      .webkitAudioContext;
-  decodeCtx ??= new Ctor();
-  return decodeCtx.decodeAudioData(await blob.arrayBuffer());
+  const bytes = await blob.arrayBuffer();
+  const w = window as unknown as {
+    OfflineAudioContext?: typeof OfflineAudioContext;
+    webkitOfflineAudioContext?: typeof OfflineAudioContext;
+    AudioContext?: typeof AudioContext;
+    webkitAudioContext?: typeof AudioContext;
+  };
+  const Offline = w.OfflineAudioContext ?? w.webkitOfflineAudioContext;
+  if (Offline) {
+    return new Offline(1, 1, 44100).decodeAudioData(bytes);
+  }
+  const Ctor = w.AudioContext ?? w.webkitAudioContext;
+  if (!Ctor) throw new Error("Web Audio is unavailable — cannot decode this clip.");
+  const ctx = new Ctor();
+  try {
+    return await ctx.decodeAudioData(bytes);
+  } finally {
+    void ctx.close?.();
+  }
 }
 
 export async function blobToWav(blob: Blob): Promise<Blob> {
