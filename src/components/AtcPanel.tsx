@@ -1,3 +1,4 @@
+import { useCallback, useState } from "react";
 import type { AtcRole } from "../data/atcFeeds";
 import type { DepartureEvent } from "../domain/departures";
 import {
@@ -8,9 +9,9 @@ import {
 import type { Arrival } from "../domain/predictions";
 import { useAirport } from "../hooks/useAirport";
 import { useAtcFeeds } from "../hooks/useAtcFeeds";
-import { useAtcPlayer } from "../hooks/useAtcPlayer";
 import { formatDuration, formatEta } from "../lib/format";
-import { ExternalLinkIcon, LandingIcon, PlayIcon, StopIcon, TakeoffIcon } from "./icons";
+import { LandingIcon, TakeoffIcon } from "./icons";
+import { SdrChannel } from "./SdrChannel";
 
 const ROLE_LABEL: Record<AtcRole, string> = {
   approach: "Approach",
@@ -34,10 +35,11 @@ function candidateNote(c: Candidate, now: number): string {
 }
 
 /**
- * "Listen" panel. ATC audio is per-position (role), not per-runway, and carries no
- * callsign — so we pair a bring-your-own stream with the app's ADS-B inference:
- * the active runways and the aircraft plausibly on that frequency, so you can tell
- * what/who is being talked about. Audio lags the map, hence the delay note.
+ * "Listen" panel. ATC audio comes from an airport-sdr receiver (bring your own, or the
+ * shipped demo): each embedded channel plays in its own low-latency frame and reports
+ * live carrier / level / listener state. Audio carries no callsign, so we pair the live
+ * channel with the app's ADS-B inference — the active runways and the aircraft plausibly
+ * on that position — so you can tell what/who is being talked about.
  */
 export function AtcPanel({
   arrivals,
@@ -51,34 +53,39 @@ export function AtcPanel({
   onSelect?: (hex: string) => void;
 }) {
   const { config } = useAirport();
-  const { feeds, setUrl } = useAtcFeeds(config.icao);
-  const player = useAtcPlayer();
-  const findFeedsUrl = `https://www.liveatc.net/search/?icao=${config.icao}`;
+  const { server, setServer, channels, setChannel } = useAtcFeeds(config.icao);
+  // The single channel currently playing (only one at a time), for the on-frequency match.
+  const [activeRole, setActiveRole] = useState<AtcRole | null>(null);
+
+  const onPlaying = useCallback((role: AtcRole, playing: boolean) => {
+    setActiveRole((cur) => (playing ? role : cur === role ? null : cur));
+  }, []);
 
   const activeEnds = activeRunwayEnds(arrivals, departures);
-  const candidates = player.playingRole
-    ? onFrequencyCandidates(player.playingRole, arrivals, departures)
+  const candidates = activeRole
+    ? onFrequencyCandidates(activeRole, arrivals, departures)
     : [];
 
   return (
     <div className="text-sm">
-      <div className="mb-2 flex items-start justify-between gap-2">
-        <div>
-          <h2 className="font-semibold uppercase tracking-wide text-on-surface">Listen · ATC</h2>
-          <p className="text-[11px] text-muted">
-            bring-your-own stream · plays in your browser
-          </p>
-        </div>
-        <a
-          href={findFeedsUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex shrink-0 items-center gap-1 border border-border px-2 py-0.5 text-[11px] text-status-arrival hover:bg-surface-container"
-          title={`Open LiveATC's ${config.icao} page to copy a current stream URL`}
-        >
-          Find {config.iata} feeds <ExternalLinkIcon size={12} />
-        </a>
+      <div className="mb-2">
+        <h2 className="font-semibold uppercase tracking-wide text-on-surface">Listen · ATC</h2>
+        <p className="text-[11px] text-muted">airport-sdr receiver · plays in your browser</p>
       </div>
+
+      <label className="mb-3 flex flex-col gap-1">
+        <span className="text-[11px] font-medium uppercase tracking-wide text-on-surface-variant">
+          Receiver URL
+        </span>
+        <input
+          value={server}
+          onChange={(e) => setServer(e.target.value)}
+          placeholder="https://your-receiver.example"
+          inputMode="url"
+          aria-label="Receiver URL"
+          className="w-full border border-border bg-surface-container-lowest px-2 py-1 text-[11px] text-on-surface outline-none focus:border-2 focus:border-primary"
+        />
+      </label>
 
       {config.frequencies && config.frequencies.length > 0 && (
         <div className="mb-3 border border-border bg-surface-container p-2.5">
@@ -96,59 +103,49 @@ export function AtcPanel({
         </div>
       )}
 
-      <div className="flex flex-col gap-1.5">
-        {feeds.map((f) => (
-          <div key={f.role} className="flex items-center gap-2">
-            <button
-              onClick={() => player.toggle(f.role, f.url)}
-              disabled={!f.url.trim()}
-              aria-label={player.playingRole === f.role ? `Stop ${f.label}` : `Play ${f.label}`}
-              className={`flex h-6 w-6 shrink-0 items-center justify-center ${
-                player.playingRole === f.role
-                  ? "bg-status-alert text-on-primary hover:bg-error"
-                  : "bg-surface-container text-on-surface-variant hover:bg-surface-container-high"
-              } disabled:opacity-30`}
-            >
-              {player.playingRole === f.role ? <StopIcon size={13} /> : <PlayIcon size={13} />}
-            </button>
-            <span className="w-16 shrink-0 text-xs text-on-surface-variant">{f.label}</span>
-            <input
-              value={f.url}
-              onChange={(e) => setUrl(f.role, e.target.value)}
-              placeholder="add stream URL"
-              inputMode="url"
-              aria-label={`${f.label} stream URL`}
-              className="min-w-0 flex-1 border border-border bg-surface-container-lowest px-2 py-1 text-[11px] text-on-surface outline-none focus:border-2 focus:border-primary"
-            />
+      <div className="flex flex-col gap-3">
+        {channels.map((c) => (
+          <div key={c.role} className="flex flex-col gap-1.5">
+            <div className="flex items-center gap-2">
+              <span className="w-16 shrink-0 text-xs text-on-surface-variant">{c.label}</span>
+              <input
+                value={c.channel}
+                onChange={(e) => setChannel(c.role, e.target.value)}
+                placeholder={`channel name (e.g. ${c.label})`}
+                aria-label={`${c.label} channel name`}
+                className="min-w-0 flex-1 border border-border bg-surface-container-lowest px-2 py-1 text-[11px] text-on-surface outline-none focus:border-2 focus:border-primary"
+              />
+            </div>
+            {server.trim() && c.channel.trim() ? (
+              <SdrChannel
+                server={server}
+                channel={c.channel}
+                role={c.role}
+                label={c.label}
+                active={activeRole === c.role}
+                onPlaying={onPlaying}
+              />
+            ) : (
+              <p className="pl-[4.5rem] text-[11px] text-muted">
+                {server.trim() ? "Add a channel name to listen." : "Add a receiver URL above to listen."}
+              </p>
+            )}
           </div>
         ))}
       </div>
 
-      {player.error && <p className="mt-2 text-[11px] text-status-alert">{player.error}</p>}
-
-      {player.playingRole && (
+      {activeRole && (
         <div className="mt-3 border border-border bg-surface-container p-2.5">
           <div className="text-xs font-semibold text-on-surface">
-            {ROLE_LABEL[player.playingRole]}{" "}
+            {ROLE_LABEL[activeRole]}{" "}
             <span className="font-normal text-on-surface-variant">
               · active {activeEnds.length ? activeEnds.join(" · ") : "—"}
             </span>
           </div>
 
-          <label className="mt-1.5 flex items-center gap-2 text-[11px] text-muted">
-            <span className="shrink-0">audio ~{player.delaySec}s behind</span>
-            <input
-              type="range"
-              min={0}
-              max={90}
-              value={player.delaySec}
-              onChange={(e) => player.setDelaySec(Number(e.target.value))}
-              aria-label="Estimated audio delay in seconds"
-              className="flex-1"
-            />
-          </label>
-
-          <div className="mt-2 text-[11px] font-medium uppercase tracking-wide text-on-surface-variant">On frequency now</div>
+          <div className="mt-2 text-[11px] font-medium uppercase tracking-wide text-on-surface-variant">
+            On frequency now
+          </div>
           {candidates.length === 0 ? (
             <p className="mt-0.5 text-[11px] text-muted">No matching traffic right now.</p>
           ) : (
@@ -181,13 +178,15 @@ export function AtcPanel({
       )}
 
       <p className="mt-3 text-[10px] leading-relaxed text-muted">
-        A frequency covers a controller position, not one runway — the active runways
-        and the “on frequency” list are inferred from ADS-B, and the audio lags the map,
-        so the match is a best guess. No stream URLs are bundled: LiveATC’s terms don’t
-        permit embedding their feeds, and direct links rotate/block hotlinking. Use
-        “Find {config.iata} feeds” to grab a current URL and paste it above (any
-        Icecast/MP3 source works). Frequencies are published reference values from
-        OurAirports — always confirm against current charts.
+        Audio comes from an <span className="font-medium">airport-sdr</span> receiver: anyone with
+        an antenna and an RTL-SDR/LimeSDR can run one and paste its URL above — each channel plays
+        in a low-latency frame straight from that receiver. A frequency covers a controller
+        position, not one runway, and the audio carries no callsign, so the active runways and the
+        “on frequency” list are inferred from ADS-B — a best guess. The receiver’s operator must
+        allow-list this site’s origin, or the frame won’t connect. The shipped Zurich demo is a
+        hobby receiver and isn’t always reachable; when it’s down each channel says so rather than
+        failing silently. Frequencies are published reference values from OurAirports — always
+        confirm against current charts.
       </p>
     </div>
   );
