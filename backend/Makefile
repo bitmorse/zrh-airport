@@ -5,15 +5,18 @@
 #
 #   make test              run the PHP test suite
 #   make lint              php -l every source file
-#   make deploy-nfs        push code (src, bin) + the web front controller.
+#   make deploy-nfs        push backend code (src, bin) + the web front controller.
 #                          SEEDS config on first deploy but NEVER overwrites an
 #                          existing config/*.php, the .htaccess, or the database.
+#   make deploy-frontend   build the SPA (tsc + vite) and deploy it to /airports
+#   make deploy-all        deploy-nfs + deploy-frontend
 #   make deploy-nfs-dry    preview exactly what deploy-nfs would transfer
 #   make deploy-nfs-config push config/ on purpose (overwrites app.php + airports.json)
 #   make restart-daemon    bounce the collector so it picks up the new code
 #
-# The two NFS locations (from the SFTP paths):
-#   /home/public/airports-api   → index.php + .htaccess  (web front controller)
+# The NFS locations (from the SFTP paths):
+#   /home/public/airports       → the built frontend SPA (bitmorse.com/airports)
+#   /home/public/airports-api   → index.php + .htaccess  (API front controller)
 #   /home/protected/backend     → src/ bin/ config/ data/ (code + DB, outside docroot)
 #
 # Override the remote or paths if your setup differs, e.g. with an SSH Host alias:
@@ -27,12 +30,18 @@ NFS_SSH   ?= $(NFS_USER)@$(NFS_HOST)
 PUBLIC    ?= /home/public/airports-api
 PROTECTED ?= /home/protected/backend
 
+# Frontend (the SPA lives at the repo root, one level up from this Makefile).
+FRONTEND        ?= ..
+FRONTEND_PUBLIC ?= /home/public/airports
+
 PHP   ?= php
+NPM   ?= npm
 RSYNC ?= rsync -avz --human-readable
 
 .DEFAULT_GOAL := help
 .PHONY: help test lint deploy-nfs deploy-nfs-dry deploy-nfs-code deploy-nfs-web \
-        deploy-nfs-config restart-daemon
+        deploy-nfs-config restart-daemon build-frontend deploy-frontend \
+        deploy-frontend-dry deploy-all
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -76,6 +85,24 @@ deploy-nfs-web:
 
 deploy-nfs-config: ## Force-push config/ (overwrites app.php + airports.json; never the DB)
 	$(RSYNC) --exclude 'stats.db*' config/ $(NFS_SSH):$(PROTECTED)/config/
+
+# ---- frontend (SPA → bitmorse.com/airports) ----
+
+build-frontend: ## Build the SPA (tsc + vite) into ../dist  (needs `npm install` first)
+	cd $(FRONTEND) && $(NPM) run build
+
+deploy-frontend: build-frontend ## Build + deploy the SPA to bitmorse.com/airports
+	@echo ">> frontend → $(NFS_SSH):$(FRONTEND_PUBLIC)"
+	# dist/ is a complete build → mirror it (--delete drops stale hashed assets).
+	$(RSYNC) --delete $(FRONTEND)/dist/ $(NFS_SSH):$(FRONTEND_PUBLIC)/
+
+deploy-frontend-dry: RSYNC += --dry-run
+deploy-frontend-dry: build-frontend ## Build, then preview the frontend deploy
+	$(RSYNC) --delete $(FRONTEND)/dist/ $(NFS_SSH):$(FRONTEND_PUBLIC)/
+
+deploy-all: deploy-nfs deploy-frontend ## Deploy backend + frontend
+	@echo ""
+	@echo "Backend + frontend deployed. Run 'make restart-daemon' if backend code changed."
 
 restart-daemon: ## Stop the collector so NFS restarts it on the new code
 	ssh $(NFS_SSH) 'pkill -f "bin/collect.php" || true'
