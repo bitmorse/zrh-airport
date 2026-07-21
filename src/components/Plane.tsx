@@ -68,10 +68,15 @@ export function Plane({
   // ops; nothing renders when the overlay is off, so it stays off the hot path.
   const cross =
     wind && active ? windComponents(heading, wind.dirDeg, wind.kt) : null;
-  const showArrow = cross !== null && cross.crossKt >= 1;
+  // Ignore a trivial crosswind (aligned / near-calm) — no arrow to add noise.
+  const showArrow = cross !== null && cross.crossKt >= 2;
   const gusty = wind ? isGusty(wind.kt, wind.gustKt) : false;
-  // Length grows with the crosswind (kt), clamped so a gale can't run off the glyph.
-  const arrowLen = cross ? 7 + Math.min(cross.crossKt, 30) * 0.45 : 0;
+  // The shaft starts just outside the glyph; its length scales with the crosswind but
+  // is floored so even a light crosswind draws a readable stick (not a tiny nub) and
+  // capped so a gale can't run off the glyph.
+  const arrowStart = 8;
+  const arrowLen = cross ? Math.max(7, Math.min(cross.crossKt * 0.9, 24)) : 0;
+  const arrowTip = arrowStart + arrowLen;
 
   return (
     <g
@@ -89,27 +94,40 @@ export function Plane({
     >
       {/* Generous, invisible tap target. */}
       <circle r={10} fill="transparent" />
-      {/* Crosswind push: an arrow from under the glyph toward the side the wind shoves
-          the aircraft, length ∝ crosswind strength, dashed when the air is gusty
-          (bumpy). Drawn first so the plane glyph sits on top. */}
+      {/* Crosswind push: an arrow beside the glyph pointing the way the wind shoves the
+          aircraft, its length scaled to the crosswind strength and dashed when the air
+          is gusty (bumpy). A light casing keeps it legible over the grey runway strips.
+          Drawn before the glyph so the plane sits on top of the shaft's base. */}
       {showArrow && cross && (
-        <g
-          transform={`rotate(${(cross.pushDeg - 90).toFixed(0)})`}
-          stroke={WIND_COLOR}
-          fill={WIND_COLOR}
-          opacity={0.85}
-          aria-hidden="true"
-        >
+        <g transform={`rotate(${(cross.pushDeg - 90).toFixed(0)})`} aria-hidden="true">
           <line
-            x1={7}
+            x1={arrowStart}
             y1={0}
-            x2={arrowLen}
+            x2={arrowTip}
             y2={0}
-            strokeWidth={1.6}
+            stroke={HALO_LIGHT}
+            strokeWidth={3.6}
             strokeLinecap="round"
-            strokeDasharray={gusty ? "2 2" : undefined}
+            opacity={0.9}
           />
-          <path d={`M${arrowLen.toFixed(1)} 0 L${(arrowLen - 3.5).toFixed(1)} -2.4 L${(arrowLen - 3.5).toFixed(1)} 2.4 Z`} />
+          <line
+            x1={arrowStart}
+            y1={0}
+            x2={arrowTip}
+            y2={0}
+            stroke={WIND_COLOR}
+            strokeWidth={1.8}
+            strokeLinecap="round"
+            strokeDasharray={gusty ? "2.5 2.5" : undefined}
+          />
+          <path
+            d={`M${arrowTip.toFixed(1)} 0 L${(arrowTip - 5).toFixed(1)} -3.2 L${(arrowTip - 5).toFixed(1)} 3.2 Z`}
+            fill={WIND_COLOR}
+            stroke={HALO_LIGHT}
+            strokeWidth={1}
+            strokeLinejoin="round"
+            paintOrder="stroke"
+          />
         </g>
       )}
       {/* Radar target: a sharp 1px square boundary (per design, not a circle). */}
