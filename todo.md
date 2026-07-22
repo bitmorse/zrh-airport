@@ -1,5 +1,23 @@
 # TODO
 
+## Architecture: canonical flight-state model (see ARCHITECTURE.md)
+The `raw ADS-B → flight state` compute is centralized in `useLiveTraffic` + pure
+`src/domain/*`, but there's **no canonical per-aircraft state** — the pipeline emits
+parallel hex-keyed arrays and every consumer re-joins/re-derives them, so the same concept
+(phase, AGL, counts, label) is computed several divergent ways. That's the regression
+engine. Migrate to derive-once / select-many, in stages:
+
+- [ ] **Stage 1 — canonical `FlightState`/`WorldState`.** Assemble one joined record per
+      aircraft at the end of the pipeline (`{ ac, assignment, arrival?, departure?, phase,
+      label, aglFt, heading, trail }`) plus a `byHex` index; migrate consumers to read it
+      and delete the duplicated `flightStatusLabel`/`find`/`buildQueues`-input derivations.
+- [ ] **Stage 2 — collapse duplicated primitives.** One `aglFt` fn (kill the 4 formulas),
+      one phase definition feeding the label (kill the 5-way split), one shared reckoning
+      clock/context replacing the four independent extrapolation clocks.
+- [ ] **Stage 3 — raw+processed recording.** Bounded ring buffer of `{ rawSnapshot,
+      worldState, t }` per poll → "dump last N minutes to MCAP" (raw ADS-B + derived state)
+      and a replay/diff harness to pinpoint where derived state diverges.
+
 ## Auto-zoom / map reveal fixes
 The reveal (auto-zoom on selection / auto-select) has several issues — see
 `src/hooks/useViewport.ts`, `src/lib/viewport.ts`, and the reveal effect in
