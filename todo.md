@@ -22,9 +22,13 @@ engine. Migrate to derive-once / select-many, in stages:
         not redundancies — `attribution` computes *slant range per trail sample*,
         `FlightDetails` shows *both* GNSS + baro reckoned (a deliberate dual readout), and the
         5 "phase" detectors are a pipeline feeding the one `flightStatusLabel`. Not merged.
-- [ ] **Stage 3 — raw+processed recording.** Bounded ring buffer of `{ rawSnapshot,
-      worldState, t }` per poll → "dump last N minutes to MCAP" (raw ADS-B + derived state)
-      and a replay/diff harness to pinpoint where derived state diverges.
+- [x] **Stage 3 — raw+processed recording.** `useLiveTraffic` keeps a bounded ring buffer
+      of `{ t, provider, raw, flights }` per poll (10 min / 400 frames); Settings → Session
+      recording downloads it as one MCAP (`/adsb/raw` + `/flights` on a shared timeline) via
+      `src/lib/mcapSession.ts`. Raw is complete enough to re-run the pipeline offline.
+      - [ ] Optional follow-up: an in-app replay/diff harness (the MCAP already enables manual
+            replay/diffing in Foxglove; a programmatic diff would need the stateful pipeline
+            extracted as a pure `step(memory, rawSnapshot)` reducer).
 
 ## Auto-zoom / map reveal fixes
 The reveal (auto-zoom on selection / auto-select) has several issues — see

@@ -11,7 +11,7 @@ import {
   type DepartureEvent,
   type DepartureMemory,
 } from "../domain/departures";
-import { buildFlightStates, type FlightState } from "../domain/flightState";
+import { buildFlightStates, type FlightState, type PollFrame } from "../domain/flightState";
 import { detectMovements, type Movement } from "../domain/movements";
 import type { TrailPoint } from "../data/watchStore";
 import {
@@ -52,6 +52,11 @@ const FAST_ARRIVAL_S = 45;
 const TRAIL_MAX_POINTS = 240;
 const TRAIL_TTL_MS = 3 * 60 * 1000; // forget a plane's trail 3 min after it's gone
 
+// Session recording: keep the raw feed + derived state for the last few minutes of polls
+// so a debug MCAP can carry both on one timeline. Bounded by time and count.
+const HISTORY_MS = 10 * 60 * 1000;
+const HISTORY_MAX_FRAMES = 400;
+
 // Stable identities for the pre-data case so memoized consumers don't churn.
 const EMPTY_AIRCRAFT: AircraftWithAssignment[] = [];
 const EMPTY_ARRIVALS: Arrival[] = [];
@@ -89,6 +94,8 @@ export interface WorldState {
   movementLog: MovementLog;
   /** Discrete landing/takeoff events detected this poll (stable [] when none). */
   newMovements: Movement[];
+  /** Recent raw-feed + derived-state frames (last few minutes), for a debug MCAP. */
+  snapshotHistory: () => PollFrame[];
 }
 
 export function useLiveTraffic(settings: Settings, airport: Airport): WorldState {
@@ -102,6 +109,7 @@ export function useLiveTraffic(settings: Settings, airport: Airport): WorldState
   const headingMemory = useRef(new Map<string, number>()); // last good glyph heading per hex
   const [movementLog, setMovementLog] = useState<MovementLog>({});
   const countedMovements = useRef(new Map<string, number>());
+  const history = useRef<PollFrame[]>([]);
 
   // Seed counts from any persisted window on mount so the map isn't blank after
   // a reload within the 15-minute window.
@@ -289,14 +297,29 @@ export function useLiveTraffic(settings: Settings, airport: Airport): WorldState
   });
 
   useEffect(() => {
-    if (query.data) setCounts(query.data.counts);
-    if (query.data?.movementLog) setMovementLog(query.data.movementLog);
+    if (!query.data) return;
+    setCounts(query.data.counts);
+    if (query.data.movementLog) setMovementLog(query.data.movementLog);
+
+    // Append this poll's raw feed + derived state to the session buffer, then prune to
+    // the time + count bound. Only committed query data lands here (not cancelled fetches).
+    const { snap, flights } = query.data;
+    const buf = history.current;
+    if (buf[buf.length - 1]?.t !== snap.fetchedAt) {
+      buf.push({ t: snap.fetchedAt, provider: snap.provider, raw: snap.aircraft, flights });
+      const cutoff = snap.fetchedAt - HISTORY_MS;
+      let drop = 0;
+      while (drop < buf.length && buf[drop].t < cutoff) drop++;
+      if (buf.length - drop > HISTORY_MAX_FRAMES) drop = buf.length - HISTORY_MAX_FRAMES;
+      if (drop > 0) buf.splice(0, drop);
+    }
   }, [query.data]);
 
   const trailFor = useCallback(
     (hex: string) => trails.current.get(hex)?.points ?? EMPTY_TRAIL,
     [],
   );
+  const snapshotHistory = useCallback(() => history.current, []);
 
   return {
     flights: query.data?.flights ?? EMPTY_FLIGHTS,
@@ -318,5 +341,6 @@ export function useLiveTraffic(settings: Settings, airport: Airport): WorldState
     trailFor,
     movementLog,
     newMovements: query.data?.newMovements ?? EMPTY_MOVEMENTS,
+    snapshotHistory,
   };
 }

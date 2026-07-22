@@ -35,6 +35,19 @@ export interface FlightState {
 }
 
 /**
+ * One poll's raw feed alongside the derived state it produced — the unit of the session
+ * ring buffer, so a recording can carry both the raw ADS-B and the processed FlightState
+ * on one timeline (see src/lib/mcapSession.ts). `raw` is the normalized feed as received;
+ * `flights` is what the pipeline made of it.
+ */
+export interface PollFrame {
+  t: number;
+  provider: string | null;
+  raw: Aircraft[];
+  flights: FlightState[];
+}
+
+/**
  * Join the poll's parallel arrays into one `FlightState` per aircraft, plus a `byHex`
  * index. Pure: reuses `flightStatusLabel` and `heightAglFt` so the phase word and the
  * height are each computed exactly once here rather than re-derived at every consumer.

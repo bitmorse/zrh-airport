@@ -7,7 +7,7 @@ import type { Units } from "../lib/format";
 import { AtcPanel } from "./AtcPanel";
 import { Modal } from "./Modal";
 import { PoiManager } from "./PoiManager";
-import { RefreshIcon } from "./icons";
+import { DownloadIcon, RefreshIcon } from "./icons";
 
 type Tab = "general" | "regions" | "atc";
 
@@ -41,6 +41,7 @@ export function SettingsModal({
   departures,
   now,
   onSelect,
+  onDownloadSession,
 }: {
   onClose: () => void;
   ageSec: number | null;
@@ -50,6 +51,8 @@ export function SettingsModal({
   departures: DepartureEvent[];
   now: number;
   onSelect?: (hex: string) => void;
+  /** Download the session recording (raw ADS-B + derived state) as MCAP. */
+  onDownloadSession?: () => void;
 }) {
   const [tab, setTab] = useState<Tab>("general");
   const [settings, update] = useSettings();
@@ -148,6 +151,24 @@ export function SettingsModal({
             <RefreshIcon size={13} /> Refresh
           </button>
         </div>
+
+        {onDownloadSession && (
+          <div className="flex items-center justify-between gap-2">
+            <span className="flex flex-col">
+              <span className="font-medium text-on-surface">Session recording</span>
+              <span className="text-[11px] text-muted">
+                Raw ADS-B + derived flight state (last ~10 min) as one MCAP — for debugging.
+              </span>
+            </span>
+            <button
+              type="button"
+              onClick={onDownloadSession}
+              className="flex shrink-0 items-center gap-1 border border-border px-2 py-0.5 text-xs uppercase text-on-surface-variant hover:bg-surface-container-high"
+            >
+              <DownloadIcon size={13} /> MCAP
+            </button>
+          </div>
+        )}
 
         <Field label="Refresh interval (seconds)" hint="10–600">
           <input

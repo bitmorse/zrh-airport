@@ -8,6 +8,8 @@ import { RecorderModal } from "./components/RecorderModal";
 import { StatsModal } from "./components/StatsModal";
 import { AtcComms } from "./components/AtcComms";
 import { SettingsModal } from "./components/SettingsModal";
+import { downloadBlob } from "./lib/download";
+import { buildSessionMcap } from "./lib/mcapSession";
 import { snapshotAircraft, type AircraftSnapshot } from "./data/adsb";
 import { recentCountsByEnd } from "./data/airportStats";
 import { AIRPORTS, airportConfigByIcao } from "./data/airports";
@@ -106,6 +108,17 @@ export default function App() {
   const markUserActivity = useCallback(() => {
     lastUserAtRef.current = Date.now();
   }, []);
+
+  // Download the last few minutes of polls — raw ADS-B + derived flight state — as one
+  // MCAP for debugging (see src/lib/mcapSession.ts).
+  const { snapshotHistory } = traffic;
+  const downloadSession = useCallback(async () => {
+    const frames = snapshotHistory();
+    if (frames.length === 0) return;
+    const blob = await buildSessionMcap(frames);
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T-]/g, "");
+    downloadBlob(blob, `zrh-session-${stamp}.mcap`);
+  }, [snapshotHistory]);
 
   // Gamification scores only flights the *user* actively watched, not auto-picks.
   const userSelectedHex = selSourceRef.current === "user" ? selectedHex : null;
@@ -743,6 +756,7 @@ export default function App() {
             handleSelect(hex);
             setShowSettings(false);
           }}
+          onDownloadSession={downloadSession}
         />
       )}
       {showStats && <StatsModal onClose={() => setShowStats(false)} />}

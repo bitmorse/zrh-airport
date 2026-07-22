@@ -8,6 +8,7 @@ import {
   formatVerticalRate,
   type Units,
 } from "../lib/format";
+import { downloadBlob } from "../lib/download";
 import { buildNoiseMcap } from "../lib/mcap";
 import { blobToWav } from "../lib/wav";
 import {
@@ -35,16 +36,6 @@ function hhmm(ts: number): string {
   return `${h}:${m}`;
 }
 
-function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
 
 function csvCell(v: string | number | null): string {
   const s = v == null ? "" : String(v);
