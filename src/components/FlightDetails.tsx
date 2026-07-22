@@ -6,7 +6,7 @@ import { useAirport } from "../hooks/useAirport";
 import { useFlightRoute } from "../hooks/useFlightRoute";
 import { useGpws } from "../hooks/useGpws";
 import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
-import { useRafNow } from "../hooks/useNow";
+import { useSmoothClock } from "../hooks/useSmoothClock";
 import { useSettings } from "../hooks/useSettings";
 import type { Units } from "../lib/format";
 import { formatAltitude, formatSpeed } from "../lib/format";
@@ -34,7 +34,7 @@ function MotionReadout({
   geoidFt: number;
   units: Units;
 }) {
-  const now = useRafNow(100);
+  const now = useSmoothClock();
   const elapsed = elapsedSec(lastUpdated, now);
   const reckon = (base: number | null, extra = 0) =>
     base == null ? null : Math.max(0, reckonAltFt(base, ac.verticalRateFpm, elapsed) - extra);

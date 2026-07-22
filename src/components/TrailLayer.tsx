@@ -25,7 +25,7 @@ function TrailLayerImpl({
   lastUpdated: number | null;
 }) {
   const { arp } = useAirport().config;
-  const now = useSmoothClock(120);
+  const now = useSmoothClock();
 
   const verts: LatLon[] = ac ? [...points, reckonPosition(ac, lastUpdated, now)] : points;
   if (verts.length < 2) return null;
@@ -52,6 +52,6 @@ function TrailLayerImpl({
   );
 }
 
-// Memoised: only re-render on selection/poll changes; its own smooth-clock animates
-// the leading end, independent of unrelated map re-renders.
+// Memoised: only re-render on selection/poll changes; the shared smooth-clock animates
+// the leading end in lock-step with the plane glyph (same clock, same reckoned position).
 export const TrailLayer = memo(TrailLayerImpl);

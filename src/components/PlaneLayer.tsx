@@ -24,7 +24,7 @@ function PlaneLayerImpl({
   /** Current airport wind for the optional crosswind arrows; null/undefined = off. */
   wind?: CurrentWind | null;
 }) {
-  const now = useSmoothClock(120);
+  const now = useSmoothClock();
   return (
     <g>
       {aircraft.map((item) => (
@@ -42,5 +42,5 @@ function PlaneLayerImpl({
 }
 
 // Memoised so unrelated map re-renders (GPS/heading/selection/locate) don't rebuild
-// every plane; its own smooth-clock drives the dead-reckoning animation.
+// every plane; the shared smooth-clock drives the dead-reckoning animation.
 export const PlaneLayer = memo(PlaneLayerImpl);
