@@ -7,9 +7,13 @@ import type { Aircraft } from "../data/adsb";
  * when broadcast — accurate and self-contained — falling back to barometric.
  */
 
-/** Height above field, feet — prefers GNSS (geom) altitude, falls back to baro. */
+/**
+ * Height above field, feet — the single definition of "how high above the runway".
+ * Prefers GNSS (geom) altitude when present, falls back to barometric. `altGeomFt` is
+ * optional so callers that only carry baro (e.g. the geofence ceiling gate) can share it.
+ */
 export function heightAglFt(
-  ac: Pick<Aircraft, "altGeomFt" | "altFt" | "onGround">,
+  ac: Pick<Aircraft, "altFt" | "onGround"> & { altGeomFt?: number | null },
   fieldElevationFt: number,
   geoidFt = 0,
 ): number {

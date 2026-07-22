@@ -70,12 +70,3 @@ export function assignRunway(airport: Airport, ac: Aircraft): RunwayAssignment |
   }
   return best;
 }
-
-/** Convenience: altitude above the field in feet, or 0 on the ground. */
-export function altAboveFieldFt(
-  ac: Pick<Aircraft, "onGround" | "altFt">,
-  fieldElevationFt: number,
-): number {
-  if (ac.onGround || ac.altFt === null) return 0;
-  return Math.max(0, ac.altFt - fieldElevationFt);
-}

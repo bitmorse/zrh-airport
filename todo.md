@@ -7,13 +7,21 @@ parallel hex-keyed arrays and every consumer re-joins/re-derives them, so the sa
 (phase, AGL, counts, label) is computed several divergent ways. That's the regression
 engine. Migrate to derive-once / select-many, in stages:
 
-- [ ] **Stage 1 — canonical `FlightState`/`WorldState`.** Assemble one joined record per
-      aircraft at the end of the pipeline (`{ ac, assignment, arrival?, departure?, phase,
-      label, aglFt, heading, trail }`) plus a `byHex` index; migrate consumers to read it
-      and delete the duplicated `flightStatusLabel`/`find`/`buildQueues`-input derivations.
-- [ ] **Stage 2 — collapse duplicated primitives.** One `aglFt` fn (kill the 4 formulas),
-      one phase definition feeding the label (kill the 5-way split), one shared reckoning
-      clock/context replacing the four independent extrapolation clocks.
+- [x] **Stage 1 — canonical `FlightState`/`WorldState`.** `src/domain/flightState.ts` +
+      `byHex` index; consumers (App, TrafficBar, AirportSvg) read the joined record. Killed
+      the duplicated `flightStatusLabel` (App + TrafficBar) and the scattered selection
+      lookups. `FlightState.status` is now the single consumed phase label.
+- [x] **Stage 2 — collapse duplicated primitives.**
+      - [x] One shared reckoning clock: `useSmoothClock` is now a single rAF singleton;
+            PlaneLayer + TrailLayer + FlightDetails read the same tick (glyph, trail and
+            readout in lock-step). Removed `useRafNow`. `useGpws` keeps its own 400 ms engine
+            cadence (state machine, not rendering) — intentionally separate.
+      - [x] One "height above field": `heightAglFt` (geoid-optional) is the single fn;
+            geofence now uses it and `assignRunway.altAboveFieldFt` is deleted.
+      - Note (not a bug): the other apparent "AGL"/"phase" duplicates are distinct-purpose,
+        not redundancies — `attribution` computes *slant range per trail sample*,
+        `FlightDetails` shows *both* GNSS + baro reckoned (a deliberate dual readout), and the
+        5 "phase" detectors are a pipeline feeding the one `flightStatusLabel`. Not merged.
 - [ ] **Stage 3 — raw+processed recording.** Bounded ring buffer of `{ rawSnapshot,
       worldState, t }` per poll → "dump last N minutes to MCAP" (raw ADS-B + derived state)
       and a replay/diff harness to pinpoint where derived state diverges.

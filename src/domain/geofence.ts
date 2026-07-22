@@ -2,12 +2,13 @@
  * Geofence around the observer's GPS location for auto audio-recording: which
  * aircraft are close enough (and low enough to be heard) to be "in the fence", and
  * whether a tracked target is still inside. Pure — the trigger hook drives recording
- * from these. Reuses `haversineMeters` and `altAboveFieldFt` so distance/altitude
- * aren't re-derived here.
+ * from these. Reuses `haversineMeters` and the shared `heightAglFt` so distance/height
+ * aren't re-derived here. (A coarse ceiling gate, so baro is enough — this data view
+ * carries no GNSS altitude and `heightAglFt` falls back to baro accordingly.)
  */
 import type { Aircraft } from "../data/adsb";
-import { altAboveFieldFt } from "./assignRunway";
 import { haversineMeters, type LatLon } from "../lib/geo";
+import { heightAglFt } from "./gpws";
 
 /** Ignore aircraft higher than this above the field — too high to hear on the ground. */
 export const FENCE_CEILING_FT = 10000;
@@ -30,7 +31,7 @@ export function insideFence(
   ceilingFt: number = FENCE_CEILING_FT,
 ): { hex: string; distM: number }[] {
   return aircraft
-    .filter((a) => altAboveFieldFt(a, fieldElevationFt) <= ceilingFt)
+    .filter((a) => heightAglFt(a, fieldElevationFt) <= ceilingFt)
     .map((a) => ({ hex: a.hex, distM: haversineMeters(user, { lat: a.lat, lon: a.lon }) }))
     .filter((a) => a.distM <= radiusM)
     .sort((x, y) => x.distM - y.distM);
@@ -50,6 +51,6 @@ export function stillInFence(
   exitMarginM: number = FENCE_EXIT_MARGIN_M,
 ): boolean {
   if (!ac) return false;
-  if (altAboveFieldFt(ac, fieldElevationFt) > ceilingFt) return false;
+  if (heightAglFt(ac, fieldElevationFt) > ceilingFt) return false;
   return haversineMeters(user, { lat: ac.lat, lon: ac.lon }) <= radiusM + exitMarginM;
 }
