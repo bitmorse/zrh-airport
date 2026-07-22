@@ -11,6 +11,7 @@ import {
   type DepartureEvent,
   type DepartureMemory,
 } from "../domain/departures";
+import { buildFlightStates, type FlightState } from "../domain/flightState";
 import { detectMovements, type Movement } from "../domain/movements";
 import type { TrailPoint } from "../data/watchStore";
 import {
@@ -57,13 +58,19 @@ const EMPTY_ARRIVALS: Arrival[] = [];
 const EMPTY_DEPARTURES: DepartureEvent[] = [];
 const EMPTY_TRAIL: TrailPoint[] = [];
 const EMPTY_MOVEMENTS: Movement[] = [];
+const EMPTY_FLIGHTS: FlightState[] = [];
+const EMPTY_BY_HEX: ReadonlyMap<string, FlightState> = new Map();
 
 interface Trail {
   points: TrailPoint[];
   lastSeen: number;
 }
 
-export interface LiveTraffic {
+export interface WorldState {
+  /** The canonical joined state — one record per aircraft, plus a hex index. Prefer
+   *  these over re-joining the parallel arrays below (which are kept for now). */
+  flights: FlightState[];
+  byHex: ReadonlyMap<string, FlightState>;
   aircraft: AircraftWithAssignment[];
   arrivals: Arrival[];
   departures: DepartureEvent[];
@@ -84,7 +91,7 @@ export interface LiveTraffic {
   newMovements: Movement[];
 }
 
-export function useLiveTraffic(settings: Settings, airport: Airport): LiveTraffic {
+export function useLiveTraffic(settings: Settings, airport: Airport): WorldState {
   const [counts, setCounts] = useState<Record<string, number>>({});
   const prevGs = useRef(new Map<string, number>());
   const holdingSince = useRef(new Map<string, number>());
@@ -245,9 +252,21 @@ export function useLiveTraffic(settings: Settings, airport: Airport): LiveTraffi
         departures.some((d) => d.phase === "holding" || d.phase === "roll") ||
         arrivals.some((a) => a.etaSeconds < FAST_ARRIVAL_S);
 
+      // Assemble the canonical joined state once, now that every input for this poll is
+      // final (assignment, heading, arrival, departure).
+      const { flights, byHex } = buildFlightStates(
+        withAssignment,
+        arrivals,
+        departures,
+        airport.config.fieldElevationFt,
+        airport.config.geoidFt ?? 0,
+      );
+
       return {
         snap,
         withAssignment,
+        flights,
+        byHex,
         counts: freshCounts,
         arrivals,
         departures,
@@ -280,6 +299,8 @@ export function useLiveTraffic(settings: Settings, airport: Airport): LiveTraffi
   );
 
   return {
+    flights: query.data?.flights ?? EMPTY_FLIGHTS,
+    byHex: query.data?.byHex ?? EMPTY_BY_HEX,
     aircraft: query.data?.withAssignment ?? EMPTY_AIRCRAFT,
     arrivals: query.data?.arrivals ?? EMPTY_ARRIVALS,
     departures: query.data?.departures ?? EMPTY_DEPARTURES,

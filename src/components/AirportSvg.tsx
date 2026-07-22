@@ -1,5 +1,6 @@
 import { memo, useEffect, useRef } from "react";
 import type { CurrentWind } from "../data/airportWeather";
+import type { FlightState } from "../domain/flightState";
 import { useAirport } from "../hooks/useAirport";
 import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
 import { useViewport } from "../hooks/useViewport";
@@ -15,6 +16,7 @@ import { MyLocationIcon, RefreshIcon, ZoomInIcon, ZoomOutIcon } from "./icons";
 
 function AirportSvgImpl({
   aircraft,
+  byHex,
   counts,
   lastUpdated,
   selectedHex,
@@ -30,6 +32,8 @@ function AirportSvgImpl({
   wind,
 }: {
   aircraft: AircraftWithAssignment[];
+  /** Canonical joined state — used to resolve the selected aircraft (one index lookup). */
+  byHex?: ReadonlyMap<string, FlightState>;
   counts: Record<string, number>;
   lastUpdated: number | null;
   selectedHex?: string | null;
@@ -69,7 +73,7 @@ function AirportSvgImpl({
       focusedHex.current = null;
       return;
     }
-    const sel = aircraft.find((a) => a.ac.hex === selectedHex);
+    const sel = byHex?.get(selectedHex);
     if (!sel) return; // not in this poll yet — retry on the next
     const target = projectToSvg(airport.config.arp, { lat: sel.ac.lat, lon: sel.ac.lon });
     const fieldCenter = { x: SVG_W / 2, y: SVG_H / 2 };
@@ -79,7 +83,7 @@ function AirportSvgImpl({
     } else if (!isTargetVisible(target)) {
       focusOn(target, fieldCenter); // drifted off-screen → snap back once
     }
-  }, [selectedHex, aircraft, airport, focusOn, isTargetVisible]);
+  }, [selectedHex, byHex, airport, focusOn, isTargetVisible]);
 
   return (
     <div className="relative h-full w-full">
@@ -147,7 +151,7 @@ function AirportSvgImpl({
       {trail && (
         <TrailLayer
           points={trail}
-          ac={aircraft.find((a) => a.ac.hex === selectedHex)?.ac}
+          ac={selectedHex ? byHex?.get(selectedHex)?.ac : undefined}
           lastUpdated={lastUpdated}
         />
       )}

@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Aircraft } from "../data/adsb";
 import type { DepartureEvent } from "../domain/departures";
+import { buildFlightStates } from "../domain/flightState";
 import type { Arrival } from "../domain/predictions";
 import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
 import { TrafficBar } from "./TrafficBar";
@@ -33,6 +34,13 @@ function acItem(hex: string, type: string | null): AircraftWithAssignment {
   return { ac: { hex, type } as unknown as Aircraft, assignment: null };
 }
 
+/** The canonical byHex index the bar reads (aircraft type + departure phase word). */
+const byHexOf = (
+  items: AircraftWithAssignment[],
+  arrivals: Arrival[] = [],
+  departures: DepartureEvent[] = [],
+) => buildFlightStates(items, arrivals, departures, 0, 0).byHex;
+
 beforeEach(() => {
   localStorage.clear();
   h.route = null;
@@ -42,10 +50,12 @@ afterEach(cleanup);
 describe("TrafficBar", () => {
   it("renders a departure in the same row format (no chips) with a live timer", () => {
     const onSelect = vi.fn();
+    const dep = holding("d1", "THA936", NOW - 37_000);
     const { container } = render(
       <TrafficBar
         arrivals={[arrival]}
-        departures={[holding("d1", "THA936", NOW - 37_000)]}
+        departures={[dep]}
+        byHex={byHexOf([acItem("d1", null)], [arrival], [dep])}
         now={NOW}
         lastUpdated={NOW}
         onSelect={onSelect}
@@ -71,11 +81,12 @@ describe("TrafficBar", () => {
       origin: { iata: "YYZ" },
       destination: { iata: "ZRH" },
     };
+    const dep = holding("d1", "EJU69MT", NOW - 13_000);
     render(
       <TrafficBar
         arrivals={[arrival]}
-        departures={[holding("d1", "EJU69MT", NOW - 13_000)]}
-        aircraft={[acItem("arr1", "B77L"), acItem("d1", "A320")]}
+        departures={[dep]}
+        byHex={byHexOf([acItem("arr1", "B77L"), acItem("d1", "A320")], [arrival], [dep])}
         now={NOW}
         lastUpdated={NOW}
       />,
@@ -174,7 +185,7 @@ describe("TrafficBar", () => {
       <TrafficBar
         arrivals={[arrival]}
         departures={[]}
-        aircraft={[acItem("arr1", "B77L"), acItem("wander", "C25A")]}
+        byHex={byHexOf([acItem("arr1", "B77L"), acItem("wander", "C25A")])}
         now={NOW}
         lastUpdated={NOW}
         selectedHex="wander"

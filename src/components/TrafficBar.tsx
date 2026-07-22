@@ -1,8 +1,8 @@
 import type { DepartureEvent } from "../domain/departures";
-import { flightStatusLabel, type FlightStatus } from "../domain/flightStatus";
+import type { FlightState } from "../domain/flightState";
+import type { FlightStatus } from "../domain/flightStatus";
 import type { Arrival } from "../domain/predictions";
 import { buildQueues } from "../domain/queue";
-import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
 import { useFlightRoute } from "../hooks/useFlightRoute";
 import { formatDuration, formatEta, routePairText } from "../lib/format";
 import { elapsedSec } from "../lib/reckon";
@@ -155,7 +155,7 @@ function ArrivalRow({
 export function TrafficBar({
   arrivals,
   departures,
-  aircraft = [],
+  byHex,
   now,
   lastUpdated,
   stale,
@@ -165,7 +165,8 @@ export function TrafficBar({
 }: {
   arrivals: Arrival[];
   departures: DepartureEvent[];
-  aircraft?: AircraftWithAssignment[];
+  /** Canonical joined state, for aircraft type + the departure phase word (one source). */
+  byHex?: ReadonlyMap<string, FlightState>;
   now: number;
   lastUpdated: number | null;
   stale?: boolean;
@@ -174,11 +175,9 @@ export function TrafficBar({
   selectedStatus?: FlightStatus | null;
   onSelect?: (hex: string) => void;
 }) {
-  const typeByHex = new Map(aircraft.map((w) => [w.ac.hex, w.ac.type]));
+  const typeOf = (hex: string) => byHex?.get(hex)?.ac.type ?? null;
   const queues = buildQueues({ arrivals, departures, selectedHex });
-  const orphan = queues.orphanHex
-    ? aircraft.find((w) => w.ac.hex === queues.orphanHex)
-    : undefined;
+  const orphan = queues.orphanHex ? byHex?.get(queues.orphanHex) : undefined;
 
   return (
     <div className="w-full divide-y divide-border overflow-hidden border border-border bg-surface-container-low">
@@ -187,7 +186,7 @@ export function TrafficBar({
           <ArrivalRow
             key={a.hex}
             arrival={a}
-            type={typeByHex.get(a.hex)}
+            type={typeOf(a.hex)}
             now={now}
             lastUpdated={lastUpdated}
             stale={stale}
@@ -204,14 +203,16 @@ export function TrafficBar({
       )}
 
       {queues.departures.map((d) => {
-        const { secondary, time, timeClass } = depRow(d, now);
+        const { time, timeClass } = depRow(d, now);
+        // The phase word comes from the canonical FlightState (single vocabulary).
+        const word = byHex?.get(d.hex)?.status.label;
         return (
           <TrafficRow
             key={d.hex}
             icon={<TakeoffIcon size={16} />}
             end={d.end}
             callsign={d.callsign}
-            secondary={secondaryOf(typeByHex.get(d.hex), secondary)}
+            secondary={secondaryOf(typeOf(d.hex), word)}
             time={time}
             timeClass={timeClass}
             selected={d.hex === selectedHex}
@@ -241,30 +242,21 @@ export function TrafficBar({
 }
 
 /**
- * Right-aligned timer and its colour for a departure row. The state *word* comes from the
- * shared `flightStatusLabel` (one vocabulary across the board and detail panel); this
- * helper only owns the board's timer presentation. The departure branch of
- * `flightStatusLabel` reads `phase` alone, so a minimal `ac` is fine here.
+ * Right-aligned timer and its colour for a departure row. Owns only the timer
+ * presentation; the phase *word* is read from the canonical FlightState by the caller.
  */
-function depRow(d: DepartureEvent, now: number): {
-  secondary: string;
-  time: string;
-  timeClass: string;
-} {
-  const secondary = flightStatusLabel({ ac: { onGround: true, gs: d.gsKt ?? 0 }, departure: d }).label ?? "";
+function depRow(d: DepartureEvent, now: number): { time: string; timeClass: string } {
   if (d.phase === "holding") {
     return {
-      secondary,
       time: d.holdingSinceMs != null ? formatDuration((now - d.holdingSinceMs) / 1000) : "—",
       timeClass: "text-status-departure",
     };
   }
   if (d.phase === "roll") {
     return {
-      secondary,
       time: d.waitedMs != null ? formatDuration(d.waitedMs / 1000) : "now",
       timeClass: "text-status-cleared",
     };
   }
-  return { secondary, time: "↑", timeClass: "text-on-surface-variant" };
+  return { time: "↑", timeClass: "text-on-surface-variant" };
 }

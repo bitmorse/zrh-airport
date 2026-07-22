@@ -30,8 +30,6 @@ import {
   RELEASE_AGL_FT,
   shouldRelease,
 } from "./domain/autoSelect";
-import { flightStatusLabel } from "./domain/flightStatus";
-import { heightAglFt } from "./domain/gpws";
 import {
   byRunway,
   hasActivity,
@@ -54,7 +52,7 @@ import {
 } from "./hooks/useAutoNoiseTrigger";
 import { useDeviceHeading, requestHeadingPermission } from "./hooks/useDeviceHeading";
 import { useGeoWatch, type GeoFix } from "./hooks/useGeoWatch";
-import { useLiveTraffic } from "./hooks/useLiveTraffic";
+import { useLiveTraffic, type AircraftWithAssignment } from "./hooks/useLiveTraffic";
 import { useNoiseRecorder, type Recording } from "./hooks/useNoiseRecorder";
 import { useNow } from "./hooks/useNow";
 import { useSettings } from "./hooks/useSettings";
@@ -120,22 +118,22 @@ export default function App() {
     trailFor: traffic.trailFor,
   });
 
-  const selectedAircraft = useMemo(
-    () => traffic.aircraft.find((a) => a.ac.hex === selectedHex) ?? null,
-    [traffic.aircraft, selectedHex],
+  // One lookup in the canonical index feeds everything about the selection. The status
+  // phrase and the AGL are already computed on the FlightState (single source), so the
+  // board, detail panel and map all read the same values.
+  const selectedFlight = selectedHex ? traffic.byHex.get(selectedHex) ?? null : null;
+  const selectedStatus = selectedFlight?.status ?? null;
+  const selectedAircraft = useMemo<AircraftWithAssignment | null>(
+    () =>
+      selectedFlight
+        ? {
+            ac: selectedFlight.ac,
+            assignment: selectedFlight.assignment,
+            heading: selectedFlight.heading ?? undefined,
+          }
+        : null,
+    [selectedFlight],
   );
-
-  // A meaningful phase phrase for the selected aircraft (e.g. "just landed"), from its
-  // live arrival/departure record + ground state — shared by the detail panel and board.
-  const selectedStatus = useMemo(() => {
-    if (!selectedAircraft) return null;
-    return flightStatusLabel({
-      ac: selectedAircraft.ac,
-      assignment: selectedAircraft.assignment,
-      arrival: traffic.arrivals.find((a) => a.hex === selectedHex),
-      departure: traffic.departures.find((d) => d.hex === selectedHex),
-    });
-  }, [selectedAircraft, traffic.arrivals, traffic.departures, selectedHex]);
 
   // Auto-select an interesting flight when the user has left the selection empty for
   // a while; hand off to the next once the tracked one lands & stops, leaves the feed,
@@ -149,10 +147,10 @@ export default function App() {
 
     const curAuto = selSourceRef.current === "auto" ? selectedHexRef.current : null;
     if (curAuto) {
-      const ac = traffic.aircraft.find((w) => w.ac.hex === curAuto)?.ac;
+      const flight = traffic.byHex.get(curAuto);
+      const ac = flight?.ac;
       const climbing = !!ac && !ac.onGround && (ac.verticalRateFpm ?? 0) > 100;
-      const climbedOut =
-        !!ac && climbing && heightAglFt(ac, fieldElevationFt, geoidFt) > RELEASE_AGL_FT;
+      const climbedOut = !!flight && climbing && flight.aglFt > RELEASE_AGL_FT;
       if (!shouldRelease(ac, climbedOut)) return; // keep tracking the current one
     }
     const next = pickInteresting(
@@ -174,6 +172,7 @@ export default function App() {
     traffic.arrivals,
     traffic.departures,
     traffic.aircraft,
+    traffic.byHex,
     airport,
     fieldElevationFt,
     geoidFt,
@@ -411,8 +410,8 @@ export default function App() {
   );
 
   const activeCount = useMemo(
-    () => traffic.aircraft.filter((a) => a.assignment).length,
-    [traffic.aircraft],
+    () => traffic.flights.filter((f) => f.active).length,
+    [traffic.flights],
   );
 
   // Two windows of the backend collector's real history:
@@ -629,7 +628,7 @@ export default function App() {
         <TrafficBar
           arrivals={arrivals}
           departures={traffic.departures}
-          aircraft={traffic.aircraft}
+          byHex={traffic.byHex}
           now={now}
           lastUpdated={traffic.lastUpdated}
           stale={stale}
@@ -643,6 +642,7 @@ export default function App() {
         <section className="relative aspect-[28/25] w-full overflow-hidden border border-border bg-surface-container-lowest lg:h-[calc(100dvh-6rem)] lg:w-auto lg:min-w-0 lg:flex-none">
           <AirportSvg
             aircraft={traffic.aircraft}
+            byHex={traffic.byHex}
             counts={heatCounts}
             lastUpdated={traffic.lastUpdated}
             selectedHex={selectedHex}
@@ -666,7 +666,7 @@ export default function App() {
             <TrafficBar
               arrivals={arrivals}
               departures={traffic.departures}
-              aircraft={traffic.aircraft}
+              byHex={traffic.byHex}
               now={now}
               lastUpdated={traffic.lastUpdated}
               stale={stale}
