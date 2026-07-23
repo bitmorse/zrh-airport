@@ -80,6 +80,50 @@ describe("FlightDetails route sanity-check", () => {
     expect(screen.queryByText(/inbound leg/i)).toBeNull();
   });
 
+  it("renders the AeroAPI schedule (status, gate, times) for a searched flight", () => {
+    h.route = null; // off radar: no adsbdb route, only the AeroAPI lookup
+    render(
+      <AirportContext.Provider value={AP}>
+        <FlightDetails
+          item={item(0)}
+          status={{ label: null }}
+          lastUpdated={1_000_000}
+          lookup={{
+            faFlightId: "AUA146-1",
+            identIata: "OS146",
+            aircraftType: "A320",
+            operator: "Austrian",
+            status: "Scheduled",
+            progressPercent: 0,
+            cancelled: false,
+            diverted: false,
+            positionOnly: false,
+            origin: { icao: "LSZH", iata: "ZRH", name: "Zurich", city: "Zurich" },
+            destination: { icao: "LOWW", iata: "VIE", name: "Vienna", city: "Vienna" },
+            gateOrigin: "A84",
+            gateDestination: "F",
+            terminalDestination: "3",
+            scheduledOut: "2026-07-23T18:50:00Z",
+            estimatedOut: "2026-07-23T19:00:00Z",
+            departureDelay: 600,
+            scheduledIn: "2026-07-23T20:10:00Z",
+            estimatedIn: "2026-07-23T20:13:00Z",
+            arrivalDelay: 180,
+          } as unknown as Parameters<typeof FlightDetails>[0]["lookup"]}
+          cockpitActive={false}
+          cockpitAudio={false}
+          onClear={() => {}}
+        />
+      </AirportContext.Provider>,
+    );
+    expect(screen.getByText("Scheduled")).toBeInTheDocument(); // status pill from AeroAPI
+    expect(screen.getAllByText(/Departs/).length).toBeGreaterThan(0); // headline + row
+    expect(screen.getByText(/gate A84/)).toBeInTheDocument();
+    expect(screen.getByText(/gate F · T3/)).toBeInTheDocument();
+    expect(screen.getByText(/FlightAware/)).toBeInTheDocument();
+    expect(screen.getAllByText("+10m").length).toBeGreaterThan(0); // 600 s departure delay
+  });
+
   it("shows the flight number, aircraft type and airline as a status card", () => {
     renderCard(item(-800));
     expect(screen.getByText("UX81TY")).toBeInTheDocument(); // IATA flight number

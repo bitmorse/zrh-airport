@@ -252,10 +252,7 @@ export default function App() {
         ? "Estimated — last known position"
         : `Estimated — last seen ${mins} min ago`;
     }
-    if (src === "origin") {
-      const gate = tracked.lookup?.gateOrigin ? ` · gate ${tracked.lookup.gateOrigin}` : "";
-      return `Estimated — not broadcasting yet, shown at its origin${gate}${status}`;
-    }
+    if (src === "origin") return "Estimated — not broadcasting yet, shown at its origin";
     return null; // live ADS-B — no note
   }, [selectedHex, trackedHex, tracked.positionSource, tracked.lookup, tracked.lastLiveAt, now]);
 
@@ -809,6 +806,7 @@ export default function App() {
               status={selectedStatus}
               lastUpdated={traffic.lastUpdated}
               estimatedNote={estimatedNote}
+              lookup={selectedHex === trackedHex ? tracked.lookup : null}
               cockpitActive={cockpitActive}
               cockpitAudio={cockpitAudio}
               onClear={clearSelection}
