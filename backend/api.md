@@ -297,6 +297,87 @@ if the source omitted it.
 
 ---
 
+## `GET /flight/{ident}`  *(on-request; FlightAware AeroAPI)*
+
+Look up a flight by **designator** (ICAO callsign or flight number, e.g. `SWR72`)
+to complement the live ADS-B feed — used when the frontend searches for a flight
+that isn't on the local radar: one **parked at the gate** that hasn't pushed back,
+or one just outside the query radius. Unlike the movement/weather endpoints, this
+proxies a **paid** upstream (FlightAware), so it is only called on an explicit user
+action, is cached server-side, and is capped per day.
+
+The AeroAPI key stays on the server (set via `AEROAPI_KEY`); the browser only ever
+talks to this backend. Returns the flight leg most relevant to now (an in-progress
+leg wins, else the nearest scheduled one).
+
+```
+GET /airports-api/flight/SWR72
+```
+
+**200**
+
+```json
+{
+  "faFlightId": "SWR72-1721736000-airline-0123",
+  "ident": "SWR72", "identIcao": "SWR72", "identIata": "LX72",
+  "registration": "HBJHA", "aircraftType": "A333",
+  "operator": "SWR", "operatorIcao": "SWR", "flightNumber": "72",
+  "status": "Scheduled", "progressPercent": 0,
+  "cancelled": false, "diverted": false, "positionOnly": false,
+  "origin": { "icao": "LSZH", "iata": "ZRH", "name": "Zurich", "city": "Zurich" },
+  "destination": { "icao": "KJFK", "iata": "JFK", "name": "John F Kennedy Intl", "city": "New York" },
+  "gateOrigin": "B27", "gateDestination": null,
+  "terminalOrigin": "1", "terminalDestination": null, "baggageClaim": null,
+  "scheduledOut": "2026-07-23T12:30:00Z", "estimatedOut": "2026-07-23T12:40:00Z", "actualOut": null,
+  "scheduledOff": null, "estimatedOff": null, "actualOff": null,
+  "scheduledOn": null, "estimatedOn": null, "actualOn": null,
+  "scheduledIn": null, "estimatedIn": null, "actualIn": null,
+  "departureDelay": 600, "arrivalDelay": null,
+  "route": "KLO2S SPR ...", "routeDistance": null, "filedAltitude": null, "filedAirspeed": null,
+  "cached": false, "generatedAt": 1784548800000
+}
+```
+
+All fields except the booleans may be `null`. Times are ISO8601 strings (UTC) as
+provided upstream; `departureDelay`/`arrivalDelay` are seconds; `progressPercent`
+0–100. `cached` is `true` when served from the short-TTL cache (and `stale: true`
+is added if served past TTL because the daily cap was hit).
+
+## `GET /flight/{faFlightId}/position`  *(on-request; FlightAware AeroAPI)*
+
+Last known position for a flight, using the `faFlightId` from the call above — to
+pin a searched/parked flight on the map. `last_position` may be absent (a truly
+parked jet has no live fix); then the `lat`/`lon`/… fields are `null` but the call
+still returns `200` with the flight's identity.
+
+```
+GET /airports-api/flight/SWR72-1721736000-airline-0123/position
+```
+
+**200**
+
+```json
+{
+  "faFlightId": "SWR72-1721736000-airline-0123", "ident": "SWR72", "aircraftType": "A333",
+  "origin": { "icao": "LSZH", "iata": "ZRH", "name": "Zurich", "city": "Zurich" },
+  "destination": { "icao": "KJFK", "iata": "JFK", "name": "John F Kennedy Intl", "city": "New York" },
+  "lat": 47.46, "lon": 8.55, "heading": 163, "altitude": 20,
+  "altitudeChange": "C", "groundspeed": 140, "updateType": "A",
+  "timestamp": "2026-07-23T12:00:00Z",
+  "cached": false, "generatedAt": 1784548800000
+}
+```
+
+`altitude` is in hundreds of feet / flight level (AeroAPI convention); `updateType`
+is the position source (`A`=ADS-B, `X`=surface, `Z`=radar, …).
+
+**Deployment:** set `SetEnv AEROAPI_KEY <key>` in the web `.htaccess`, and ensure
+the cache directory (`flightCacheDir`, default `backend/data/flightcache`, or
+`ZRH_FLIGHT_CACHE`) is **writable by the web user** — it holds the response cache
+and the daily-call counter. With no key set, both endpoints return `501`.
+
+---
+
 ## Errors
 
 All errors are JSON with an `error` string.
@@ -305,7 +386,12 @@ All errors are JSON with an `error` string.
 |--------|------|------|
 | `404` | `{"error":"not found"}` | Path matches no route (e.g. the bare `/airports-api`) |
 | `404` | `{"error":"unknown airport"}` | `{icao}` isn't a configured airport |
+| `404` | `{"error":"flight not found"}` | `/flight/{ident}` — no matching flight upstream |
+| `400` | `{"error":"invalid ident"}` | `/flight/{ident}` — ident isn't 2–12 alphanumerics |
 | `405` | *(empty; `Allow: GET, HEAD, OPTIONS`)* | Non-GET/HEAD verb |
+| `429` | `{"error":"daily flight-lookup limit reached"}` | `/flight/*` — daily AeroAPI cap hit and nothing cached |
+| `501` | `{"error":"flight lookup not configured"}` | `/flight/*` — no `AEROAPI_KEY` configured |
+| `502` | `{"error":"flight provider …"}` | `/flight/*` — upstream error/unavailable/auth |
 | `500` | `{"error":"internal error"}` | Server-side failure (e.g. DB unreadable) |
 
 `OPTIONS` preflight returns `204` with CORS headers.
