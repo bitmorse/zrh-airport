@@ -2,26 +2,9 @@ import { useState } from "react";
 import type { TrackedFlight } from "../hooks/useTrackedFlight";
 import { useNow } from "../hooks/useNow";
 import { useSettings } from "../hooks/useSettings";
-import { haversineMeters } from "../lib/geo";
+import { etaToDestination, humanDuration, localHhmm } from "../lib/flightEta";
 import { formatAltitude, formatSpeed } from "../lib/format";
 import { CloseIcon, ExternalLinkIcon } from "./icons";
-
-const M_TO_NM = 1 / 1852;
-
-/** "1h 12m" / "12m" / "<1m" from seconds. */
-function humanDuration(sec: number): string {
-  if (sec < 60) return "<1m";
-  const h = Math.floor(sec / 3600);
-  const m = Math.round((sec % 3600) / 60);
-  return h ? `${h}h ${m}m` : `${m}m`;
-}
-
-/** Local wall-clock HH:MM. */
-function hhmm(ms: number): string {
-  return new Intl.DateTimeFormat([], { hour: "2-digit", minute: "2-digit", hour12: false }).format(
-    new Date(ms),
-  );
-}
 
 interface Phase {
   label: string;
@@ -58,14 +41,9 @@ export function FlightReadout({ tracked, onExit }: { tracked: TrackedFlight; onE
   const dest = route?.destination ?? null;
 
   // ETA to destination from current position + groundspeed + great-circle distance.
-  let etaText: string | null = null;
-  let destTime: string | null = null;
-  if (ac && !ac.onGround && (ac.gs ?? 0) > 40 && dest?.lat != null && dest.lon != null) {
-    const remNm = haversineMeters({ lat: ac.lat, lon: ac.lon }, { lat: dest.lat, lon: dest.lon }) * M_TO_NM;
-    const etaSec = (remNm / (ac.gs as number)) * 3600;
-    etaText = humanDuration(etaSec);
-    destTime = hhmm(now + etaSec * 1000);
-  }
+  const eta = etaToDestination(ac, dest, now);
+  const etaText = eta ? humanDuration(eta.etaSec) : null;
+  const destTime = eta ? localHhmm(eta.arriveAtMs) : null;
 
   const headline =
     tracked.status === "searching"

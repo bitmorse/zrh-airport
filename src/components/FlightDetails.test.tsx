@@ -79,4 +79,13 @@ describe("FlightDetails route sanity-check", () => {
     expect(screen.getByText("MAD")).toBeInTheDocument();
     expect(screen.queryByText(/inbound leg/i)).toBeNull();
   });
+
+  it("shows the flight number, aircraft type and airline as a status card", () => {
+    renderCard(item(-800));
+    expect(screen.getByText("UX81TY")).toBeInTheDocument(); // IATA flight number
+    expect(screen.getByText("B738")).toBeInTheDocument(); // aircraft type (header)
+    expect(screen.getByText(/Air Europa/)).toBeInTheDocument(); // airline
+    expect(screen.getByText(/Boeing 737-800/)).toBeInTheDocument(); // type description
+    expect(screen.getByText(/EC-LXV/)).toBeInTheDocument(); // registration
+  });
 });
