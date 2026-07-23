@@ -6,10 +6,17 @@ import type { Aircraft } from "../data/adsb";
 import type { FlightRoute } from "../data/flightInfo";
 
 const fetchTracked = vi.hoisted(() => vi.fn());
+const fetchLookup = vi.hoisted(() => vi.fn());
+const fetchPosition = vi.hoisted(() => vi.fn());
 const routeState = vi.hoisted(() => ({ data: null as FlightRoute | null }));
 vi.mock("../data/flightQuery", () => ({
   fetchTrackedAircraft: fetchTracked,
   normalizeQuery: (s: string) => s.trim().toUpperCase().replace(/[\s-]/g, ""),
+  classifyQuery: (s: string) => (/^[a-z]{2,3}\s?\d{1,4}[a-z]?$/i.test(s.trim()) ? "flight" : "reg"),
+}));
+vi.mock("../data/flightLookup", () => ({
+  fetchFlightLookup: fetchLookup,
+  fetchFlightPosition: fetchPosition,
 }));
 vi.mock("./useFlightRoute", () => ({ useFlightRoute: () => routeState }));
 
@@ -34,6 +41,8 @@ const route: FlightRoute = {
 
 beforeEach(() => {
   fetchTracked.mockReset();
+  fetchLookup.mockReset().mockResolvedValue(null); // no AeroAPI by default
+  fetchPosition.mockReset().mockResolvedValue(null);
   routeState.data = null;
 });
 
@@ -56,6 +65,27 @@ describe("useTrackedFlight", () => {
     expect(result.current.aircraft?.lon).toBeCloseTo(6.11);
     expect(result.current.aircraft?.onGround).toBe(true);
     expect(result.current.aircraft?.hex.startsWith("est-")).toBe(true);
+  });
+
+  it("pins an off-radar flight from the paid AeroAPI position when ADS-B has nothing", async () => {
+    fetchTracked.mockResolvedValue(null); // not on our ADS-B radar
+    routeState.data = route;
+    fetchLookup.mockResolvedValue({ faFlightId: "SWR40-123", status: "Taxiing" });
+    fetchPosition.mockResolvedValue({
+      faFlightId: "SWR40-123",
+      ident: "SWR40",
+      lat: 47.46,
+      lon: 8.55,
+      altitude: 3, // hundreds of feet → 300 ft
+      groundspeed: 15,
+      heading: 120,
+      updateType: "X",
+    });
+    const { result } = renderHook(() => useTrackedFlight("LX40"), { wrapper });
+    await waitFor(() => expect(result.current.positionSource).toBe("lookup"));
+    expect(result.current.aircraft?.lat).toBeCloseTo(47.46);
+    expect(result.current.aircraft?.altFt).toBe(300); // ×100 unit conversion
+    expect(result.current.lookup?.status).toBe("Taxiing");
   });
 
   it("stays empty while searching with no route to guess from", async () => {
