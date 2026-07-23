@@ -30,4 +30,17 @@ return [
     // How many past days each fetch requests (Open-Meteo allows up to 92). >1 lets
     // a restart/outage backfill the gap instead of leaving a permanent hole.
     'weatherPastDays' => 7,
+
+    // --- On-request FlightAware AeroAPI proxy (optional; see src/FlightInfo.php) ---
+    // The key is read from the environment so it never lands in the repo. On NFS set
+    // it with Apache `SetEnv AEROAPI_KEY …` in .htaccess. With no key, /flight/* just
+    // returns 501 "not configured" and the rest of the API is unaffected.
+    'aeroApiKey' => $env('AEROAPI_KEY') ?: null,
+    'aeroApiBase' => $env('AEROAPI_BASE') ?: 'https://aeroapi.flightaware.com/aeroapi',
+    // Small file cache + daily fuse. Must be WRITABLE BY THE WEB USER (unlike the DB).
+    // Default sits in backend/data; override with ZRH_FLIGHT_CACHE on NFS.
+    'flightCacheDir' => $env('ZRH_FLIGHT_CACHE') ?: __DIR__ . '/../data/flightcache',
+    'flightInfoTtlSeconds' => 300,     // gate/schedule drift slowly → 5 min
+    'flightPositionTtlSeconds' => 60,  // a moving aircraft → 1 min
+    'flightDailyCap' => 500,           // hard ceiling on billed AeroAPI calls per UTC day
 ];

@@ -46,6 +46,7 @@ function zrh_backend_root(string $start): string
 }
 
 use Zrh\Api;
+use Zrh\FlightInfo;
 use Zrh\Store;
 
 $cfg = require $root . '/config/app.php';
@@ -64,31 +65,41 @@ if ($method === 'OPTIONS') {
     exit;
 }
 
-// Airport allowlist. A missing/malformed config is a deployment error, not a
-// per-request one — fail clearly rather than degrading every airport to "unknown".
-$airportsRaw = @file_get_contents($cfg['airports']);
-$airportsCfg = is_string($airportsRaw) ? json_decode($airportsRaw, true) : null;
-if (!is_array($airportsCfg) || $airportsCfg === []) {
-    http_response_code(500);
-    header('Content-Type: application/json; charset=utf-8');
-    header('Access-Control-Allow-Origin: *');
-    echo json_encode(['error' => 'airport config unavailable']);
-    exit;
-}
-$airports = array_keys($airportsCfg);
+$reqUri = $_SERVER['REQUEST_URI'] ?? '/';
 
 try {
-    // Read-only: the API only ever SELECTs, and the web user usually can't write
-    // the DB. The collector (running as the file owner) creates and writes it.
-    // A missing DB (collector hasn't run yet) is degraded-but-up, not a 500:
-    // pass a null store so /health can report it and data endpoints return empty.
-    $store = is_file($cfg['db']) ? Store::openReader($cfg['db']) : null;
-    $res = Api::handle($store, $_SERVER['REQUEST_URI'] ?? '/', $_GET, [
-        'airports' => $airports,
-        'nowMs' => (int) (microtime(true) * 1000),
-        'defaultWindowDays' => (int) $cfg['defaultWindowDays'],
-        'maxWindowDays' => (int) $cfg['maxWindowDays'],
-    ]);
+    if (FlightInfo::matches($reqUri)) {
+        // On-request AeroAPI proxy: no DB or airport allowlist needed; it does its
+        // own network fetch (server-side key), caching and daily cost fuse.
+        $res = FlightInfo::handle($reqUri, $_GET, [
+            'apiKey' => $cfg['aeroApiKey'],
+            'base' => (string) $cfg['aeroApiBase'],
+            'nowMs' => (int) (microtime(true) * 1000),
+            'cacheDir' => (string) $cfg['flightCacheDir'],
+            'infoTtlMs' => (int) $cfg['flightInfoTtlSeconds'] * 1000,
+            'posTtlMs' => (int) $cfg['flightPositionTtlSeconds'] * 1000,
+            'dailyCap' => (int) $cfg['flightDailyCap'],
+        ]);
+    } else {
+        // Airport allowlist. A missing/malformed config is a deployment error, not a
+        // per-request one — fail clearly rather than degrading every airport to "unknown".
+        $airportsRaw = @file_get_contents($cfg['airports']);
+        $airportsCfg = is_string($airportsRaw) ? json_decode($airportsRaw, true) : null;
+        if (!is_array($airportsCfg) || $airportsCfg === []) {
+            throw new \RuntimeException('airport config unavailable');
+        }
+        // Read-only: the API only ever SELECTs, and the web user usually can't write
+        // the DB. The collector (running as the file owner) creates and writes it.
+        // A missing DB (collector hasn't run yet) is degraded-but-up, not a 500:
+        // pass a null store so /health can report it and data endpoints return empty.
+        $store = is_file($cfg['db']) ? Store::openReader($cfg['db']) : null;
+        $res = Api::handle($store, $reqUri, $_GET, [
+            'airports' => array_keys($airportsCfg),
+            'nowMs' => (int) (microtime(true) * 1000),
+            'defaultWindowDays' => (int) $cfg['defaultWindowDays'],
+            'maxWindowDays' => (int) $cfg['maxWindowDays'],
+        ]);
+    }
 } catch (\Throwable $e) {
     $res = [
         'status' => 500,
