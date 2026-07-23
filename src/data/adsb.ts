@@ -82,19 +82,30 @@ interface RawAircraft {
   r?: string;
 }
 
-/** No-key, CORS-enabled, ADSBExchange-compatible providers, tried in order. */
-const PROVIDERS: { name: string; url: (c: LatLon, distNm: number) => string }[] = [
+/**
+ * No-key, CORS-enabled, ADSBExchange-compatible providers, tried in order. `base` is the
+ * v2 API root; `near` builds the radius query path, and the global point lookups
+ * (`/callsign|hex|reg/{value}`, used by the follow-a-flight feature) hang off `base`.
+ */
+const PROVIDERS: {
+  name: string;
+  base: string;
+  near: (c: LatLon, distNm: number) => string;
+}[] = [
   {
     name: "adsb.lol",
-    url: (c, d) => `https://api.adsb.lol/v2/lat/${c.lat}/lon/${c.lon}/dist/${d}`,
+    base: "https://api.adsb.lol/v2",
+    near: (c, d) => `/lat/${c.lat}/lon/${c.lon}/dist/${d}`,
   },
   {
     name: "adsb.fi",
-    url: (c, d) => `https://opendata.adsb.fi/api/v2/lat/${c.lat}/lon/${c.lon}/dist/${d}`,
+    base: "https://opendata.adsb.fi/api/v2",
+    near: (c, d) => `/lat/${c.lat}/lon/${c.lon}/dist/${d}`,
   },
   {
     name: "airplanes.live",
-    url: (c, d) => `https://api.airplanes.live/v2/point/${c.lat}/${c.lon}/${d}`,
+    base: "https://api.airplanes.live/v2",
+    near: (c, d) => `/point/${c.lat}/${c.lon}/${d}`,
   },
 ];
 
@@ -199,7 +210,7 @@ export async function fetchAircraftNear(
 
   for (const provider of ordered) {
     try {
-      const res = await fetch(provider.url(center, distNm), {
+      const res = await fetch(provider.base + provider.near(center, distNm), {
         signal: withTimeout(signal, PROVIDER_TIMEOUT_MS),
         headers: { Accept: "application/json" },
       });
@@ -243,3 +254,49 @@ export async function fetchAircraftNear(
 }
 
 export const PROVIDER_NAMES = PROVIDERS.map((p) => p.name);
+
+/** Global point lookup: which ADSBExchange v2 endpoint to hit for a given key. */
+export type LookupKind = "callsign" | "hex" | "reg";
+
+/**
+ * Look up aircraft **globally** (not radius-limited) by callsign, hex or registration,
+ * failing over across the same providers as {@link fetchAircraftNear}. Returns every
+ * match `normalise` accepts (usually 0 or 1); the caller picks. An empty result means the
+ * aircraft isn't currently broadcasting / in coverage — not an error — so we return `[]`
+ * rather than throw unless every provider errors.
+ */
+export async function fetchAircraftByLookup(
+  kind: LookupKind,
+  value: string,
+  signal?: AbortSignal,
+): Promise<Aircraft[]> {
+  const path = `/${kind}/${encodeURIComponent(value.trim().toUpperCase())}`;
+  const errors: string[] = [];
+  for (const provider of PROVIDERS) {
+    try {
+      const res = await fetch(provider.base + path, {
+        signal: withTimeout(signal, PROVIDER_TIMEOUT_MS),
+        headers: { Accept: "application/json" },
+      });
+      if (!res.ok) {
+        // 404 for an unknown key is a legitimate "no match", not a provider failure.
+        if (res.status === 404) return [];
+        errors.push(`${provider.name}: HTTP ${res.status}`);
+        continue;
+      }
+      const json = (await res.json()) as { ac?: RawAircraft[] };
+      const list = Array.isArray(json.ac) ? json.ac : [];
+      const aircraft = list.map(normalise).filter((a): a is Aircraft => a !== null);
+      if (aircraft.length > 0) return aircraft;
+      // Empty from this provider: try the next (coverage differs), else fall through to [].
+      errors.push(`${provider.name}: empty`);
+    } catch (err) {
+      if (signal?.aborted) throw err;
+      errors.push(`${provider.name}: ${(err as Error).message}`);
+    }
+  }
+  // At least one provider was reachable but had no match → genuinely not broadcasting now.
+  if (errors.some((e) => e.endsWith("empty"))) return [];
+  // Otherwise every provider errored (network/HTTP) — surface it.
+  throw new Error(`ADS-B lookup failed — ${errors.join("; ")}`);
+}

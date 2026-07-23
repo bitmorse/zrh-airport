@@ -18,6 +18,8 @@ export interface FlightRoute {
   flightIata: string | null;
   airlineName: string | null;
   airlineIata: string | null;
+  /** Airline ICAO prefix (e.g. "AIC" for AI) — used to build the broadcast callsign. */
+  airlineIcao: string | null;
   origin: Airport | null;
   destination: Airport | null;
 }
@@ -63,7 +65,7 @@ export async function fetchFlightRoute(
           flightroute?: {
             callsign?: string;
             callsign_iata?: string;
-            airline?: { name?: string; iata?: string };
+            airline?: { name?: string; iata?: string; icao?: string };
             origin?: RawAirport;
             destination?: RawAirport;
           };
@@ -79,6 +81,7 @@ export async function fetchFlightRoute(
     flightIata: fr.callsign_iata ?? null,
     airlineName: fr.airline?.name ?? null,
     airlineIata: fr.airline?.iata ?? null,
+    airlineIcao: fr.airline?.icao ?? null,
     origin: mapAirport(fr.origin),
     destination: mapAirport(fr.destination),
   };
