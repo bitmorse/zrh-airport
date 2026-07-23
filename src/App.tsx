@@ -58,9 +58,9 @@ import { useLiveTraffic, type AircraftWithAssignment } from "./hooks/useLiveTraf
 import { useNoiseRecorder, type Recording } from "./hooks/useNoiseRecorder";
 import { useNow } from "./hooks/useNow";
 import { useTrackedFlight } from "./hooks/useTrackedFlight";
-import { FlightReadout } from "./components/FlightReadout";
 import { FlightSearch } from "./components/FlightSearch";
-import { FollowMap } from "./components/FollowMap";
+import { assignRunway } from "./domain/assignRunway";
+import { buildFlightStates, type FlightState } from "./domain/flightState";
 import { readInitialLink, writeAirportLink, writeFollowLink } from "./lib/permalink";
 import { useSettings } from "./hooks/useSettings";
 import { DEFAULT_ZOOM } from "./lib/viewport";
@@ -94,6 +94,9 @@ export default function App() {
   selectedHexRef.current = selectedHex;
   const selSourceRef = useRef<"user" | "auto" | null>(null);
   const lastUserAtRef = useRef(Date.now());
+  // Kept current for stable callbacks (clearSelection) that read them without re-binding.
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
 
   const handleSelect = useCallback((hex: string) => {
     const next = selectedHexRef.current === hex ? null : hex;
@@ -102,10 +105,17 @@ export default function App() {
     setSelectedHex(next);
   }, []);
 
+  // Clearing the selection (the card's ✕) also exits an active search — the searched
+  // flight is what got selected — and drops the follow query from the address bar.
+  const followQueryRef = useRef<string | null>(null);
   const clearSelection = useCallback(() => {
     lastUserAtRef.current = Date.now();
     selSourceRef.current = null;
     setSelectedHex(null);
+    if (followQueryRef.current) {
+      setFollowQuery(null);
+      writeAirportLink(settingsRef.current.airport);
+    }
   }, []);
 
   // Manually panning/zooming the map counts as activity, so idle auto-select won't
@@ -125,17 +135,17 @@ export default function App() {
     downloadBlob(blob, `zrh-session-${stamp}.mcap`);
   }, [snapshotHistory]);
 
-  // Follow mode: track one flight globally (from the header search or a permalink).
+  // Flight search: resolve one flight globally (from the header search or a permalink) and
+  // drop it onto the existing map, selected like any other aircraft. `tracked.aircraft` is
+  // a live fix when it's broadcasting, else its last-seen position this session, else a
+  // best-guess at the route origin (see useTrackedFlight).
   const [followQuery, setFollowQuery] = useState<string | null>(null);
+  followQueryRef.current = followQuery;
   const tracked = useTrackedFlight(followQuery);
   const enterFollow = useCallback((q: string) => {
     setFollowQuery(q);
     writeFollowLink(q);
   }, []);
-  const exitFollow = useCallback(() => {
-    setFollowQuery(null);
-    writeAirportLink(settings.airport);
-  }, [settings.airport]);
 
   // Deep-link on load: ?flight/hex/reg → follow that flight; else ?airport selects one.
   useEffect(() => {
@@ -149,6 +159,54 @@ export default function App() {
     // Run once on mount; settings.airport intentionally read as the initial value.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Join the searched flight into the map's canonical state as one more aircraft — unless
+  // it's already in the airport feed (near the field), where the live local record wins.
+  // Then it selects, reveals, and draws exactly like any tapped plane.
+  const trackedAc = tracked.aircraft;
+  const trackedFlight = useMemo<FlightState | null>(() => {
+    if (!trackedAc || traffic.byHex.has(trackedAc.hex)) return null;
+    const { byHex } = buildFlightStates(
+      [{ ac: trackedAc, assignment: assignRunway(airport, trackedAc) }],
+      [],
+      [],
+      airport.config.fieldElevationFt,
+      airport.config.geoidFt ?? 0,
+    );
+    return byHex.get(trackedAc.hex) ?? null;
+  }, [trackedAc, traffic.byHex, airport]);
+
+  const trackedHex = trackedAc?.hex ?? null;
+  const searchEstimated = tracked.positionSource != null && tracked.positionSource !== "live";
+  const mapAircraft = useMemo<AircraftWithAssignment[]>(
+    () =>
+      trackedFlight
+        ? [
+            ...traffic.aircraft,
+            {
+              ac: trackedFlight.ac,
+              assignment: trackedFlight.assignment,
+              heading: trackedFlight.heading ?? undefined,
+            },
+          ]
+        : traffic.aircraft,
+    [traffic.aircraft, trackedFlight],
+  );
+  const mapByHex = useMemo<ReadonlyMap<string, FlightState>>(() => {
+    if (!trackedFlight) return traffic.byHex;
+    const m = new Map(traffic.byHex);
+    m.set(trackedFlight.hex, trackedFlight);
+    return m;
+  }, [traffic.byHex, trackedFlight]);
+
+  // When a search resolves (or its target switches from the origin guess to a live hex),
+  // select it — as a "user" pick so idle auto-select won't steal it back.
+  useEffect(() => {
+    if (!trackedHex) return;
+    selSourceRef.current = "user";
+    lastUserAtRef.current = Date.now();
+    setSelectedHex(trackedHex);
+  }, [trackedHex]);
 
   // Gamification scores only flights the *user* actively watched, not auto-picks.
   const userSelectedHex = selSourceRef.current === "user" ? selectedHex : null;
@@ -164,7 +222,7 @@ export default function App() {
   // One lookup in the canonical index feeds everything about the selection. The status
   // phrase and the AGL are already computed on the FlightState (single source), so the
   // board, detail panel and map all read the same values.
-  const selectedFlight = selectedHex ? traffic.byHex.get(selectedHex) ?? null : null;
+  const selectedFlight = selectedHex ? mapByHex.get(selectedHex) ?? null : null;
   const selectedStatus = selectedFlight?.status ?? null;
   const selectedAircraft = useMemo<AircraftWithAssignment | null>(
     () =>
@@ -177,6 +235,16 @@ export default function App() {
         : null,
     [selectedFlight],
   );
+
+  // A short note when the selected flight is the searched one and its position is a guess.
+  const estimatedNote = useMemo<string | null>(() => {
+    if (selectedHex == null || selectedHex !== trackedHex || !searchEstimated) return null;
+    if (tracked.positionSource === "origin") return "Estimated — not broadcasting yet, shown at its origin";
+    const mins = tracked.lastLiveAt ? Math.round((now - tracked.lastLiveAt) / 60000) : null;
+    return mins == null || mins <= 0
+      ? "Estimated — last known position"
+      : `Estimated — last seen ${mins} min ago`;
+  }, [selectedHex, trackedHex, searchEstimated, tracked.positionSource, tracked.lastLiveAt, now]);
 
   // Auto-select an interesting flight when the user has left the selection empty for
   // a while; hand off to the next once the tracked one lands & stops, leaves the feed,
@@ -683,28 +751,15 @@ export default function App() {
       </div>
 
       <main className="mx-auto flex w-full max-w-[1800px] flex-1 flex-col gap-4 p-4 lg:flex-row lg:items-start lg:justify-center">
-        {followQuery ? (
-          <>
-            <section className="relative aspect-[28/25] w-full overflow-hidden border border-border bg-surface-container-lowest lg:h-[calc(100dvh-6rem)] lg:w-auto lg:min-w-0 lg:flex-1">
-              <FollowMap
-                aircraft={tracked.aircraft}
-                route={tracked.route}
-                lastUpdated={tracked.lastUpdated}
-              />
-            </section>
-            <aside className="flex w-full flex-col gap-4 lg:w-80">
-              <FlightReadout tracked={tracked} onExit={exitFollow} />
-            </aside>
-          </>
-        ) : (
-          <>
         <section className="relative aspect-[28/25] w-full overflow-hidden border border-border bg-surface-container-lowest lg:h-[calc(100dvh-6rem)] lg:w-auto lg:min-w-0 lg:flex-none">
           <AirportSvg
-            aircraft={traffic.aircraft}
-            byHex={traffic.byHex}
+            aircraft={mapAircraft}
+            byHex={mapByHex}
             counts={heatCounts}
             lastUpdated={traffic.lastUpdated}
             selectedHex={selectedHex}
+            searchedHex={trackedHex}
+            searchEstimated={searchEstimated}
             trail={selectedHex ? traffic.trailFor(selectedHex) : undefined}
             userPosition={showLocation || recorder.isRecording ? geo.position : null}
             heading={heading}
@@ -740,6 +795,7 @@ export default function App() {
               item={selectedAircraft}
               status={selectedStatus}
               lastUpdated={traffic.lastUpdated}
+              estimatedNote={estimatedNote}
               cockpitActive={cockpitActive}
               cockpitAudio={cockpitAudio}
               onClear={clearSelection}
@@ -787,8 +843,6 @@ export default function App() {
             and recordings stay on your device.
           </p>
         </aside>
-          </>
-        )}
       </main>
 
       {showSettings && (

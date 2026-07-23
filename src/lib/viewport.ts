@@ -6,7 +6,19 @@ import { SVG_W, SVG_H } from "./projection";
  * [0,1]. Everything is derived into an SVG `viewBox`, so the render stays crisp.
  */
 
-export const MIN_ZOOM = 1; // full world (~56 km across) — long finals visible
+/**
+ * Extra pan room beyond the ±field world, in world-fractions (the world is ~56 km wide,
+ * so 1.0 = 56 km). Lets the map zoom/pan out to a *regional* view — enough to frame a
+ * searched flight that's a few hundred km from the field, with the country basemap for
+ * context. The tangent-plane projection (see lib/geo `toLocalMeters`) stays recognisable
+ * out to ~this range; beyond it a target is clamped to the edge rather than misplaced.
+ */
+export const REGIONAL_PAN = 26; // ≈ ±1450 km around the field
+const META_HALF = 0.5 + REGIONAL_PAN; // half-extent of the pannable meta-world, world-fractions
+
+// Zoom 1 = the ±field world (~56 km across, long finals visible). Below 1 opens the
+// regional view; MIN_ZOOM frames the whole regional basemap. `reset()` returns to 1.
+export const MIN_ZOOM = 1 / (2 * META_HALF);
 export const MAX_ZOOM = 32; // close runway detail
 /** Default zoom: frames the runways (~14 km view) like the original map. */
 export const DEFAULT_ZOOM = 4;
@@ -38,12 +50,18 @@ export function clampZoom(zoom: number): number {
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 
 /**
- * Clamp the centre so the visible box never leaves the world. At zoom 1 the box
- * fills the world, so the centre is pinned to 0.5.
+ * Clamp the view centre. In the *airport regime* (zoom ≥ 1) the visible box sits inside
+ * the ±field world and is pinned so it never leaves it — at zoom 1 the box fills the
+ * world, so the centre is 0.5 (unchanged original behaviour). Zoomed out past 1 (the
+ * *regional regime*) the box is larger than the field world, so the centre may roam
+ * across the pannable meta-world (the basemap) instead, out to REGIONAL_PAN either side.
  */
 export function clampCenter(zoom: number, c: number): number {
-  const half = 1 / (2 * zoom); // half the visible fraction of the world
-  return Math.max(half, Math.min(1 - half, clamp01(c)));
+  const half = 1 / (2 * zoom); // half the visible fraction of the (field) world
+  if (zoom >= 1) return Math.max(half, Math.min(1 - half, clamp01(c)));
+  const reach = META_HALF - half; // how far the centre may leave 0.5 before the box hits the meta-edge
+  if (reach <= 0) return 0.5; // zoomed out far enough to see the whole region — centre it
+  return Math.max(0.5 - reach, Math.min(0.5 + reach, c));
 }
 
 export function normalizeView(v: ViewState): ViewState {

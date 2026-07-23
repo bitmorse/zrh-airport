@@ -40,29 +40,39 @@ describe("fetchTrackedAircraft", () => {
   });
 
   it("resolves an IATA flight number to the ICAO callsign via adsbdb, then matches", async () => {
+    lookup.mockResolvedValueOnce([]); // /callsign/AI136 empty — ADS-B carries the ICAO form
     route.mockResolvedValueOnce({ airlineIcao: "AIC", airlineIata: "AI" });
-    lookup.mockResolvedValueOnce([ac("AIC136")]); // provider callsign feed
+    lookup.mockResolvedValueOnce([ac("AIC136")]); // /callsign/AIC136
     const r = await fetchTrackedAircraft("AI 136");
     expect(route).toHaveBeenCalled();
     expect(lookup).toHaveBeenCalledWith("callsign", "AIC136", undefined);
     expect(r?.callsign).toBe("AIC136");
   });
 
-  it("falls back to the raw query when adsbdb has no route", async () => {
-    route.mockResolvedValueOnce(null);
+  it("resolves an ICAO callsign typed straight off the map", async () => {
     lookup.mockResolvedValueOnce([ac("LX40")]);
     const r = await fetchTrackedAircraft("LX40");
     expect(lookup).toHaveBeenCalledWith("callsign", "LX40", undefined);
     expect(r?.aircraft.flight).toBe("LX40");
+    expect(route).not.toHaveBeenCalled(); // direct hit — no need to ask adsbdb
+  });
+
+  it("resolves a callsign that looks like a registration (letters·digits·letters)", async () => {
+    // classifyQuery("RYR1TZ") === "reg", but the map shows it as a callsign. The resolver
+    // must probe the callsign endpoint first rather than trusting that guess.
+    lookup.mockResolvedValueOnce([ac("RYR1TZ", "4ca256")]);
+    const r = await fetchTrackedAircraft("RYR1TZ");
+    expect(lookup).toHaveBeenCalledWith("callsign", "RYR1TZ", undefined);
+    expect(r?.aircraft.hex).toBe("4ca256");
   });
 
   it("returns null when the flight isn't broadcasting", async () => {
     route.mockResolvedValueOnce({ airlineIcao: "AIC" });
-    lookup.mockResolvedValue([]); // both candidate callsigns empty
+    lookup.mockResolvedValue([]); // callsign, adsbdb-bridged callsign and reg all empty
     expect(await fetchTrackedAircraft("AI136")).toBeNull();
   });
 
-  it("looks up a registration", async () => {
+  it("looks up a registration by its tail number", async () => {
     lookup.mockResolvedValueOnce([ac("SWR123", "4b19f5")]);
     const r = await fetchTrackedAircraft("HB-JCA");
     expect(lookup).toHaveBeenCalledWith("reg", "HBJCA", undefined);

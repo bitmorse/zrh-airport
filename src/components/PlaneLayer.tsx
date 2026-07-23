@@ -14,12 +14,18 @@ function PlaneLayerImpl({
   aircraft,
   lastUpdated,
   selectedHex,
+  searchedHex,
+  searchEstimated,
   onSelect,
   wind,
 }: {
   aircraft: AircraftWithAssignment[];
   lastUpdated: number | null;
   selectedHex?: string | null;
+  /** The flight the user searched for (gets the accent ring). */
+  searchedHex?: string | null;
+  /** True when the searched flight's position is a guess (last-seen / origin). */
+  searchEstimated?: boolean;
   onSelect?: (hex: string) => void;
   /** Current airport wind for the optional crosswind arrows; null/undefined = off. */
   wind?: CurrentWind | null;
@@ -27,16 +33,21 @@ function PlaneLayerImpl({
   const now = useSmoothClock();
   return (
     <g>
-      {aircraft.map((item) => (
-        <Plane
-          key={item.ac.hex}
-          item={item}
-          pos={reckonPosition(item.ac, lastUpdated, now)}
-          selected={item.ac.hex === selectedHex}
-          onSelect={onSelect}
-          wind={wind}
-        />
-      ))}
+      {aircraft.map((item) => {
+        const isSearched = item.ac.hex === searchedHex;
+        return (
+          <Plane
+            key={item.ac.hex}
+            item={item}
+            pos={reckonPosition(item.ac, lastUpdated, now)}
+            selected={item.ac.hex === selectedHex}
+            searched={isSearched}
+            estimated={isSearched && searchEstimated}
+            onSelect={onSelect}
+            wind={wind}
+          />
+        );
+      })}
     </g>
   );
 }

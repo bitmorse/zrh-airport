@@ -1,4 +1,4 @@
-import { fetchAircraftByLookup, type Aircraft } from "./adsb";
+import { fetchAircraftByLookup, type Aircraft, type LookupKind } from "./adsb";
 import { fetchFlightRoute } from "./flightInfo";
 
 /**
@@ -50,38 +50,49 @@ function pickByCallsign(list: Aircraft[], target: string): Aircraft | null {
 /**
  * Resolve a query to a single live aircraft, or null when it isn't broadcasting now.
  * Throws only if the network path is entirely unavailable (all providers error).
+ *
+ * A dashless token is genuinely ambiguous — an ICAO callsign ("RYR1TZ", "SWR9YH") and a
+ * registration ("N123AB") both look like letters·digits·letters — and the map labels
+ * planes with their *callsign*, which is what users copy in. So rather than commit to one
+ * endpoint from a guess, we probe the likely endpoints in order and take the first hit.
  */
 export async function fetchTrackedAircraft(
   raw: string,
   signal?: AbortSignal,
 ): Promise<TrackedResult | null> {
-  const kind = classifyQuery(raw);
   const q = normalizeQuery(raw);
   if (!q) return null;
 
-  if (kind === "hex") {
-    const ac = (await fetchAircraftByLookup("hex", q, signal))[0];
-    return ac ? { aircraft: ac, callsign: ac.flight?.trim() ?? null } : null;
-  }
+  // Look one endpoint up and return a result if the match is real. For callsign lookups
+  // the provider already filters server-side, but pickByCallsign guards the odd feed that
+  // returns extras; reg/hex lookups return the single tail/airframe.
+  const probe = async (kind: LookupKind, value: string): Promise<TrackedResult | null> => {
+    const list = await fetchAircraftByLookup(kind, value, signal);
+    const ac = kind === "callsign" ? pickByCallsign(list, normalizeQuery(value)) : (list[0] ?? null);
+    return ac ? { aircraft: ac, callsign: ac.flight?.trim() ?? value } : null;
+  };
 
-  if (kind === "reg") {
-    const ac = (await fetchAircraftByLookup("reg", q, signal))[0];
-    return ac ? { aircraft: ac, callsign: ac.flight?.trim() ?? null } : null;
-  }
+  // ICAO hex is unambiguous (exactly six hex chars).
+  if (classifyQuery(raw) === "hex") return probe("hex", q);
 
-  // Flight number: resolve the ICAO callsign via adsbdb (AI136 → airline AIC → AIC136),
-  // then match the global callsign feed. Try the ICAO form first, then the raw query.
+  // A dash means it's unambiguously a registration (HB-JCA, D-AIMA). Try the tail, then
+  // fall back to a callsign match in case the airframe isn't in the provider's tail DB.
+  if (raw.includes("-")) return (await probe("reg", q)) ?? (await probe("callsign", q));
+
+  // Dashless: try the callsign as typed first — that's the label shown on the map
+  // (RYR1TZ, SWR40, SWR9YH). This is the common case and usually resolves immediately.
+  const direct = await probe("callsign", q);
+  if (direct) return direct;
+
+  // Not the broadcast callsign itself — maybe an IATA flight number. adsbdb bridges it to
+  // the ICAO callsign that ADS-B actually carries (AI136 → airline AIC → AIC136).
   const route = await fetchFlightRoute(q, signal).catch(() => null);
   const digits = q.replace(/^[A-Z]+/i, "");
-  const candidates = [
-    route?.airlineIcao && digits ? route.airlineIcao + digits : null,
-    q,
-  ].filter((c): c is string => !!c);
-
-  for (const cs of candidates) {
-    const list = await fetchAircraftByLookup("callsign", cs, signal);
-    const ac = pickByCallsign(list, normalizeQuery(cs));
-    if (ac) return { aircraft: ac, callsign: ac.flight?.trim() ?? cs };
+  if (route?.airlineIcao && digits) {
+    const viaRoute = await probe("callsign", route.airlineIcao + digits);
+    if (viaRoute) return viaRoute;
   }
-  return null;
+
+  // Last resort: a dashless registration (US N-numbers carry no dash).
+  return probe("reg", q);
 }

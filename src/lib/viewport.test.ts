@@ -15,9 +15,10 @@ import {
 
 describe("clampZoom", () => {
   it("clamps to [MIN_ZOOM, MAX_ZOOM]", () => {
-    expect(clampZoom(0.1)).toBe(MIN_ZOOM);
+    expect(clampZoom(0.00001)).toBe(MIN_ZOOM);
     expect(clampZoom(999)).toBe(MAX_ZOOM);
     expect(clampZoom(3)).toBe(3);
+    expect(MIN_ZOOM).toBeLessThan(1); // regional zoom-out is enabled
   });
 });
 
@@ -30,6 +31,14 @@ describe("clampCenter", () => {
     // At zoom 2 the box is half the world, so centre is limited to [0.25, 0.75].
     expect(clampCenter(2, 0)).toBeCloseTo(0.25);
     expect(clampCenter(2, 1)).toBeCloseTo(0.75);
+  });
+  it("lets the centre roam into the regional meta-world when zoomed out past 1", () => {
+    // Below zoom 1 the field world is smaller than the viewport, so a searched flight
+    // a few hundred km away (centre well outside [0,1]) can be framed.
+    const c = clampCenter(0.2, 5);
+    expect(c).toBeGreaterThan(1); // panned beyond the field world, into the basemap
+    // At the minimum zoom the whole region is visible, so the centre pins back to 0.5.
+    expect(clampCenter(MIN_ZOOM, 8)).toBeCloseTo(0.5);
   });
 });
 
@@ -97,9 +106,17 @@ describe("fitPoints", () => {
     expect(v.zoom).toBeLessThanOrEqual(3);
   });
 
-  it("zooms out to fit a far-apart pair", () => {
+  it("zooms out to fit a far-apart pair (the whole field world, plus margin)", () => {
     const v = fitPoints([{ x: 0, y: 0 }, { x: SVG_W, y: SVG_H }], MAX_ZOOM);
-    expect(v.zoom).toBeCloseTo(MIN_ZOOM, 5);
+    expect(v.zoom).toBeCloseTo(1 / 1.2, 5); // 10% margin each side → slightly out from zoom 1
+  });
+
+  it("zooms out below 1 to fit a regional target far outside the field world", () => {
+    // A searched flight ~700 km east projects well beyond SVG_W; the reveal must open
+    // into the regional range rather than clamp at the field-world zoom of 1.
+    const v = fitPoints([{ x: SVG_W / 2, y: SVG_H / 2 }, { x: SVG_W * 12, y: SVG_H / 2 }], MAX_ZOOM);
+    expect(v.zoom).toBeLessThan(1);
+    expect(v.zoom).toBeGreaterThanOrEqual(MIN_ZOOM);
   });
 
   it("adapts IN toward REVEAL_MAX_ZOOM for a near-field target (the reveal fix)", () => {

@@ -35,6 +35,8 @@ export function Plane({
   item,
   pos,
   selected,
+  searched,
+  estimated,
   onSelect,
   wind,
 }: {
@@ -42,6 +44,10 @@ export function Plane({
   /** Optional dead-reckoned position; falls back to the aircraft's last fix. */
   pos?: LatLon;
   selected?: boolean;
+  /** This is the flight the user searched for — gets a little extra attention. */
+  searched?: boolean;
+  /** Position is a guess (last-seen this session or the route origin), not a live fix. */
+  estimated?: boolean;
   onSelect?: (hex: string) => void;
   /** Current airport wind (from the optional overlay); undefined = overlay off. */
   wind?: CurrentWind | null;
@@ -49,7 +55,9 @@ export function Plane({
   const { ac, assignment } = item;
   const { arp } = useAirport().config;
   const pt = projectToSvg(arp, pos ?? { lat: ac.lat, lon: ac.lon });
-  if (!inViewport(pt, 20)) return null;
+  // The selected/searched plane always draws — it may sit far outside the field world
+  // (a searched flight hundreds of km away), which the cull would otherwise hide.
+  if (!selected && !searched && !inViewport(pt, 20)) return null;
 
   // Prefer the computed display heading (trail-derived on the ground, where `track` is
   // unreliable); fall back to the raw track, then north.
@@ -60,7 +68,7 @@ export function Plane({
   // Keep the label dark (legible on the light map) when the glyph itself is white.
   const labelColor = selected || onRunway ? LABEL_COLOR : color;
   const active = assignment !== null;
-  const show = active || selected;
+  const show = active || selected || searched;
   const label = ac.flight ?? ac.hex.toUpperCase();
 
   // Crosswind "push" arrow — only for active aircraft (near the field, where surface
@@ -85,7 +93,7 @@ export function Plane({
   return (
     <g
       transform={`translate(${pt.x.toFixed(1)} ${pt.y.toFixed(1)})`}
-      opacity={show ? 1 : 0.5}
+      opacity={estimated ? 0.55 : show ? 1 : 0.5}
       style={{ cursor: onSelect ? "pointer" : undefined }}
       onPointerDown={
         onSelect
@@ -134,7 +142,13 @@ export function Plane({
           />
         </g>
       )}
-      {/* Radar target: a sharp 1px square boundary (per design, not a circle). */}
+      {/* A little extra attention on the searched flight: a soft accent ring around the
+          radar target — enough to pick it out, not a beacon. */}
+      {searched && (
+        <circle r={13} fill="none" stroke={SELECT_COLOR} strokeWidth={1} opacity={0.65} />
+      )}
+      {/* Radar target: a sharp 1px square boundary (per design, not a circle). Dashed
+          when the position is a guess (last-seen / origin), solid for a live fix. */}
       {selected && (
         <rect
           x={-8}
@@ -144,6 +158,7 @@ export function Plane({
           fill="none"
           stroke={SELECT_COLOR}
           strokeWidth={1.4}
+          strokeDasharray={estimated ? "3 3" : undefined}
         />
       )}
       {/* Airplane glyph (viewBox 0 0 24 24, nose at +x): centre on the origin, scale

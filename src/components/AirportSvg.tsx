@@ -6,12 +6,14 @@ import type { AircraftWithAssignment } from "../hooks/useLiveTraffic";
 import { useViewport } from "../hooks/useViewport";
 import type { LatLon } from "../lib/geo";
 import { projectToSvg, SVG_W, SVG_H } from "../lib/projection";
+import { MIN_ZOOM } from "../lib/viewport";
 import { PlaneLayer } from "./PlaneLayer";
 import { WindChip } from "./WindChip";
 import { PoiLayer } from "./PoiLayer";
 import { RunwayHeat } from "./RunwayHeat";
 import { TrailLayer } from "./TrailLayer";
 import { UserLayer } from "./UserLayer";
+import { WorldBasemap } from "./WorldBasemap";
 import { MyLocationIcon, RefreshIcon, ZoomInIcon, ZoomOutIcon } from "./icons";
 
 function AirportSvgImpl({
@@ -20,6 +22,8 @@ function AirportSvgImpl({
   counts,
   lastUpdated,
   selectedHex,
+  searchedHex,
+  searchEstimated,
   trail,
   userPosition,
   heading,
@@ -37,6 +41,10 @@ function AirportSvgImpl({
   counts: Record<string, number>;
   lastUpdated: number | null;
   selectedHex?: string | null;
+  /** The flight the user searched for — highlighted with an accent ring. */
+  searchedHex?: string | null;
+  /** True when the searched flight's position is a guess (last-seen / origin). */
+  searchEstimated?: boolean;
   trail?: LatLon[];
   userPosition?: LatLon | null;
   heading?: number | null;
@@ -106,6 +114,10 @@ function AirportSvgImpl({
         fill="var(--color-surface-container-lowest)"
       />
 
+      {/* Country outlines under everything — a speck at the default zoom, but context
+          once the map zooms out to frame a searched flight far from the field. */}
+      <WorldBasemap arp={airport.config.arp} />
+
       {/* Range rings around the airport reference point (centre of the frame). */}
       {[0.33, 0.66, 1].map((r) => (
         <circle
@@ -160,6 +172,8 @@ function AirportSvgImpl({
         aircraft={aircraft}
         lastUpdated={lastUpdated}
         selectedHex={selectedHex}
+        searchedHex={searchedHex}
+        searchEstimated={searchEstimated}
         onSelect={onSelect}
         wind={wind}
       />
@@ -180,7 +194,7 @@ function AirportSvgImpl({
         <ZoomButton label="Zoom in" onClick={zoomIn} disabled={zoom >= 8}>
           <ZoomInIcon size={18} />
         </ZoomButton>
-        <ZoomButton label="Zoom out" onClick={zoomOut} disabled={zoom <= 1}>
+        <ZoomButton label="Zoom out" onClick={zoomOut} disabled={zoom <= MIN_ZOOM * 1.001}>
           <ZoomOutIcon size={18} />
         </ZoomButton>
         <ZoomButton label="Reset view" onClick={reset} disabled={zoom === 1}>

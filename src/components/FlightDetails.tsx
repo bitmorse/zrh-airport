@@ -76,6 +76,7 @@ export function FlightDetails({
   item,
   status,
   lastUpdated,
+  estimatedNote,
   cockpitActive,
   cockpitAudio,
   onClear,
@@ -84,6 +85,8 @@ export function FlightDetails({
   /** Meaningful phase phrase for the selected aircraft (e.g. "just landed"). */
   status: FlightStatus | null;
   lastUpdated: number | null;
+  /** Set when the shown position is a guess (searched flight, not a live fix). */
+  estimatedNote?: string | null;
   /** Cockpit sim is enabled — run the GPWS state machine + show the callout readout. */
   cockpitActive: boolean;
   /** GPWS audio may play (sim on, not muted, not recording). */
@@ -155,6 +158,11 @@ export function FlightDetails({
 
       {/* Headline: the timing. */}
       <h2 className="mt-2 text-lg font-semibold leading-tight text-on-surface">{headline}</h2>
+      {estimatedNote && (
+        <p className="mt-1 w-fit border border-dashed border-border px-1.5 py-0.5 text-[11px] text-on-surface-variant">
+          {estimatedNote}
+        </p>
+      )}
       <MotionReadout
         ac={ac}
         lastUpdated={lastUpdated}
