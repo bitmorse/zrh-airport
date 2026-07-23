@@ -177,7 +177,10 @@ export default function App() {
   }, [trackedAc, traffic.byHex, airport]);
 
   const trackedHex = trackedAc?.hex ?? null;
-  const searchEstimated = tracked.positionSource != null && tracked.positionSource !== "live";
+  // Dash the marker only for genuine guesses (last-seen / origin); an AeroAPI "lookup"
+  // fix is a real position, so it draws solid.
+  const searchEstimated =
+    tracked.positionSource === "last-seen" || tracked.positionSource === "origin";
   const mapAircraft = useMemo<AircraftWithAssignment[]>(
     () =>
       trackedFlight
@@ -236,15 +239,25 @@ export default function App() {
     [selectedFlight],
   );
 
-  // A short note when the selected flight is the searched one and its position is a guess.
+  // A short provenance note when the selected flight is the searched one and its position
+  // isn't our own live ADS-B (an AeroAPI fix, a last-seen fix, or an origin guess).
   const estimatedNote = useMemo<string | null>(() => {
-    if (selectedHex == null || selectedHex !== trackedHex || !searchEstimated) return null;
-    if (tracked.positionSource === "origin") return "Estimated — not broadcasting yet, shown at its origin";
-    const mins = tracked.lastLiveAt ? Math.round((now - tracked.lastLiveAt) / 60000) : null;
-    return mins == null || mins <= 0
-      ? "Estimated — last known position"
-      : `Estimated — last seen ${mins} min ago`;
-  }, [selectedHex, trackedHex, searchEstimated, tracked.positionSource, tracked.lastLiveAt, now]);
+    if (selectedHex == null || selectedHex !== trackedHex) return null;
+    const src = tracked.positionSource;
+    const status = tracked.lookup?.status ? ` · ${tracked.lookup.status}` : "";
+    if (src === "lookup") return `Position via FlightAware${status}`;
+    if (src === "last-seen") {
+      const mins = tracked.lastLiveAt ? Math.round((now - tracked.lastLiveAt) / 60000) : null;
+      return mins == null || mins <= 0
+        ? "Estimated — last known position"
+        : `Estimated — last seen ${mins} min ago`;
+    }
+    if (src === "origin") {
+      const gate = tracked.lookup?.gateOrigin ? ` · gate ${tracked.lookup.gateOrigin}` : "";
+      return `Estimated — not broadcasting yet, shown at its origin${gate}${status}`;
+    }
+    return null; // live ADS-B — no note
+  }, [selectedHex, trackedHex, tracked.positionSource, tracked.lookup, tracked.lastLiveAt, now]);
 
   // Auto-select an interesting flight when the user has left the selection empty for
   // a while; hand off to the next once the tracked one lands & stops, leaves the feed,
