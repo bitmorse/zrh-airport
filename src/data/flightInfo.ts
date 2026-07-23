@@ -11,6 +11,8 @@ export interface Airport {
   name: string | null;
   municipality: string | null;
   countryIso: string | null;
+  lat?: number | null;
+  lon?: number | null;
 }
 
 export interface FlightRoute {
@@ -30,6 +32,8 @@ interface RawAirport {
   name?: string;
   municipality?: string;
   country_iso_name?: string;
+  latitude?: number;
+  longitude?: number;
 }
 
 function mapAirport(a: RawAirport | undefined): Airport | null {
@@ -40,6 +44,8 @@ function mapAirport(a: RawAirport | undefined): Airport | null {
     name: a.name ?? null,
     municipality: a.municipality ?? null,
     countryIso: a.country_iso_name ?? null,
+    lat: a.latitude ?? null,
+    lon: a.longitude ?? null,
   };
 }
 
