@@ -57,6 +57,11 @@ import { useGeoWatch, type GeoFix } from "./hooks/useGeoWatch";
 import { useLiveTraffic, type AircraftWithAssignment } from "./hooks/useLiveTraffic";
 import { useNoiseRecorder, type Recording } from "./hooks/useNoiseRecorder";
 import { useNow } from "./hooks/useNow";
+import { useTrackedFlight } from "./hooks/useTrackedFlight";
+import { FlightReadout } from "./components/FlightReadout";
+import { FlightSearch } from "./components/FlightSearch";
+import { FollowMap } from "./components/FollowMap";
+import { readInitialLink, writeAirportLink, writeFollowLink } from "./lib/permalink";
 import { useSettings } from "./hooks/useSettings";
 import { DEFAULT_ZOOM } from "./lib/viewport";
 import {
@@ -119,6 +124,31 @@ export default function App() {
     const stamp = new Date().toISOString().slice(0, 19).replace(/[:T-]/g, "");
     downloadBlob(blob, `zrh-session-${stamp}.mcap`);
   }, [snapshotHistory]);
+
+  // Follow mode: track one flight globally (from the header search or a permalink).
+  const [followQuery, setFollowQuery] = useState<string | null>(null);
+  const tracked = useTrackedFlight(followQuery);
+  const enterFollow = useCallback((q: string) => {
+    setFollowQuery(q);
+    writeFollowLink(q);
+  }, []);
+  const exitFollow = useCallback(() => {
+    setFollowQuery(null);
+    writeAirportLink(settings.airport);
+  }, [settings.airport]);
+
+  // Deep-link on load: ?flight/hex/reg → follow that flight; else ?airport selects one.
+  useEffect(() => {
+    const { airport, followQuery: q } = readInitialLink();
+    if (q) {
+      setFollowQuery(q);
+      writeFollowLink(q);
+    } else if (airport && airport !== settings.airport) {
+      updateSettings({ airport });
+    }
+    // Run once on mount; settings.airport intentionally read as the initial value.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Gamification scores only flights the *user* actively watched, not auto-picks.
   const userSelectedHex = selSourceRef.current === "user" ? selectedHex : null;
@@ -556,6 +586,7 @@ export default function App() {
           <span className="mr-1 hidden text-[11px] uppercase tracking-wide text-muted sm:block">
             {traffic.provider ?? "—"} · {activeCount}/{traffic.aircraft.length} on runways
           </span>
+          <FlightSearch onSubmit={enterFollow} />
           <button
             onClick={() => setShowStats(true)}
             aria-label="Flights watched"
@@ -652,6 +683,21 @@ export default function App() {
       </div>
 
       <main className="mx-auto flex w-full max-w-[1800px] flex-1 flex-col gap-4 p-4 lg:flex-row lg:items-start lg:justify-center">
+        {followQuery ? (
+          <>
+            <section className="relative aspect-[28/25] w-full overflow-hidden border border-border bg-surface-container-lowest lg:h-[calc(100dvh-6rem)] lg:w-auto lg:min-w-0 lg:flex-1">
+              <FollowMap
+                aircraft={tracked.aircraft}
+                route={tracked.route}
+                lastUpdated={tracked.lastUpdated}
+              />
+            </section>
+            <aside className="flex w-full flex-col gap-4 lg:w-80">
+              <FlightReadout tracked={tracked} onExit={exitFollow} />
+            </aside>
+          </>
+        ) : (
+          <>
         <section className="relative aspect-[28/25] w-full overflow-hidden border border-border bg-surface-container-lowest lg:h-[calc(100dvh-6rem)] lg:w-auto lg:min-w-0 lg:flex-none">
           <AirportSvg
             aircraft={traffic.aircraft}
@@ -741,6 +787,8 @@ export default function App() {
             and recordings stay on your device.
           </p>
         </aside>
+          </>
+        )}
       </main>
 
       {showSettings && (

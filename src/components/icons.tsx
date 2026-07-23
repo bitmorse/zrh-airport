@@ -148,6 +148,19 @@ export function SettingsIcon(p: IconProps) {
 
 /* --- Drawn action glyphs (one rectilinear icon system) -------------------- */
 
+/** Search (magnifier). */
+export function SearchIcon(p: IconProps) {
+  return (
+    <Svg viewBox="0 0 24 24" {...p}>
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.28.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 9.5 5a4.5 4.5 0 0 1 0 9z"
+      />
+    </Svg>
+  );
+}
+
 /** Play (triangle). Replaces ▶. */
 export function PlayIcon(p: IconProps) {
   return (
