@@ -233,6 +233,39 @@ export const FRA: AirportConfig = {
   ],
 };
 
+export const VIE: AirportConfig = {
+  icao: "LOWW",
+  iata: "VIE",
+  name: "Vienna",
+  timeZone: "Europe/Vienna",
+  arp: { lat: 48.110298, lon: 16.5697 },
+  fieldElevationFt: 600,
+  geoidFt: 151, // EGM96 undulation ≈ +46 m
+
+  runways: [
+    {
+      ends: [
+        { id: "11", threshold: { lat: 48.122799, lon: 16.533400 } },
+        { id: "29", threshold: { lat: 48.109001, lon: 16.575600 } },
+      ],
+    },
+    {
+      ends: [
+        { id: "16", threshold: { lat: 48.119801, lon: 16.578199 } },
+        { id: "34", threshold: { lat: 48.088600, lon: 16.591299 } },
+      ],
+    },
+  ],
+
+  frequencies: [
+    { label: "Tower", mhz: "119.400" },
+    { label: "Ground", mhz: "121.775" },
+    { label: "Delivery", mhz: "121.925" },
+    { label: "Arrival", mhz: "134.675" },
+    { label: "ATIS", mhz: "122.075" },
+  ],
+};
+
 export const HKG: AirportConfig = {
   icao: "VHHH",
   iata: "HKG",
@@ -276,7 +309,7 @@ export const HKG: AirportConfig = {
   ],
 };
 
-export const AIRPORTS: AirportConfig[] = [ZRH, GVA, BSL, MXP, FRA, HKG, BKK];
+export const AIRPORTS: AirportConfig[] = [ZRH, GVA, BSL, MXP, FRA, VIE, HKG, BKK];
 
 export const DEFAULT_AIRPORT_ICAO = ZRH.icao;
 
